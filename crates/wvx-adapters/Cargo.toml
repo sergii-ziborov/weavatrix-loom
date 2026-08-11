@@ -12,6 +12,8 @@ publish.workspace = true
 
 [dependencies]
 serde_json = { workspace = true }
+# Third independent parse path for Gate A (not serde-based).
+json = "0.12"
 
 [lints]
 workspace = true

@@ -72,7 +72,11 @@ fn parse_vectors() -> Vec<(&'static str, &'static [u8], serde_json::Value)> {
 }
 
 fn parse_impls() -> &'static [&'static str] {
-    &["serde-json.parse-owned@1", "wvx.reference.json-parse@1"]
+    &[
+        "serde-json.parse-owned@1",
+        "wvx.reference.json-parse@1",
+        "json-crate.parse@1",
+    ]
 }
 
 fn serialize_impls_compact() -> &'static [&'static str] {
@@ -439,6 +443,7 @@ pub fn run_all_goldens(input: &[u8]) -> Vec<GoldenReport> {
     let combos: Vec<(Option<&str>, Option<&str>)> = vec![
         (None, None), // defaults: serde parse + serde serialize
         (Some("wvx.reference.json-parse@1"), None),
+        (Some("json-crate.parse@1"), None),
         (None, Some("wvx.reference.json-serialize@1")),
         (
             Some("wvx.reference.json-parse@1"),
@@ -509,6 +514,19 @@ mod tests {
         )
         .expect("golden");
         assert!(report.ok, "detail={:?}", report.detail);
+        assert_eq!(report.dynamic_json["tag"], "loom");
+    }
+
+    #[test]
+    fn golden_json_crate_parse() {
+        let report = golden_dynamic_static(
+            Some("json-crate.parse@1"),
+            None,
+            br#"{"hello":"world"}"#,
+        )
+        .expect("golden");
+        assert!(report.ok, "detail={:?}", report.detail);
+        assert_eq!(report.parse_impl, "json-crate.parse@1");
         assert_eq!(report.dynamic_json["tag"], "loom");
     }
 

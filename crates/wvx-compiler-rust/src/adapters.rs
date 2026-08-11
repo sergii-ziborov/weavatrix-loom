@@ -7,6 +7,7 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
     match implementation_id {
         "serde-json.parse-owned@1" => Some("serde_json_parse_owned"),
         "wvx.reference.json-parse@1" => Some("reference_json_parse"),
+        "json-crate.parse@1" => Some("json_crate_parse"),
         "serde-json.serialize@1" => Some("serde_json_serialize"),
         "wvx.reference.json-serialize@1" => Some("reference_json_serialize"),
         "wvx.reference.json-serialize-pretty@1" => Some("reference_json_serialize_pretty"),
@@ -23,6 +24,7 @@ pub fn supports(implementation_id: &str, capability_key: &str) -> bool {
     match (implementation_id, capability_key) {
         ("serde-json.parse-owned@1", "data.json.parse@1") => true,
         ("wvx.reference.json-parse@1", "data.json.parse@1") => true,
+        ("json-crate.parse@1", "data.json.parse@1") => true,
         ("serde-json.serialize@1", "data.json.serialize@1") => true,
         ("wvx.reference.json-serialize@1", "data.json.serialize@1") => true,
         ("wvx.reference.json-serialize-pretty@1", "data.json.serialize@1") => true,
@@ -53,6 +55,7 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
     vec![
         "serde-json.parse-owned@1",
         "wvx.reference.json-parse@1",
+        "json-crate.parse@1",
         "serde-json.serialize@1",
         "wvx.reference.json-serialize@1",
         "wvx.reference.json-serialize-pretty@1",
@@ -83,6 +86,12 @@ pub fn emit_call(
             let bytes = input_exprs.get("bytes").ok_or("parse requires bytes")?;
             Ok(format!(
                 "wvx_adapters::reference_json_parse::parse({bytes}.as_slice())?"
+            ))
+        }
+        "json-crate.parse@1" => {
+            let bytes = input_exprs.get("bytes").ok_or("parse requires bytes")?;
+            Ok(format!(
+                "wvx_adapters::json_crate_parse::parse({bytes}.as_slice())?"
             ))
         }
         "serde-json.serialize@1" => {

@@ -2,6 +2,7 @@
 //!
 //! Each module maps to one `implementation_id` in the registry.
 
+pub mod json_crate_parse;
 pub mod reference_json_parse;
 pub mod reference_json_serialize;
 pub mod reference_json_serialize_pretty;
@@ -13,6 +14,7 @@ pub mod serde_json_serialize;
 pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("serde-json.parse-owned@1", "serde_json_parse_owned"),
     ("wvx.reference.json-parse@1", "reference_json_parse"),
+    ("json-crate.parse@1", "json_crate_parse"),
     ("serde-json.serialize@1", "serde_json_serialize"),
     ("wvx.reference.json-serialize@1", "reference_json_serialize"),
     (

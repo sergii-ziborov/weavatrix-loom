@@ -65,6 +65,7 @@ description = "Vendored Loom pilot adapters"
 
 [dependencies]
 serde_json = "1"
+json = "0.12"
 "#
     .into()
 }

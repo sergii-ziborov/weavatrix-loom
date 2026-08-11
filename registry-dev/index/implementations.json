@@ -1,7 +1,8 @@
 {
   "data.json.parse@1": [
     "serde-json.parse-owned@1",
-    "wvx.reference.json-parse@1"
+    "wvx.reference.json-parse@1",
+    "json-crate.parse@1"
   ],
   "data.json.path_set@1": [
     "wvx.reference.path-set@1"

@@ -21,9 +21,10 @@ pub fn register_pilot_handlers(reg: &mut HandlerRegistry) {
     reg.register_default(IoOutputBytes);
     reg.register_default(JsonPathSet);
 
-    // data.json.parse@1 — two independent code paths
+    // data.json.parse@1 — three independent code paths (Gate A)
     reg.register_default(SerdeJsonParse);
     reg.register(ReferenceJsonParse);
+    reg.register(JsonCrateParse);
 
     // data.json.serialize@1 — serde compact (default) + reference pretty/compact
     reg.register_default(SerdeJsonSerialize);
@@ -52,6 +53,11 @@ pub fn list_pilot_implementations() -> Vec<PilotImplementation> {
             implementation_id: "wvx.reference.json-parse@1",
             capability_key: "data.json.parse@1",
             label: "WVX lite recursive-descent parse",
+        },
+        PilotImplementation {
+            implementation_id: "json-crate.parse@1",
+            capability_key: "data.json.parse@1",
+            label: "crates.io json crate parse",
         },
         PilotImplementation {
             implementation_id: "wvx.reference.path-set@1",
@@ -123,6 +129,7 @@ impl ErasedComponent for IoOutputBytes {
 
 struct SerdeJsonParse;
 struct ReferenceJsonParse;
+struct JsonCrateParse;
 
 impl ErasedComponent for SerdeJsonParse {
     fn implementation_id(&self) -> &str {
@@ -150,6 +157,22 @@ impl ErasedComponent for ReferenceJsonParse {
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
         let bytes = require_bytes(inputs, "data.json.parse")?;
         let value = wvx_adapters::reference_json_parse::parse(bytes)?;
+        let mut out = WvxValueMap::new();
+        out.insert("value".into(), WvxValue::Json(value));
+        Ok(out)
+    }
+}
+
+impl ErasedComponent for JsonCrateParse {
+    fn implementation_id(&self) -> &str {
+        "json-crate.parse@1"
+    }
+    fn capability_key(&self) -> &str {
+        "data.json.parse@1"
+    }
+    fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let bytes = require_bytes(inputs, "data.json.parse")?;
+        let value = wvx_adapters::json_crate_parse::parse(bytes)?;
         let mut out = WvxValueMap::new();
         out.insert("value".into(), WvxValue::Json(value));
         Ok(out)

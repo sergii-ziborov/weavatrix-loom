@@ -9,8 +9,10 @@ can have one or more Rust implementations that share a contract, tests, and
 measured characteristics. Loom turns a typed graph of those capabilities into a
 normal, readable Rust workspace.
 
-> **Status:** public `0.1` scaffold. Libraries and CLI compile; the full editor,
-> playground, and registry admission pipeline are under active development.
+> **Status:** public **v0.1 pilot** (JSON transform vertical). Core libs, CLI, MCP,
+> HTTP server, conformance/golden (Gates A/D), Forge static inventory, and Cortex
+> intent→GraphPatch land here. The visual UI is the sibling repo
+> **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**.
 
 ## Why
 
@@ -200,17 +202,41 @@ Go/No-Go evidence for Gates **A** (interchangeability) and **D** (dynamic≡stat
 
 ### Intent → GraphPatch (Cortex)
 
+**Most of Loom works with zero cloud keys.** Run, validate, export, registry, Forge
+inventory, and rule-based / heuristic GraphPatch are fully offline.
+
+Optional LLM propose (free-form English → ops-only GraphPatch) uses **xAI**
+(SpaceXAI-compatible API) when the **server** has:
+
+| Env | Required? | Purpose |
+| --- | --- | --- |
+| `XAI_API_KEY` | only for LLM intents | Server-side chat completions at `https://api.x.ai/v1` |
+| `WVX_LLM_MODEL` | no (default model) | Override chat model |
+| `XAI_BASE_URL` | no | Override API base |
+
+Create a key at [console.x.ai](https://console.x.ai). **Never commit the key** and
+**never put it in the Studio frontend** — only `loom-server` / CLI process env.
+
 ```bash
 # Offline heuristics (no API key):
 cargo run -p wvx-cli -- patch intent "install the pilot json pipeline"
 cargo run -p wvx-cli -- patch intent "use pretty serialize" --project fixtures/pilot-json-pipeline.wvx.json
 cargo run -p wvx-cli -- patch intent "switch parse to json-crate" --project fixtures/pilot-json-pipeline.wvx.json
 
-# LLM (server-side only): set XAI_API_KEY, optional WVX_LLM_MODEL / XAI_BASE_URL
-# Never put the key in the Studio browser bundle.
+# Optional LLM (Windows PowerShell example):
+# $env:XAI_API_KEY = "xai-..."
+# cargo run -p wvx-cli -- patch intent "add a pretty serialize step if missing" --project fixtures/pilot-json-pipeline.wvx.json
 ```
 
-Studio: toolbar **intent** field + **Propose intent** → Accept/Reject (same ghost banner as rule propose).
+Studio: toolbar **intent** + **Propose intent** → Accept/Reject (ghost banner). Without
+`XAI_API_KEY` on the server, known phrases still work via heuristics.
+
+## Related repositories
+
+| Repo | Role |
+| --- | --- |
+| **[weavatrix-loom](https://github.com/sergii-ziborov/weavatrix-loom)** (this) | Rust platform, CLI, MCP, HTTP, registry-dev, docs |
+| **[loom-studio](https://github.com/sergii-ziborov/loom-studio)** | TypeScript / React Studio UI |
 
 ## Pilot scope (`0.1`)
 

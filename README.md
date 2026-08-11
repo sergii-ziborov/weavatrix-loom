@@ -11,8 +11,15 @@ normal, readable Rust workspace.
 
 > **Status:** public **v0.1 pilot** (JSON transform vertical). Core libs, CLI, MCP,
 > HTTP server, conformance/golden (Gates A/D), Forge static inventory, and Cortex
-> intent→GraphPatch land here. The visual UI is the sibling repo
+> intent→GraphPatch live in this repo. The visual UI is the sibling
 > **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**.
+
+## Studio preview
+
+![Loom Studio — JSON pilot pipeline](docs/images/studio-pilot.png)
+
+*Design canvas: library + typed graph, multi-impl swap with per-impl Run, run trace,
+and optional intent → GraphPatch. UI lives in [loom-studio](https://github.com/sergii-ziborov/loom-studio).*
 
 ## Why
 
@@ -58,15 +65,19 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | --- | --- |
 | `wvx-types` | Canonical boundary types |
 | `wvx-ir` | WVX entities (capability, implementation, instance, binding, project) |
-| `wvx-project-graph` | Project graph operations |
+| `wvx-project-graph` | Project graph operations + GraphPatch apply |
 | `wvx-validator` | Structural and type validation |
 | `wvx-runtime` | Dynamic playground execution (erased values) |
 | `wvx-compiler-rust` | Export a validated graph to a native Rust workspace |
 | `wvx-registry-client` | Read a local capability registry |
-| `wvx-command-bus` | Shared semantic API for CLI, MCP, and future HTTP hosts |
+| `wvx-command-bus` | Shared semantic API for CLI, MCP, and HTTP |
 | `wvx-cli` | Command-line entry point |
 | `wvx-mcp` | Bounded MCP tools over the command bus ([`mcport`](https://crates.io/crates/mcport)) |
+| `wvx-adapters` | Pilot JSON implementations (parse / serialize / path_set) |
+| `wvx-forge` | Static crate inventory + public API extract |
+| `wvx-conformance` | Capability vectors + golden (dynamic ≡ export) |
 | `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) |
+| `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) |
 
 ## CI
 
@@ -102,6 +113,10 @@ cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json
 cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
   --impl parse=wvx.reference.json-parse@1 \
   --impl serialize=wvx.reference.json-serialize-pretty@1
+
+# third parse backend (json crate)
+cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
+  --impl parse=json-crate.parse@1
 ```
 
 `run` uses built-in pilot playground handlers. Trace lines report which
@@ -174,13 +189,14 @@ while the monorepo keeps a single source of truth.
 
 ## Loom Studio (separate repo)
 
-The visual editor lives in the sibling repository **`loom-studio`** (not this
-crate). Run the server here, then:
+The visual editor lives in **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**
+(not this crate). Run the server here, then:
 
 ```bash
 cd ../loom-studio
 npm install
 npm run dev
+# http://127.0.0.1:5173  (Vite proxies /api and /health → loom-server)
 ```
 
 ## Conformance & golden (pilot)

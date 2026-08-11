@@ -26,6 +26,7 @@ wvx-command-bus = { workspace = true }
 wvx-ir = { workspace = true }
 wvx-registry-client = { workspace = true }
 wvx-runtime = { workspace = true }
+wvx-forge = { workspace = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

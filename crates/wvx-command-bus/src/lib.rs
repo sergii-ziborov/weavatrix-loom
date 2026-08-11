@@ -8,6 +8,7 @@ use std::path::Path;
 use wvx_compiler_rust::{
     compile_to_rust, export_to_directory, ExportReport, GeneratedWorkspace,
 };
+use wvx_forge::{inventory_path, ForgeError, InventoryReport};
 use wvx_ir::Project;
 use wvx_registry_client::{
     CapabilityHit, ImplementationHit, LocalRegistry, RegistryError, RegistrySummary,
@@ -34,6 +35,14 @@ pub enum BusError {
     Run(String),
     #[error("io: {0}")]
     Io(String),
+    #[error("forge: {0}")]
+    Forge(String),
+}
+
+impl From<ForgeError> for BusError {
+    fn from(value: ForgeError) -> Self {
+        BusError::Forge(value.to_string())
+    }
 }
 
 impl From<RuntimeError> for BusError {
@@ -209,6 +218,12 @@ pub fn registry_inspect(
 pub fn load_project_path(path: &std::path::Path) -> Result<Project, BusError> {
     let text = std::fs::read_to_string(path).map_err(|e| BusError::Io(e.to_string()))?;
     serde_json::from_str(&text).map_err(|e| BusError::Io(e.to_string()))
+}
+
+/// Static package inventory (Forge stage 1 — no code execution).
+pub fn forge_inventory(path: &Path) -> Result<BusResponse<InventoryReport>, BusError> {
+    let report = inventory_path(path)?;
+    Ok(BusResponse::ok(report))
 }
 
 #[cfg(test)]

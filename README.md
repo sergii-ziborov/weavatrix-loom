@@ -128,6 +128,15 @@ cargo run -p loom-server
 | GET | `/api/v1/registry/implementations?capability=` | |
 | GET | `/api/v1/registry/inspect/{key}` | |
 | GET | `/api/v1/pilot/implementations` | playground handler catalog |
+| POST | `/api/v1/forge/inventory` | body `{ "path": "<crate-or-workspace>" }` static scan |
+
+### Forge (static inventory)
+
+```bash
+cargo run -p wvx-cli -- forge inventory .
+```
+
+Reads `Cargo.toml` / tree indicators only — no `build.rs`, no network.
 
 CORS is open for local Studio development. Bind stays loopback by default.
 

@@ -1,0 +1,20 @@
+[package]
+name = "wvx-forge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Package inventory and qualification pipeline for Loom (static stage first)"
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.8"
+
+[lints]
+workspace = true

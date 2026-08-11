@@ -11,6 +11,7 @@ members = [
     "crates/wvx-command-bus",
     "crates/wvx-cli",
     "crates/wvx-mcp",
+    "crates/wvx-forge",
     "crates/loom-server",
 ]
 default-members = [
@@ -37,6 +38,7 @@ wvx-runtime = { path = "crates/wvx-runtime", version = "0.1.0" }
 wvx-compiler-rust = { path = "crates/wvx-compiler-rust", version = "0.1.0" }
 wvx-registry-client = { path = "crates/wvx-registry-client", version = "0.1.0" }
 wvx-command-bus = { path = "crates/wvx-command-bus", version = "0.1.0" }
+wvx-forge = { path = "crates/wvx-forge", version = "0.1.0" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

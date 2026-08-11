@@ -6,9 +6,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    implementations_list, load_project_path, project_export_rust, project_export_to_dir,
-    project_run, project_validate, registry_implementations, registry_inspect, registry_search,
-    registry_summary, BusError,
+    forge_inventory, implementations_list, load_project_path, project_export_rust,
+    project_export_to_dir, project_run, project_validate, registry_implementations,
+    registry_inspect, registry_search, registry_summary, BusError,
 };
 use wvx_registry_client::LocalRegistry;
 use wvx_types::WvxValue;
@@ -27,6 +27,7 @@ fn main() -> ExitCode {
         "implementations" | "impls" => cmd_implementations(),
         "export-rust" => cmd_export(&args),
         "registry" => cmd_registry(&args),
+        "forge" => cmd_forge(&args),
         "registry-search" => {
             // Back-compat alias: registry search [query]
             let mut rest = vec!["search".into()];
@@ -59,6 +60,7 @@ Usage:
   wvx registry search [query] [--path <dir>]
   wvx registry implementations [--capability key] [query] [--path <dir>]
   wvx registry inspect <key> [--path <dir>]
+  wvx forge inventory <crate-or-workspace-path>
   wvx version
 
 Run options:
@@ -112,6 +114,35 @@ fn args_without_path(args: &[String]) -> Vec<String> {
         i += 1;
     }
     out
+}
+
+fn cmd_forge(args: &[String]) -> ExitCode {
+    if args.is_empty() || args[0] == "help" {
+        eprintln!("usage: wvx forge inventory <path>");
+        return ExitCode::FAILURE;
+    }
+    match args[0].as_str() {
+        "inventory" => {
+            let Some(path) = args.get(1) else {
+                eprintln!("usage: wvx forge inventory <path>");
+                return ExitCode::FAILURE;
+            };
+            match forge_inventory(path.as_ref()) {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        other => {
+            eprintln!("unknown forge subcommand: {other}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn cmd_registry(args: &[String]) -> ExitCode {

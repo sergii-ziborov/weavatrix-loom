@@ -9,8 +9,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
-    implementations_list, project_export_rust, project_run, project_validate, registry_implementations,
-    registry_inspect, registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
+    forge_inventory, implementations_list, project_export_rust, project_run, project_validate,
+    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
+    BusResponse, PROTOCOL_VERSION,
 };
 use wvx_ir::Project;
 
@@ -28,6 +29,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/registry/implementations", get(reg_implementations))
         .route("/api/v1/registry/inspect/{key}", get(reg_inspect))
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
+        .route("/api/v1/forge/inventory", post(forge_inventory_handler))
         .with_state(state)
 }
 
@@ -210,9 +212,24 @@ async fn pilot_implementations() -> impl IntoResponse {
     Json(implementations_list())
 }
 
+#[derive(Debug, Deserialize)]
+struct ForgeInventoryBody {
+    /// Absolute or relative path to a crate/workspace. Server-local only.
+    path: String,
+}
+
+async fn forge_inventory_handler(Json(body): Json<ForgeInventoryBody>) -> Response {
+    // Loopback host only in v0.1 — still refuse obvious path tricks later.
+    let path = std::path::PathBuf::from(&body.path);
+    match forge_inventory(&path) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
 fn bus_error(e: BusError) -> Response {
     let status = match &e {
-        BusError::InvalidProject(_) | BusError::Run(_) | BusError::Compile(_) => {
+        BusError::InvalidProject(_) | BusError::Run(_) | BusError::Compile(_) | BusError::Forge(_) => {
             StatusCode::UNPROCESSABLE_ENTITY
         }
         BusError::Registry(_) => StatusCode::BAD_REQUEST,

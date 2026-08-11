@@ -1,7 +1,11 @@
-//! Loom Forge — static inventory of Rust packages (v0.1 first stage).
+//! Loom Forge — static inventory and public API extraction (no code execution).
 //!
 //! Does **not** run build.rs, proc macros, tests, or network. Only reads
 //! Cargo.toml / Cargo.lock metadata and source tree indicators.
+
+mod extract;
+
+pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 
 use serde::{Deserialize, Serialize};
 use std::fs;

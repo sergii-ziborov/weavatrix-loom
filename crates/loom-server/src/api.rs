@@ -9,11 +9,12 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
-    forge_inventory, implementations_list, project_export_rust, project_run, project_validate,
-    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
-    BusResponse, PROTOCOL_VERSION,
+    forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch, implementations_list,
+    project_export_rust, project_run, project_validate, registry_implementations, registry_inspect,
+    registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
 };
 use wvx_ir::Project;
+use wvx_project_graph::GraphPatch;
 
 use crate::AppState;
 
@@ -30,6 +31,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/registry/inspect/{key}", get(reg_inspect))
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
+        .route("/api/v1/forge/extract", post(forge_extract_handler))
+        .route("/api/v1/graph/propose_patch", post(propose_patch))
+        .route("/api/v1/graph/validate_patch", post(validate_patch))
+        .route("/api/v1/graph/apply_patch", post(apply_patch))
         .with_state(state)
 }
 
@@ -219,7 +224,6 @@ struct ForgeInventoryBody {
 }
 
 async fn forge_inventory_handler(Json(body): Json<ForgeInventoryBody>) -> Response {
-    // Loopback host only in v0.1 — still refuse obvious path tricks later.
     let path = std::path::PathBuf::from(&body.path);
     match forge_inventory(&path) {
         Ok(resp) => Json(resp).into_response(),
@@ -227,11 +231,48 @@ async fn forge_inventory_handler(Json(body): Json<ForgeInventoryBody>) -> Respon
     }
 }
 
+async fn forge_extract_handler(Json(body): Json<ForgeInventoryBody>) -> Response {
+    let path = std::path::PathBuf::from(&body.path);
+    match forge_extract(&path) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+async fn propose_patch(State(state): State<AppState>) -> Response {
+    match graph_propose_patch(Some(state.registry.as_ref())) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct PatchBody {
+    project: Project,
+    patch: GraphPatch,
+}
+
+async fn validate_patch(Json(body): Json<PatchBody>) -> Response {
+    match graph_apply_patch(&body.project, &body.patch) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+async fn apply_patch(Json(body): Json<PatchBody>) -> Response {
+    match graph_apply_patch(&body.project, &body.patch) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
 fn bus_error(e: BusError) -> Response {
     let status = match &e {
-        BusError::InvalidProject(_) | BusError::Run(_) | BusError::Compile(_) | BusError::Forge(_) => {
-            StatusCode::UNPROCESSABLE_ENTITY
-        }
+        BusError::InvalidProject(_)
+        | BusError::Run(_)
+        | BusError::Compile(_)
+        | BusError::Forge(_)
+        | BusError::Patch(_) => StatusCode::UNPROCESSABLE_ENTITY,
         BusError::Registry(_) => StatusCode::BAD_REQUEST,
         BusError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };

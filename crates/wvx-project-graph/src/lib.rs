@@ -1,5 +1,12 @@
 //! In-memory project graph mutations (semantic ops; UI metadata is optional).
 
+mod patch;
+
+pub use patch::{
+    apply_graph_patch, propose_json_pipeline_patch, validate_graph_patch, GraphOp, GraphPatch,
+    PatchApplyResult, PatchError,
+};
+
 use thiserror::Error;
 use wvx_ir::{Binding, Instance, PortPath, Project, UiPosition};
 

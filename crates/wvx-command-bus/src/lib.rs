@@ -8,8 +8,13 @@ use std::path::Path;
 use wvx_compiler_rust::{
     compile_to_rust, export_to_directory, ExportReport, GeneratedWorkspace,
 };
-use wvx_forge::{inventory_path, ForgeError, InventoryReport};
+use wvx_forge::{
+    extract_public_api, inventory_path, ExtractReport, ForgeError, InventoryReport,
+};
 use wvx_ir::Project;
+use wvx_project_graph::{
+    apply_graph_patch, propose_json_pipeline_patch, GraphPatch, PatchApplyResult, PatchError,
+};
 use wvx_registry_client::{
     CapabilityHit, ImplementationHit, LocalRegistry, RegistryError, RegistrySummary,
 };
@@ -37,6 +42,14 @@ pub enum BusError {
     Io(String),
     #[error("forge: {0}")]
     Forge(String),
+    #[error("patch: {0}")]
+    Patch(String),
+}
+
+impl From<PatchError> for BusError {
+    fn from(value: PatchError) -> Self {
+        BusError::Patch(value.to_string())
+    }
 }
 
 impl From<ForgeError> for BusError {
@@ -224,6 +237,54 @@ pub fn load_project_path(path: &std::path::Path) -> Result<Project, BusError> {
 pub fn forge_inventory(path: &Path) -> Result<BusResponse<InventoryReport>, BusError> {
     let report = inventory_path(path)?;
     Ok(BusResponse::ok(report))
+}
+
+/// Public API extract + candidate shapes (Forge stage 2 — static only).
+pub fn forge_extract(path: &Path) -> Result<BusResponse<ExtractReport>, BusError> {
+    let report = extract_public_api(path)?;
+    Ok(BusResponse::ok(report))
+}
+
+/// Propose a GraphPatch (rule-based pilot: JSON pipeline).
+pub fn graph_propose_patch(
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<GraphPatch>, BusError> {
+    let caps = if let Some(reg) = registry {
+        reg.list_capabilities()?
+    } else {
+        Vec::new()
+    };
+    Ok(BusResponse::ok(propose_json_pipeline_patch(&caps)))
+}
+
+/// Validate a patch against a project (does not persist).
+pub fn graph_validate_patch(
+    project: &Project,
+    patch: &GraphPatch,
+) -> Result<BusResponse<PatchApplyResult>, BusError> {
+    let result = apply_graph_patch(project, patch)?;
+    let mut resp = if result.validation.is_ok() {
+        BusResponse::ok(result)
+    } else {
+        let messages = result
+            .validation
+            .errors()
+            .map(|d| d.message.clone())
+            .collect();
+        let mut r = BusResponse::err(messages);
+        r.data = Some(result);
+        r
+    };
+    let _ = &mut resp;
+    Ok(resp)
+}
+
+/// Apply a patch and return the new project (caller persists).
+pub fn graph_apply_patch(
+    project: &Project,
+    patch: &GraphPatch,
+) -> Result<BusResponse<PatchApplyResult>, BusError> {
+    graph_validate_patch(project, patch)
 }
 
 #[cfg(test)]

@@ -6,10 +6,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    forge_inventory, implementations_list, load_project_path, project_export_rust,
-    project_export_to_dir, project_run, project_validate, registry_implementations,
-    registry_inspect, registry_search, registry_summary, BusError,
+    forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch, implementations_list,
+    load_project_path, project_export_rust, project_export_to_dir, project_run, project_validate,
+    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
 };
+use wvx_project_graph::GraphPatch;
 use wvx_registry_client::LocalRegistry;
 use wvx_types::WvxValue;
 
@@ -28,6 +29,7 @@ fn main() -> ExitCode {
         "export-rust" => cmd_export(&args),
         "registry" => cmd_registry(&args),
         "forge" => cmd_forge(&args),
+        "patch" => cmd_patch(&args),
         "registry-search" => {
             // Back-compat alias: registry search [query]
             let mut rest = vec!["search".into()];
@@ -61,6 +63,9 @@ Usage:
   wvx registry implementations [--capability key] [query] [--path <dir>]
   wvx registry inspect <key> [--path <dir>]
   wvx forge inventory <crate-or-workspace-path>
+  wvx forge extract <crate-path>
+  wvx patch propose
+  wvx patch apply <project.wvx.json> [--patch <patch.json>]
   wvx version
 
 Run options:
@@ -118,7 +123,7 @@ fn args_without_path(args: &[String]) -> Vec<String> {
 
 fn cmd_forge(args: &[String]) -> ExitCode {
     if args.is_empty() || args[0] == "help" {
-        eprintln!("usage: wvx forge inventory <path>");
+        eprintln!("usage: wvx forge <inventory|extract> <path>");
         return ExitCode::FAILURE;
     }
     match args[0].as_str() {
@@ -138,8 +143,112 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                 }
             }
         }
+        "extract" => {
+            let Some(path) = args.get(1) else {
+                eprintln!("usage: wvx forge extract <crate-path>");
+                return ExitCode::FAILURE;
+            };
+            match forge_extract(path.as_ref()) {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         other => {
             eprintln!("unknown forge subcommand: {other}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn cmd_patch(args: &[String]) -> ExitCode {
+    if args.is_empty() {
+        eprintln!("usage: wvx patch <propose|apply> ...");
+        return ExitCode::FAILURE;
+    }
+    match args[0].as_str() {
+        "propose" => {
+            let reg = LocalRegistry::open_default().ok();
+            match graph_propose_patch(reg.as_ref()) {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "apply" => {
+            let Some(project_path) = args.get(1) else {
+                eprintln!("usage: wvx patch apply <project.wvx.json> [--patch file]");
+                return ExitCode::FAILURE;
+            };
+            let mut patch: Option<GraphPatch> = None;
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--patch" {
+                    let p = match args.get(i + 1) {
+                        Some(p) => p,
+                        None => {
+                            eprintln!("--patch requires a file");
+                            return ExitCode::FAILURE;
+                        }
+                    };
+                    let text = match fs::read_to_string(p) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("{e}");
+                            return ExitCode::FAILURE;
+                        }
+                    };
+                    patch = match serde_json::from_str(&text) {
+                        Ok(p) => Some(p),
+                        Err(e) => {
+                            eprintln!("invalid patch: {e}");
+                            return ExitCode::FAILURE;
+                        }
+                    };
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            let patch = match patch {
+                Some(p) => p,
+                None => match graph_propose_patch(LocalRegistry::open_default().ok().as_ref()) {
+                    Ok(r) => r.data.expect("patch"),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return ExitCode::FAILURE;
+                    }
+                },
+            };
+            match load_project_path(project_path.as_ref())
+                .and_then(|p| graph_apply_patch(&p, &patch))
+            {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        other => {
+            eprintln!("unknown patch subcommand: {other}");
             ExitCode::FAILURE
         }
     }

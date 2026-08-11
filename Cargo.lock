@@ -363,6 +363,7 @@ dependencies = [
  "wvx-command-bus",
  "wvx-forge",
  "wvx-ir",
+ "wvx-project-graph",
  "wvx-registry-client",
  "wvx-runtime",
 ]
@@ -877,6 +878,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "wvx-command-bus",
+ "wvx-project-graph",
  "wvx-registry-client",
  "wvx-runtime",
  "wvx-types",
@@ -944,8 +946,12 @@ dependencies = [
 name = "wvx-project-graph"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "thiserror",
  "wvx-ir",
+ "wvx-types",
+ "wvx-validator",
 ]
 
 [[package]]

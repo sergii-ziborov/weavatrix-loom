@@ -129,6 +129,9 @@ cargo run -p loom-server
 | GET | `/api/v1/registry/inspect/{key}` | |
 | GET | `/api/v1/pilot/implementations` | playground handler catalog |
 | POST | `/api/v1/forge/inventory` | body `{ "path": "<crate-or-workspace>" }` static scan |
+| POST | `/api/v1/forge/extract` | public API candidates from `src/` |
+| POST | `/api/v1/graph/propose_patch` | rule-based GraphPatch (JSON pilot) |
+| POST | `/api/v1/graph/apply_patch` | body `{ project, patch }` |
 
 ### Forge (static inventory)
 

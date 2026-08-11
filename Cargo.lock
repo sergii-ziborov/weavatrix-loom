@@ -873,6 +873,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "wvx-adapters"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "wvx-cli"
 version = "0.1.0"
 dependencies = [
@@ -971,6 +978,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "wvx-adapters",
  "wvx-ir",
  "wvx-types",
  "wvx-validator",

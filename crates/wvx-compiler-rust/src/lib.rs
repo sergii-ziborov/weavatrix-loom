@@ -1,11 +1,13 @@
 //! Compile a validated WVX project to a readable, cargo-buildable Rust package.
 //!
-//! v0.1 generates a single binary crate with inlined pilot adapters. Future
-//! releases will pin external `wvx-adapter-*` crates from the registry.
+//! Production adapters live in the external `wvx-adapters` crate and are
+//! **vendored** into each export under `vendor/wvx-adapters` so the package is
+//! self-contained.
 
 mod adapters;
 mod emit;
 mod order;
+mod vendor;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -87,18 +89,8 @@ pub fn compile_to_rust(project: &Project) -> Result<GeneratedWorkspace, CompileE
         contents: emit::lockfile(project, &resolved),
     });
 
-    files.push(GeneratedFile {
-        relative_path: "src/adapters/mod.rs".into(),
-        contents: adapters::mod_rs(&needed_impls),
-    });
-
-    for impl_id in &needed_impls {
-        if let Some((module, source)) = adapters::source_for(impl_id) {
-            files.push(GeneratedFile {
-                relative_path: format!("src/adapters/{module}.rs"),
-                contents: source.into(),
-            });
-        }
+    if adapters::needs_external_adapters(&needed_impls) {
+        files.extend(vendor::vendor_adapters_files()?);
     }
 
     files.push(GeneratedFile {
@@ -113,7 +105,7 @@ pub fn compile_to_rust(project: &Project) -> Result<GeneratedWorkspace, CompileE
 
     files.push(GeneratedFile {
         relative_path: "src/lib.rs".into(),
-        contents: "//! Generated Loom export.\n\npub mod adapters;\npub mod generated_pipeline;\n\npub use generated_pipeline::run_pipeline;\n".into(),
+        contents: "//! Generated Loom export.\n//!\n//! Uses external crate `wvx-adapters` (vendored under `vendor/`).\n\npub mod generated_pipeline;\n\npub use generated_pipeline::run_pipeline;\n".into(),
     });
 
     Ok(GeneratedWorkspace {
@@ -264,8 +256,12 @@ mod tests {
             .find(|f| f.relative_path == "src/generated_pipeline.rs")
             .unwrap();
         assert!(pipeline.contents.contains("run_pipeline"));
-        assert!(pipeline.contents.contains("serde_json_parse_owned"));
+        assert!(pipeline.contents.contains("wvx_adapters::serde_json_parse_owned"));
         assert!(!pipeline.contents.contains("not yet linked"));
+        assert!(ws
+            .files
+            .iter()
+            .any(|f| f.relative_path.starts_with("vendor/wvx-adapters/")));
     }
 
     #[test]

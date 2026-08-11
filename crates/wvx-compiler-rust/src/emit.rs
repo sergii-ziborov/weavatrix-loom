@@ -8,7 +8,8 @@ use wvx_ir::{PortPath, Project};
 
 pub fn cargo_toml(package_name: &str, impls: &BTreeSet<String>) -> String {
     let mut deps = String::new();
-    if adapters::needs_serde_json(impls) {
+    if adapters::needs_external_adapters(impls) {
+        deps.push_str("wvx-adapters = { path = \"vendor/wvx-adapters\" }\n");
         deps.push_str("serde_json = \"1\"\n");
     }
     format!(
@@ -49,7 +50,6 @@ pub fn lockfile(project: &Project, resolved: &BTreeMap<String, String>) -> Strin
 pub fn main_rs() -> String {
     r##"//! Generated Loom binary.
 
-mod adapters;
 mod generated_pipeline;
 
 use std::env;
@@ -89,7 +89,7 @@ pub fn pipeline(
         "// Capability graph is fixed; implementations are selected at export time.\n"
     )
     .ok();
-    writeln!(out, "use crate::adapters;\n").ok();
+    writeln!(out, "// External adapters: dependency `wvx-adapters` (vendored).\n").ok();
     writeln!(
         out,
         "/// Run the exported pipeline. Input seeds the entrypoint `bytes` port."

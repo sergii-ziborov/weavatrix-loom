@@ -2,7 +2,6 @@
 //!
 //! Production performance is measured on compiled native adapters, not here.
 
-mod lite_json;
 mod pilot;
 
 pub use pilot::{list_pilot_implementations, register_pilot_handlers, PilotImplementation};

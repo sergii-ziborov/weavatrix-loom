@@ -3,7 +3,6 @@
 //! Multiple **implementations** may fulfill the same capability. Swapping
 //! `instance.implementation` does not change bindings or capability ids.
 
-use crate::lite_json;
 use crate::{ConfigMap, ErasedComponent, HandlerRegistry, WvxValueMap};
 use wvx_types::WvxValue;
 
@@ -134,8 +133,7 @@ impl ErasedComponent for SerdeJsonParse {
     }
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
         let bytes = require_bytes(inputs, "data.json.parse")?;
-        let value: serde_json::Value =
-            serde_json::from_slice(bytes).map_err(|e| format!("invalid-syntax: {e}"))?;
+        let value = wvx_adapters::serde_json_parse_owned::parse(bytes)?;
         let mut out = WvxValueMap::new();
         out.insert("value".into(), WvxValue::Json(value));
         Ok(out)
@@ -151,7 +149,7 @@ impl ErasedComponent for ReferenceJsonParse {
     }
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
         let bytes = require_bytes(inputs, "data.json.parse")?;
-        let value = lite_json::parse_slice(bytes)?;
+        let value = wvx_adapters::reference_json_parse::parse(bytes)?;
         let mut out = WvxValueMap::new();
         out.insert("value".into(), WvxValue::Json(value));
         Ok(out)
@@ -173,7 +171,7 @@ impl ErasedComponent for SerdeJsonSerialize {
     }
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
         let value = require_json(inputs, "data.json.serialize")?;
-        let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+        let bytes = wvx_adapters::serde_json_serialize::serialize(value)?;
         let mut out = WvxValueMap::new();
         out.insert("bytes".into(), WvxValue::Bytes(bytes));
         Ok(out)
@@ -189,7 +187,7 @@ impl ErasedComponent for ReferenceJsonSerializeCompact {
     }
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
         let value = require_json(inputs, "data.json.serialize")?;
-        let bytes = lite_json::serialize_compact(value)?;
+        let bytes = wvx_adapters::reference_json_serialize::serialize(value)?;
         let mut out = WvxValueMap::new();
         out.insert("bytes".into(), WvxValue::Bytes(bytes));
         Ok(out)
@@ -205,7 +203,7 @@ impl ErasedComponent for ReferenceJsonSerializePretty {
     }
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
         let value = require_json(inputs, "data.json.serialize")?;
-        let bytes = lite_json::serialize_pretty(value)?;
+        let bytes = wvx_adapters::reference_json_serialize_pretty::serialize(value)?;
         let mut out = WvxValueMap::new();
         out.insert("bytes".into(), WvxValue::Bytes(bytes));
         Ok(out)
@@ -224,7 +222,7 @@ impl ErasedComponent for JsonPathSet {
         "data.json.path_set@1"
     }
     fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String> {
-        let mut value = require_json(inputs, "data.json.path_set")?.clone();
+        let value = require_json(inputs, "data.json.path_set")?.clone();
         let path = config
             .get("path")
             .and_then(|v| v.as_str())
@@ -233,7 +231,7 @@ impl ErasedComponent for JsonPathSet {
             .get("value")
             .cloned()
             .ok_or_else(|| "data.json.path_set: config.value is required".to_string())?;
-        set_json_path(&mut value, path, set_to)?;
+        let value = wvx_adapters::reference_path_set::path_set(value, path, set_to)?;
         let mut out = WvxValueMap::new();
         out.insert("value".into(), WvxValue::Json(value));
         Ok(out)
@@ -253,26 +251,6 @@ fn require_json<'a>(inputs: &'a WvxValueMap, cap: &str) -> Result<&'a serde_json
         Some(WvxValue::Json(v)) => Ok(v),
         Some(_) => Err(format!("{cap}: port `value` must be json.value")),
         None => Err(format!("{cap}: missing port `value`")),
-    }
-}
-
-fn set_json_path(
-    root: &mut serde_json::Value,
-    path: &str,
-    value: serde_json::Value,
-) -> Result<(), String> {
-    let key = path.trim().trim_start_matches('/');
-    if key.is_empty() || key.contains('/') {
-        return Err(format!(
-            "data.json.path_set: only single-segment paths supported in v0.1 (got `{path}`)"
-        ));
-    }
-    match root {
-        serde_json::Value::Object(map) => {
-            map.insert(key.to_string(), value);
-            Ok(())
-        }
-        _ => Err("data.json.path_set: root value must be a JSON object".into()),
     }
 }
 

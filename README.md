@@ -143,6 +143,12 @@ Reads `Cargo.toml` / tree indicators only — no `build.rs`, no network.
 
 CORS is open for local Studio development. Bind stays loopback by default.
 
+### External adapters
+
+Pilot JSON implementations live in the **`wvx-adapters`** crate. Exports vendor
+that crate under `vendor/wvx-adapters` so generated projects stay self-contained
+while the monorepo keeps a single source of truth.
+
 ## Loom Studio (separate repo)
 
 The visual editor lives in the sibling repository **`loom-studio`** (not this

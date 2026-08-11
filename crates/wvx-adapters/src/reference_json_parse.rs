@@ -198,7 +198,21 @@ impl Parser<'_> {
                 Some(b) if b < 0x20 => {
                     return Err("invalid-syntax: control char in string".into())
                 }
-                Some(b) => out.push(b as char),
+                Some(b) if b < 0x80 => out.push(b as char),
+                Some(first) => {
+                    // Multi-byte UTF-8 (JSON strings are Unicode; do not cast each byte to char).
+                    let start = self.i - 1;
+                    let width = utf8_char_width(first).ok_or_else(|| {
+                        format!("invalid-unicode: bad UTF-8 lead byte {first:#x} at {start}")
+                    })?;
+                    if start + width > self.bytes.len() {
+                        return Err("invalid-unicode: truncated UTF-8 in string".into());
+                    }
+                    let s = std::str::from_utf8(&self.bytes[start..start + width])
+                        .map_err(|e| format!("invalid-unicode: {e}"))?;
+                    out.push_str(s);
+                    self.i = start + width;
+                }
                 None => return Err("invalid-syntax: unclosed string".into()),
             }
         }
@@ -250,6 +264,15 @@ impl Parser<'_> {
         Number::from_f64(f)
             .map(Value::Number)
             .ok_or_else(|| "invalid-syntax: non-finite number".into())
+    }
+}
+
+fn utf8_char_width(first: u8) -> Option<usize> {
+    match first {
+        0xC2..=0xDF => Some(2),
+        0xE0..=0xEF => Some(3),
+        0xF0..=0xF4 => Some(4),
+        _ => None,
     }
 }
 

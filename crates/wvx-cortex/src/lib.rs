@@ -219,6 +219,29 @@ fn heuristic_propose(
         ));
     }
 
+    // path_set backends
+    if lower.contains("pointer") && (lower.contains("path") || lower.contains("set")) {
+        return Some(select_impl_patch(
+            project,
+            "path_set",
+            "data.json.path_set",
+            "serde-json.pointer-set@1",
+            intent,
+        ));
+    }
+    if (lower.contains("reference") && lower.contains("path"))
+        || lower.contains("map-insert path")
+        || lower.contains("use reference path")
+    {
+        return Some(select_impl_patch(
+            project,
+            "path_set",
+            "data.json.path_set",
+            "wvx.reference.path-set@1",
+            intent,
+        ));
+    }
+
     // add path_set tag loom if missing
     if lower.contains("tag") && (lower.contains("loom") || lower.contains("path")) {
         if project.instance("path_set").is_some() {

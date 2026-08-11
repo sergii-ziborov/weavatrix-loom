@@ -117,6 +117,10 @@ cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
 # third parse backend (json crate)
 cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
   --impl parse=json-crate.parse@1
+
+# path_set via JSON Pointer (swap without rewiring bindings)
+cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
+  --impl path_set=serde-json.pointer-set@1
 ```
 
 `run` uses built-in pilot playground handlers. Trace lines report which
@@ -214,7 +218,7 @@ cargo test -p wvx-conformance
 
 Go/No-Go evidence for Gates **A** (interchangeability) and **D** (dynamic≡static) is recorded in
 [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md)
-(**A: Go parse** — 3 parse backends incl. `json-crate.parse@1`; **D: Go pilot** as of 2026-08-12).
+(**A: Go pilot transforms** — 3 parse + 2 path_set + 3 serialize; **D: Go pilot** as of 2026-08-12).
 
 ### Intent → GraphPatch (Cortex)
 

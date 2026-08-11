@@ -51,23 +51,90 @@ pub struct GoldenReport {
 }
 
 /// Shared vectors: every parse impl must produce the same JSON value.
-fn parse_vectors() -> Vec<(&'static str, &'static [u8], serde_json::Value)> {
+fn parse_vectors() -> Vec<(&'static str, Vec<u8>, serde_json::Value)> {
     vec![
         (
             "object_simple",
-            br#"{"hello":"world"}"#,
+            br#"{"hello":"world"}"#.to_vec(),
             serde_json::json!({"hello": "world"}),
         ),
         (
             "nested",
-            br#"{"a":{"b":[1,2,3],"c":true}}"#,
+            br#"{"a":{"b":[1,2,3],"c":true}}"#.to_vec(),
             serde_json::json!({"a":{"b":[1,2,3],"c":true}}),
         ),
-        ("array", br#"[1,"x",null]"#, serde_json::json!([1, "x", null])),
-        ("number", br#"-42.5"#, serde_json::json!(-42.5)),
-        ("string", br#""loom""#, serde_json::json!("loom")),
-        ("bool", br#"false"#, serde_json::json!(false)),
-        ("null", br#"null"#, serde_json::json!(null)),
+        ("array", br#"[1,"x",null]"#.to_vec(), serde_json::json!([1, "x", null])),
+        ("number", br#"-42.5"#.to_vec(), serde_json::json!(-42.5)),
+        ("string", br#""loom""#.to_vec(), serde_json::json!("loom")),
+        ("bool", br#"false"#.to_vec(), serde_json::json!(false)),
+        ("null", br#"null"#.to_vec(), serde_json::json!(null)),
+        ("empty_object", br#"{}"#.to_vec(), serde_json::json!({})),
+        ("empty_array", br#"[]"#.to_vec(), serde_json::json!([])),
+        (
+            "unicode",
+            // UTF-8 body: {"msg":"привет","emoji":"🧩"}
+            "{\"msg\":\"привет\",\"emoji\":\"🧩\"}".as_bytes().to_vec(),
+            serde_json::json!({"msg": "привет", "emoji": "🧩"}),
+        ),
+        (
+            "deep_object",
+            br#"{"l1":{"l2":{"l3":{"n":1}}}}"#.to_vec(),
+            serde_json::json!({"l1":{"l2":{"l3":{"n":1}}}}),
+        ),
+    ]
+}
+
+fn path_set_impls() -> &'static [&'static str] {
+    &[
+        "wvx.reference.path-set@1",
+        "serde-json.pointer-set@1",
+    ]
+}
+
+/// Shared path_set cases: (name, input, path, set_value, expected)
+fn path_set_vectors() -> Vec<(
+    &'static str,
+    serde_json::Value,
+    &'static str,
+    serde_json::Value,
+    serde_json::Value,
+)> {
+    vec![
+        (
+            "set_tag",
+            serde_json::json!({"hello": "world"}),
+            "/tag",
+            serde_json::json!("loom"),
+            serde_json::json!({"hello": "world", "tag": "loom"}),
+        ),
+        (
+            "overwrite_key",
+            serde_json::json!({"tag": "old", "n": 1}),
+            "/tag",
+            serde_json::json!("new"),
+            serde_json::json!({"tag": "new", "n": 1}),
+        ),
+        (
+            "set_number",
+            serde_json::json!({"a": true}),
+            "/count",
+            serde_json::json!(42),
+            serde_json::json!({"a": true, "count": 42}),
+        ),
+        (
+            "set_object",
+            serde_json::json!({}),
+            "/meta",
+            serde_json::json!({"ok": true}),
+            serde_json::json!({"meta": {"ok": true}}),
+        ),
+        (
+            "path_without_slash",
+            serde_json::json!({"x": 1}),
+            "y",
+            serde_json::json!(2),
+            serde_json::json!({"x": 1, "y": 2}),
+        ),
     ]
 }
 
@@ -94,7 +161,7 @@ pub fn run_pilot_conformance() -> ConformanceReport {
     // --- parse ---
     for impl_id in parse_impls() {
         for (name, bytes, expected) in parse_vectors() {
-            let result = conform_parse(&reg, impl_id, name, bytes, &expected);
+            let result = conform_parse(&reg, impl_id, name, bytes.as_slice(), &expected);
             cases.push(result);
         }
     }
@@ -113,16 +180,14 @@ pub fn run_pilot_conformance() -> ConformanceReport {
         &sample,
     ));
 
-    // --- path_set ---
-    cases.push(conform_path_set(
-        &reg,
-        "wvx.reference.path-set@1",
-        "set_tag",
-        serde_json::json!({"hello":"world"}),
-        "/tag",
-        serde_json::json!("loom"),
-        serde_json::json!({"hello":"world","tag":"loom"}),
-    ));
+    // --- path_set (every impl × shared vectors) ---
+    for impl_id in path_set_impls() {
+        for (name, input, path, set_value, expected) in path_set_vectors() {
+            cases.push(conform_path_set(
+                &reg, impl_id, name, input, path, set_value, expected,
+            ));
+        }
+    }
 
     let ok = cases.iter().all(|c| c.ok);
     ConformanceReport { ok, cases }
@@ -321,6 +386,16 @@ pub fn run_dynamic_pilot(
     serialize_impl: Option<&str>,
     input: &[u8],
 ) -> Result<(serde_json::Value, String, String), ConformanceError> {
+    run_dynamic_pilot_ex(parse_impl, serialize_impl, None, input)
+}
+
+/// Like [`run_dynamic_pilot`] with optional path_set implementation override.
+pub fn run_dynamic_pilot_ex(
+    parse_impl: Option<&str>,
+    serialize_impl: Option<&str>,
+    path_set_impl: Option<&str>,
+    input: &[u8],
+) -> Result<(serde_json::Value, String, String), ConformanceError> {
     let mut project = pilot_project()?;
     let mut overrides = BTreeMap::new();
     if let Some(p) = parse_impl {
@@ -328,6 +403,9 @@ pub fn run_dynamic_pilot(
     }
     if let Some(s) = serialize_impl {
         overrides.insert("serialize".into(), s.to_string());
+    }
+    if let Some(ps) = path_set_impl {
+        overrides.insert("path_set".into(), ps.to_string());
     }
     apply_implementation_overrides(&mut project, &overrides);
 
@@ -370,6 +448,17 @@ pub fn run_static_pilot(
     input: &[u8],
     out_dir: &Path,
 ) -> Result<serde_json::Value, ConformanceError> {
+    run_static_pilot_ex(parse_impl, serialize_impl, None, input, out_dir)
+}
+
+/// Like [`run_static_pilot`] with optional path_set implementation override.
+pub fn run_static_pilot_ex(
+    parse_impl: Option<&str>,
+    serialize_impl: Option<&str>,
+    path_set_impl: Option<&str>,
+    input: &[u8],
+    out_dir: &Path,
+) -> Result<serde_json::Value, ConformanceError> {
     let mut project = pilot_project()?;
     let mut overrides = BTreeMap::new();
     if let Some(p) = parse_impl {
@@ -377,6 +466,9 @@ pub fn run_static_pilot(
     }
     if let Some(s) = serialize_impl {
         overrides.insert("serialize".into(), s.to_string());
+    }
+    if let Some(ps) = path_set_impl {
+        overrides.insert("path_set".into(), ps.to_string());
     }
     apply_implementation_overrides(&mut project, &overrides);
 
@@ -396,11 +488,22 @@ pub fn golden_dynamic_static(
     serialize_impl: Option<&str>,
     input: &[u8],
 ) -> Result<GoldenReport, ConformanceError> {
+    golden_dynamic_static_ex(parse_impl, serialize_impl, None, input)
+}
+
+/// Like [`golden_dynamic_static`] with optional path_set override.
+pub fn golden_dynamic_static_ex(
+    parse_impl: Option<&str>,
+    serialize_impl: Option<&str>,
+    path_set_impl: Option<&str>,
+    input: &[u8],
+) -> Result<GoldenReport, ConformanceError> {
     let (dynamic_json, parse_used, ser_used) =
-        run_dynamic_pilot(parse_impl, serialize_impl, input)?;
+        run_dynamic_pilot_ex(parse_impl, serialize_impl, path_set_impl, input)?;
 
     let dir = unique_temp_dir("wvx-golden");
-    let static_json = run_static_pilot(parse_impl, serialize_impl, input, &dir);
+    let static_json =
+        run_static_pilot_ex(parse_impl, serialize_impl, path_set_impl, input, &dir);
     let _ = std::fs::remove_dir_all(&dir);
 
     match static_json {
@@ -440,20 +543,24 @@ fn unique_temp_dir(prefix: &str) -> PathBuf {
 
 /// Run all default golden combos for the pilot (compact serialize paths).
 pub fn run_all_goldens(input: &[u8]) -> Vec<GoldenReport> {
-    let combos: Vec<(Option<&str>, Option<&str>)> = vec![
-        (None, None), // defaults: serde parse + serde serialize
-        (Some("wvx.reference.json-parse@1"), None),
-        (Some("json-crate.parse@1"), None),
-        (None, Some("wvx.reference.json-serialize@1")),
+    // (parse, serialize, path_set)
+    let combos: Vec<(Option<&str>, Option<&str>, Option<&str>)> = vec![
+        (None, None, None), // defaults
+        (Some("wvx.reference.json-parse@1"), None, None),
+        (Some("json-crate.parse@1"), None, None),
+        (None, Some("wvx.reference.json-serialize@1"), None),
         (
             Some("wvx.reference.json-parse@1"),
             Some("wvx.reference.json-serialize@1"),
+            None,
         ),
+        // path_set swap (Gate A / D for second path_set backend)
+        (None, None, Some("serde-json.pointer-set@1")),
     ];
     combos
         .into_iter()
-        .map(|(p, s)| {
-            golden_dynamic_static(p, s, input).unwrap_or_else(|e| GoldenReport {
+        .map(|(p, s, ps)| {
+            golden_dynamic_static_ex(p, s, ps, input).unwrap_or_else(|e| GoldenReport {
                 ok: false,
                 dynamic_json: serde_json::Value::Null,
                 static_json: serde_json::Value::Null,

@@ -12,6 +12,7 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
         "wvx.reference.json-serialize@1" => Some("reference_json_serialize"),
         "wvx.reference.json-serialize-pretty@1" => Some("reference_json_serialize_pretty"),
         "wvx.reference.path-set@1" => Some("reference_path_set"),
+        "serde-json.pointer-set@1" => Some("serde_json_pointer_set"),
         "wvx.reference.io-input-bytes@1" | "wvx.reference.io-output-bytes@1" => None,
         _ => None,
     }
@@ -29,6 +30,7 @@ pub fn supports(implementation_id: &str, capability_key: &str) -> bool {
         ("wvx.reference.json-serialize@1", "data.json.serialize@1") => true,
         ("wvx.reference.json-serialize-pretty@1", "data.json.serialize@1") => true,
         ("wvx.reference.path-set@1", "data.json.path_set@1") => true,
+        ("serde-json.pointer-set@1", "data.json.path_set@1") => true,
         _ => crate_module(implementation_id).is_some(),
     }
 }
@@ -60,6 +62,7 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
         "wvx.reference.json-serialize@1",
         "wvx.reference.json-serialize-pretty@1",
         "wvx.reference.path-set@1",
+        "serde-json.pointer-set@1",
         "wvx.reference.io-input-bytes@1",
         "wvx.reference.io-output-bytes@1",
     ]
@@ -112,7 +115,7 @@ pub fn emit_call(
                 "wvx_adapters::reference_json_serialize_pretty::serialize(&{value})?"
             ))
         }
-        "wvx.reference.path-set@1" => {
+        "wvx.reference.path-set@1" | "serde-json.pointer-set@1" => {
             let value = input_exprs.get("value").ok_or("path_set requires value")?;
             let path = config_json
                 .get("path")
@@ -126,8 +129,9 @@ pub fn emit_call(
                 "serde_json::from_str::<serde_json::Value>({}).map_err(|e| e.to_string())?",
                 format!("{:?}", set_val.to_string())
             );
+            let module = crate_module(implementation_id).ok_or("path_set module")?;
             Ok(format!(
-                "wvx_adapters::reference_path_set::path_set({value}, {path_lit}, {val_lit})?"
+                "wvx_adapters::{module}::path_set({value}, {path_lit}, {val_lit})?"
             ))
         }
         other => Err(format!("no code emitter for implementation `{other}`")),

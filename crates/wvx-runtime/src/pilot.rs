@@ -16,10 +16,13 @@ pub struct PilotImplementation {
 
 /// Register I/O + dual JSON parse/serialize + path-set handlers.
 pub fn register_pilot_handlers(reg: &mut HandlerRegistry) {
-    // I/O + path-set (single reference impl each)
+    // I/O
     reg.register_default(IoInputBytes);
     reg.register_default(IoOutputBytes);
+
+    // data.json.path_set@1 — reference map-insert + JSON Pointer (Gate A)
     reg.register_default(JsonPathSet);
+    reg.register(JsonPointerPathSet);
 
     // data.json.parse@1 — three independent code paths (Gate A)
     reg.register_default(SerdeJsonParse);
@@ -63,6 +66,11 @@ pub fn list_pilot_implementations() -> Vec<PilotImplementation> {
             implementation_id: "wvx.reference.path-set@1",
             capability_key: "data.json.path_set@1",
             label: "Reference JSON path set",
+        },
+        PilotImplementation {
+            implementation_id: "serde-json.pointer-set@1",
+            capability_key: "data.json.path_set@1",
+            label: "serde_json JSON Pointer path set",
         },
         PilotImplementation {
             implementation_id: "serde-json.serialize@1",
@@ -236,6 +244,19 @@ impl ErasedComponent for ReferenceJsonSerializePretty {
 // --- path set --------------------------------------------------------------
 
 struct JsonPathSet;
+struct JsonPointerPathSet;
+
+fn path_set_config(config: &ConfigMap) -> Result<(&str, serde_json::Value), String> {
+    let path = config
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "data.json.path_set: config.path (string) is required".to_string())?;
+    let set_to = config
+        .get("value")
+        .cloned()
+        .ok_or_else(|| "data.json.path_set: config.value is required".to_string())?;
+    Ok((path, set_to))
+}
 
 impl ErasedComponent for JsonPathSet {
     fn implementation_id(&self) -> &str {
@@ -246,15 +267,25 @@ impl ErasedComponent for JsonPathSet {
     }
     fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String> {
         let value = require_json(inputs, "data.json.path_set")?.clone();
-        let path = config
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "data.json.path_set: config.path (string) is required".to_string())?;
-        let set_to = config
-            .get("value")
-            .cloned()
-            .ok_or_else(|| "data.json.path_set: config.value is required".to_string())?;
+        let (path, set_to) = path_set_config(config)?;
         let value = wvx_adapters::reference_path_set::path_set(value, path, set_to)?;
+        let mut out = WvxValueMap::new();
+        out.insert("value".into(), WvxValue::Json(value));
+        Ok(out)
+    }
+}
+
+impl ErasedComponent for JsonPointerPathSet {
+    fn implementation_id(&self) -> &str {
+        "serde-json.pointer-set@1"
+    }
+    fn capability_key(&self) -> &str {
+        "data.json.path_set@1"
+    }
+    fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let value = require_json(inputs, "data.json.path_set")?.clone();
+        let (path, set_to) = path_set_config(config)?;
+        let value = wvx_adapters::serde_json_pointer_set::path_set(value, path, set_to)?;
         let mut out = WvxValueMap::new();
         out.insert("value".into(), WvxValue::Json(value));
         Ok(out)

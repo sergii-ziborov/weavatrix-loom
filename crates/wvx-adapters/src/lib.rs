@@ -8,6 +8,7 @@ pub mod reference_json_serialize;
 pub mod reference_json_serialize_pretty;
 pub mod reference_path_set;
 pub mod serde_json_parse_owned;
+pub mod serde_json_pointer_set;
 pub mod serde_json_serialize;
 
 /// Implementation id → module path for documentation / tooling.
@@ -22,4 +23,5 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
         "reference_json_serialize_pretty",
     ),
     ("wvx.reference.path-set@1", "reference_path_set"),
+    ("serde-json.pointer-set@1", "serde_json_pointer_set"),
 ];

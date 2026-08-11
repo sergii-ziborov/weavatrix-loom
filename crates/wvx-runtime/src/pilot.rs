@@ -1,32 +1,95 @@
 //! Built-in playground handlers for the JSON pilot pipeline.
 //!
-//! These are reference components for development, not production adapter crates.
+//! Multiple **implementations** may fulfill the same capability. Swapping
+//! `instance.implementation` does not change bindings or capability ids.
 
+use crate::lite_json;
 use crate::{ConfigMap, ErasedComponent, HandlerRegistry, WvxValueMap};
 use wvx_types::WvxValue;
 
-/// Register I/O + JSON parse / path-set / serialize handlers used by the pilot fixture.
-pub fn register_pilot_handlers(reg: &mut HandlerRegistry) {
-    reg.register(IoInputBytes);
-    reg.register(IoOutputBytes);
-    reg.register(JsonParse);
-    reg.register(JsonPathSet);
-    reg.register(JsonSerialize);
+/// Catalog entry for discoverability (CLI / MCP).
+#[derive(Debug, Clone)]
+pub struct PilotImplementation {
+    pub implementation_id: &'static str,
+    pub capability_key: &'static str,
+    pub label: &'static str,
 }
+
+/// Register I/O + dual JSON parse/serialize + path-set handlers.
+pub fn register_pilot_handlers(reg: &mut HandlerRegistry) {
+    // I/O + path-set (single reference impl each)
+    reg.register_default(IoInputBytes);
+    reg.register_default(IoOutputBytes);
+    reg.register_default(JsonPathSet);
+
+    // data.json.parse@1 — two independent code paths
+    reg.register_default(SerdeJsonParse);
+    reg.register(ReferenceJsonParse);
+
+    // data.json.serialize@1 — serde compact (default) + reference pretty/compact
+    reg.register_default(SerdeJsonSerialize);
+    reg.register(ReferenceJsonSerializeCompact);
+    reg.register(ReferenceJsonSerializePretty);
+}
+
+pub fn list_pilot_implementations() -> Vec<PilotImplementation> {
+    vec![
+        PilotImplementation {
+            implementation_id: "wvx.reference.io-input-bytes@1",
+            capability_key: "io.input.bytes@1",
+            label: "Reference input bytes",
+        },
+        PilotImplementation {
+            implementation_id: "wvx.reference.io-output-bytes@1",
+            capability_key: "io.output.bytes@1",
+            label: "Reference output bytes",
+        },
+        PilotImplementation {
+            implementation_id: "serde-json.parse-owned@1",
+            capability_key: "data.json.parse@1",
+            label: "serde_json owned parse",
+        },
+        PilotImplementation {
+            implementation_id: "wvx.reference.json-parse@1",
+            capability_key: "data.json.parse@1",
+            label: "WVX lite recursive-descent parse",
+        },
+        PilotImplementation {
+            implementation_id: "wvx.reference.path-set@1",
+            capability_key: "data.json.path_set@1",
+            label: "Reference JSON path set",
+        },
+        PilotImplementation {
+            implementation_id: "serde-json.serialize@1",
+            capability_key: "data.json.serialize@1",
+            label: "serde_json compact serialize",
+        },
+        PilotImplementation {
+            implementation_id: "wvx.reference.json-serialize@1",
+            capability_key: "data.json.serialize@1",
+            label: "WVX lite compact serialize",
+        },
+        PilotImplementation {
+            implementation_id: "wvx.reference.json-serialize-pretty@1",
+            capability_key: "data.json.serialize@1",
+            label: "WVX lite pretty serialize",
+        },
+    ]
+}
+
+// --- I/O -------------------------------------------------------------------
 
 struct IoInputBytes;
 struct IoOutputBytes;
-struct JsonParse;
-struct JsonPathSet;
-struct JsonSerialize;
 
 impl ErasedComponent for IoInputBytes {
+    fn implementation_id(&self) -> &str {
+        "wvx.reference.io-input-bytes@1"
+    }
     fn capability_key(&self) -> &str {
         "io.input.bytes@1"
     }
-
     fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String> {
-        // Prefer bound/seeded input; else config.bytes as base64 or utf-8 string; else empty.
         if let Some(v) = inputs.get("bytes") {
             let mut out = WvxValueMap::new();
             out.insert("bytes".into(), v.clone());
@@ -38,19 +101,18 @@ impl ErasedComponent for IoInputBytes {
             out.insert("bytes".into(), WvxValue::Bytes(bytes));
             return Ok(out);
         }
-        // When seeded via entry_outputs the runtime skips missing handlers;
-        // if we are invoked without data, fail closed.
         Err("io.input.bytes: no bytes provided (seed entry outputs or config.bytes)".into())
     }
 }
 
 impl ErasedComponent for IoOutputBytes {
+    fn implementation_id(&self) -> &str {
+        "wvx.reference.io-output-bytes@1"
+    }
     fn capability_key(&self) -> &str {
         "io.output.bytes@1"
     }
-
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
-        // Sink: accept bytes, emit nothing (value retained on input binding path).
         if inputs.get("bytes").is_none() {
             return Err("io.output.bytes: missing input port `bytes`".into());
         }
@@ -58,17 +120,20 @@ impl ErasedComponent for IoOutputBytes {
     }
 }
 
-impl ErasedComponent for JsonParse {
+// --- parse -----------------------------------------------------------------
+
+struct SerdeJsonParse;
+struct ReferenceJsonParse;
+
+impl ErasedComponent for SerdeJsonParse {
+    fn implementation_id(&self) -> &str {
+        "serde-json.parse-owned@1"
+    }
     fn capability_key(&self) -> &str {
         "data.json.parse@1"
     }
-
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
-        let bytes = match inputs.get("bytes") {
-            Some(WvxValue::Bytes(b)) => b.as_slice(),
-            Some(_) => return Err("data.json.parse: port `bytes` must be bytes".into()),
-            None => return Err("data.json.parse: missing port `bytes`".into()),
-        };
+        let bytes = require_bytes(inputs, "data.json.parse")?;
         let value: serde_json::Value =
             serde_json::from_slice(bytes).map_err(|e| format!("invalid-syntax: {e}"))?;
         let mut out = WvxValueMap::new();
@@ -77,17 +142,37 @@ impl ErasedComponent for JsonParse {
     }
 }
 
-impl ErasedComponent for JsonSerialize {
+impl ErasedComponent for ReferenceJsonParse {
+    fn implementation_id(&self) -> &str {
+        "wvx.reference.json-parse@1"
+    }
+    fn capability_key(&self) -> &str {
+        "data.json.parse@1"
+    }
+    fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let bytes = require_bytes(inputs, "data.json.parse")?;
+        let value = lite_json::parse_slice(bytes)?;
+        let mut out = WvxValueMap::new();
+        out.insert("value".into(), WvxValue::Json(value));
+        Ok(out)
+    }
+}
+
+// --- serialize -------------------------------------------------------------
+
+struct SerdeJsonSerialize;
+struct ReferenceJsonSerializeCompact;
+struct ReferenceJsonSerializePretty;
+
+impl ErasedComponent for SerdeJsonSerialize {
+    fn implementation_id(&self) -> &str {
+        "serde-json.serialize@1"
+    }
     fn capability_key(&self) -> &str {
         "data.json.serialize@1"
     }
-
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
-        let value = match inputs.get("value") {
-            Some(WvxValue::Json(v)) => v,
-            Some(_) => return Err("data.json.serialize: port `value` must be json.value".into()),
-            None => return Err("data.json.serialize: missing port `value`".into()),
-        };
+        let value = require_json(inputs, "data.json.serialize")?;
         let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
         let mut out = WvxValueMap::new();
         out.insert("bytes".into(), WvxValue::Bytes(bytes));
@@ -95,18 +180,51 @@ impl ErasedComponent for JsonSerialize {
     }
 }
 
+impl ErasedComponent for ReferenceJsonSerializeCompact {
+    fn implementation_id(&self) -> &str {
+        "wvx.reference.json-serialize@1"
+    }
+    fn capability_key(&self) -> &str {
+        "data.json.serialize@1"
+    }
+    fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let value = require_json(inputs, "data.json.serialize")?;
+        let bytes = lite_json::serialize_compact(value)?;
+        let mut out = WvxValueMap::new();
+        out.insert("bytes".into(), WvxValue::Bytes(bytes));
+        Ok(out)
+    }
+}
+
+impl ErasedComponent for ReferenceJsonSerializePretty {
+    fn implementation_id(&self) -> &str {
+        "wvx.reference.json-serialize-pretty@1"
+    }
+    fn capability_key(&self) -> &str {
+        "data.json.serialize@1"
+    }
+    fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let value = require_json(inputs, "data.json.serialize")?;
+        let bytes = lite_json::serialize_pretty(value)?;
+        let mut out = WvxValueMap::new();
+        out.insert("bytes".into(), WvxValue::Bytes(bytes));
+        Ok(out)
+    }
+}
+
+// --- path set --------------------------------------------------------------
+
+struct JsonPathSet;
+
 impl ErasedComponent for JsonPathSet {
+    fn implementation_id(&self) -> &str {
+        "wvx.reference.path-set@1"
+    }
     fn capability_key(&self) -> &str {
         "data.json.path_set@1"
     }
-
     fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String> {
-        let mut value = match inputs.get("value") {
-            Some(WvxValue::Json(v)) => v.clone(),
-            Some(_) => return Err("data.json.path_set: port `value` must be json.value".into()),
-            None => return Err("data.json.path_set: missing port `value`".into()),
-        };
-
+        let mut value = require_json(inputs, "data.json.path_set")?.clone();
         let path = config
             .get("path")
             .and_then(|v| v.as_str())
@@ -115,16 +233,29 @@ impl ErasedComponent for JsonPathSet {
             .get("value")
             .cloned()
             .ok_or_else(|| "data.json.path_set: config.value is required".to_string())?;
-
         set_json_path(&mut value, path, set_to)?;
-
         let mut out = WvxValueMap::new();
         out.insert("value".into(), WvxValue::Json(value));
         Ok(out)
     }
 }
 
-/// Minimal JSON Pointer-ish setter for v0.1: `/key` or `key` on object roots only.
+fn require_bytes<'a>(inputs: &'a WvxValueMap, cap: &str) -> Result<&'a [u8], String> {
+    match inputs.get("bytes") {
+        Some(WvxValue::Bytes(b)) => Ok(b.as_slice()),
+        Some(_) => Err(format!("{cap}: port `bytes` must be bytes")),
+        None => Err(format!("{cap}: missing port `bytes`")),
+    }
+}
+
+fn require_json<'a>(inputs: &'a WvxValueMap, cap: &str) -> Result<&'a serde_json::Value, String> {
+    match inputs.get("value") {
+        Some(WvxValue::Json(v)) => Ok(v),
+        Some(_) => Err(format!("{cap}: port `value` must be json.value")),
+        None => Err(format!("{cap}: missing port `value`")),
+    }
+}
+
 fn set_json_path(
     root: &mut serde_json::Value,
     path: &str,

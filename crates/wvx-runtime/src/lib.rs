@@ -2,9 +2,10 @@
 //!
 //! Production performance is measured on compiled native adapters, not here.
 
+mod lite_json;
 mod pilot;
 
-pub use pilot::register_pilot_handlers;
+pub use pilot::{list_pilot_implementations, register_pilot_handlers, PilotImplementation};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -17,8 +18,16 @@ use wvx_validator::validate_project;
 pub enum RuntimeError {
     #[error("project is not valid: {0}")]
     InvalidProject(String),
-    #[error("no handler registered for capability `{0}`")]
-    MissingHandler(String),
+    #[error("no handler for capability `{capability}` (implementation `{implementation}`)")]
+    MissingHandler {
+        capability: String,
+        implementation: String,
+    },
+    #[error("implementation `{implementation}` does not fulfill capability `{capability}`")]
+    ImplementationMismatch {
+        implementation: String,
+        capability: String,
+    },
     #[error("missing input `{0}`")]
     MissingInput(String),
     #[error("component `{0}`: {1}")]
@@ -30,6 +39,9 @@ pub type ConfigMap = BTreeMap<String, serde_json::Value>;
 
 /// Erased component: inputs by port id → outputs by port id.
 pub trait ErasedComponent: Send + Sync {
+    /// Stable implementation id (e.g. `serde-json.parse-owned@1`).
+    fn implementation_id(&self) -> &str;
+    /// Capability this implementation fulfills (`data.json.parse@1`).
     fn capability_key(&self) -> &str;
     fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String>;
 }
@@ -38,6 +50,8 @@ pub trait ErasedComponent: Send + Sync {
 pub struct NodeTrace {
     pub instance_id: String,
     pub capability: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implementation: Option<String>,
     pub duration_ms: f64,
     pub outputs: WvxValueMap,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -50,10 +64,12 @@ pub struct RunResult {
     pub outputs: WvxValueMap,
 }
 
-/// Registry of playground handlers keyed by `capability@id@version` (see CapabilityRef::as_key).
+/// Handlers indexed by implementation id, with a default per capability.
 #[derive(Default)]
 pub struct HandlerRegistry {
-    handlers: BTreeMap<String, Box<dyn ErasedComponent>>,
+    by_implementation: BTreeMap<String, Box<dyn ErasedComponent>>,
+    /// capability_key → default implementation id
+    defaults: BTreeMap<String, String>,
 }
 
 impl HandlerRegistry {
@@ -61,20 +77,93 @@ impl HandlerRegistry {
         Self::default()
     }
 
+    /// Register an implementation. First registration for a capability becomes the default
+    /// unless `as_default` is forced later via [`Self::set_default`].
     pub fn register(&mut self, handler: impl ErasedComponent + 'static) {
-        self.handlers
-            .insert(handler.capability_key().to_string(), Box::new(handler));
+        self.register_with_default(handler, false);
     }
 
-    pub fn get(&self, key: &str) -> Option<&dyn ErasedComponent> {
-        self.handlers.get(key).map(|h| h.as_ref())
+    pub fn register_default(&mut self, handler: impl ErasedComponent + 'static) {
+        self.register_with_default(handler, true);
     }
 
-    /// Pilot JSON pipeline handlers (parse / path-set / serialize / I/O).
+    fn register_with_default(&mut self, handler: impl ErasedComponent + 'static, force_default: bool) {
+        let impl_id = handler.implementation_id().to_string();
+        let cap = handler.capability_key().to_string();
+        if force_default || !self.defaults.contains_key(&cap) {
+            self.defaults.insert(cap, impl_id.clone());
+        }
+        self.by_implementation.insert(impl_id, Box::new(handler));
+    }
+
+    pub fn set_default(&mut self, capability_key: &str, implementation_id: &str) -> bool {
+        if !self.by_implementation.contains_key(implementation_id) {
+            return false;
+        }
+        let Some(handler) = self.by_implementation.get(implementation_id) else {
+            return false;
+        };
+        if handler.capability_key() != capability_key {
+            return false;
+        }
+        self.defaults
+            .insert(capability_key.to_string(), implementation_id.to_string());
+        true
+    }
+
+    pub fn resolve(
+        &self,
+        capability_key: &str,
+        implementation: Option<&str>,
+    ) -> Result<&dyn ErasedComponent, RuntimeError> {
+        let impl_id = match implementation {
+            Some(id) if !id.is_empty() => id.to_string(),
+            _ => self
+                .defaults
+                .get(capability_key)
+                .cloned()
+                .unwrap_or_else(|| capability_key.to_string()),
+        };
+
+        let Some(handler) = self.by_implementation.get(&impl_id) else {
+            return Err(RuntimeError::MissingHandler {
+                capability: capability_key.into(),
+                implementation: impl_id,
+            });
+        };
+        if handler.capability_key() != capability_key {
+            return Err(RuntimeError::ImplementationMismatch {
+                implementation: impl_id,
+                capability: capability_key.into(),
+            });
+        }
+        Ok(handler.as_ref())
+    }
+
+    pub fn list_implementations(&self, capability_key: &str) -> Vec<String> {
+        self.by_implementation
+            .values()
+            .filter(|h| h.capability_key() == capability_key)
+            .map(|h| h.implementation_id().to_string())
+            .collect()
+    }
+
     pub fn with_pilot() -> Self {
         let mut reg = Self::new();
         register_pilot_handlers(&mut reg);
         reg
+    }
+}
+
+/// Apply instance implementation overrides: `instance_id → implementation_id`.
+pub fn apply_implementation_overrides(
+    project: &mut Project,
+    overrides: &BTreeMap<String, String>,
+) {
+    for instance in &mut project.instances {
+        if let Some(impl_id) = overrides.get(&instance.id) {
+            instance.implementation = Some(impl_id.clone());
+        }
     }
 }
 
@@ -116,7 +205,6 @@ pub fn run_project(
         let cap_key = instance.capability.as_key();
         let cap = project.capability_for(&instance.capability);
 
-        // Seeded sources (e.g. CLI input → entrypoint bytes) keep their values.
         let fully_seeded = cap
             .map(|c| {
                 !c.outputs.is_empty()
@@ -130,6 +218,7 @@ pub fn run_project(
             traces.push(NodeTrace {
                 instance_id: instance_id.clone(),
                 capability: cap_key.clone(),
+                implementation: instance.implementation.clone(),
                 duration_ms: 0.0,
                 outputs: cap
                     .map(|c| {
@@ -149,22 +238,28 @@ pub fn run_project(
             continue;
         }
 
-        let Some(handler) = handlers.get(&cap_key) else {
-            let has_seed = cap
-                .map(|c| {
-                    c.outputs.iter().any(|o| {
-                        port_values.contains_key(&format!("{instance_id}.{}", o.id))
+        let handler = match handlers.resolve(&cap_key, instance.implementation.as_deref()) {
+            Ok(h) => h,
+            Err(err) => {
+                // Allow missing handler only if outputs already partially seeded.
+                let has_seed = cap
+                    .map(|c| {
+                        c.outputs.iter().any(|o| {
+                            port_values.contains_key(&format!("{instance_id}.{}", o.id))
+                        })
                     })
-                })
-                .unwrap_or(false);
-            if has_seed {
-                continue;
+                    .unwrap_or(false);
+                if has_seed {
+                    continue;
+                }
+                return Err(err);
             }
-            return Err(RuntimeError::MissingHandler(cap_key));
         };
 
+        let chosen_impl = handler.implementation_id().to_string();
+
         let mut inputs = WvxValueMap::new();
-        if let Some(cap) = project.capability_for(&instance.capability) {
+        if let Some(cap) = cap {
             for input in &cap.inputs {
                 let path = PortPath::new(&instance_id, &input.id);
                 let value = project
@@ -194,6 +289,7 @@ pub fn run_project(
                 traces.push(NodeTrace {
                     instance_id: instance_id.clone(),
                     capability: cap_key,
+                    implementation: Some(chosen_impl),
                     duration_ms: started.elapsed().as_secs_f64() * 1000.0,
                     outputs,
                     error: None,
@@ -202,7 +298,8 @@ pub fn run_project(
             Err(err) => {
                 traces.push(NodeTrace {
                     instance_id: instance_id.clone(),
-                    capability: cap_key.clone(),
+                    capability: cap_key,
+                    implementation: Some(chosen_impl),
                     duration_ms: started.elapsed().as_secs_f64() * 1000.0,
                     outputs: WvxValueMap::new(),
                     error: Some(err.clone()),
@@ -277,6 +374,9 @@ mod tests {
     struct IdentityBytes;
 
     impl ErasedComponent for IdentityBytes {
+        fn implementation_id(&self) -> &str {
+            "test.identity.bytes@1"
+        }
         fn capability_key(&self) -> &str {
             "test.identity.bytes@1"
         }
@@ -334,7 +434,7 @@ mod tests {
         project.instances.push(Instance {
             id: "id".into(),
             capability: CapabilityRef::new("test.identity.bytes", "1"),
-            implementation: None,
+            implementation: Some("test.identity.bytes@1".into()),
             config: Default::default(),
             ui: None,
         });
@@ -358,26 +458,89 @@ mod tests {
     }
 
     #[test]
-    fn pilot_json_pipeline() {
+    fn pilot_swap_parse_implementation() {
         let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
-        let project: Project = serde_json::from_str(text).unwrap();
+        let mut project: Project = serde_json::from_str(text).unwrap();
+        let handlers = HandlerRegistry::with_pilot();
+
+        // Default path (serde-json)
+        let mut seed = WvxValueMap::new();
+        seed.insert(
+            "bytes".into(),
+            WvxValue::Bytes(br#"{"hello":"world"}"#.to_vec()),
+        );
+        let a = run_project(&project, &handlers, seed.clone()).unwrap();
+        let parse_a = a
+            .traces
+            .iter()
+            .find(|t| t.instance_id == "parse")
+            .unwrap();
+        assert_eq!(
+            parse_a.implementation.as_deref(),
+            Some("serde-json.parse-owned@1")
+        );
+
+        // Swap parse only — bindings/capability graph unchanged
+        let mut overrides = BTreeMap::new();
+        overrides.insert("parse".into(), "wvx.reference.json-parse@1".into());
+        apply_implementation_overrides(&mut project, &overrides);
+
+        let b = run_project(&project, &handlers, seed).unwrap();
+        let parse_b = b
+            .traces
+            .iter()
+            .find(|t| t.instance_id == "parse")
+            .unwrap();
+        assert_eq!(
+            parse_b.implementation.as_deref(),
+            Some("wvx.reference.json-parse@1")
+        );
+
+        let out = b
+            .outputs
+            .get("serialize.bytes")
+            .expect("serialize bytes");
+        let WvxValue::Bytes(raw) = out else {
+            panic!("bytes");
+        };
+        let v: serde_json::Value = serde_json::from_slice(raw).unwrap();
+        assert_eq!(v["hello"], "world");
+        assert_eq!(v["tag"], "loom");
+    }
+
+    #[test]
+    fn pilot_pretty_serialize_differs() {
+        let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
+        let mut project: Project = serde_json::from_str(text).unwrap();
         let handlers = HandlerRegistry::with_pilot();
         let mut seed = WvxValueMap::new();
         seed.insert(
             "bytes".into(),
             WvxValue::Bytes(br#"{"hello":"world"}"#.to_vec()),
         );
-        let result = run_project(&project, &handlers, seed).unwrap();
-        let out = result
-            .outputs
-            .get("output.bytes")
-            .or_else(|| result.outputs.get("serialize.bytes"))
-            .expect("output bytes");
-        let WvxValue::Bytes(raw) = out else {
-            panic!("expected bytes");
+
+        let compact = run_project(&project, &handlers, seed.clone()).unwrap();
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "serialize".into(),
+            "wvx.reference.json-serialize-pretty@1".into(),
+        );
+        apply_implementation_overrides(&mut project, &overrides);
+        let pretty = run_project(&project, &handlers, seed).unwrap();
+
+        let c = match compact.outputs.get("serialize.bytes") {
+            Some(WvxValue::Bytes(b)) => b.clone(),
+            _ => panic!(),
         };
-        let v: serde_json::Value = serde_json::from_slice(raw).unwrap();
-        assert_eq!(v["hello"], "world");
-        assert_eq!(v["tag"], "loom");
+        let p = match pretty.outputs.get("serialize.bytes") {
+            Some(WvxValue::Bytes(b)) => b.clone(),
+            _ => panic!(),
+        };
+        assert_ne!(c, p);
+        assert!(p.contains(&b'\n'));
+        // Semantic equality
+        let vc: serde_json::Value = serde_json::from_slice(&c).unwrap();
+        let vp: serde_json::Value = serde_json::from_slice(&p).unwrap();
+        assert_eq!(vc, vp);
     }
 }

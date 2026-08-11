@@ -1,12 +1,13 @@
 //! `wvx` — Weavatrix Loom CLI (thin host over the command bus).
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    load_project_path, project_export_rust, project_run, project_validate, registry_search,
-    BusError,
+    implementations_list, load_project_path, project_export_rust, project_run, project_validate,
+    registry_search, BusError,
 };
 use wvx_registry_client::LocalRegistry;
 use wvx_types::WvxValue;
@@ -22,6 +23,7 @@ fn main() -> ExitCode {
     match cmd.as_str() {
         "validate" => cmd_validate(&args),
         "run" => cmd_run(&args),
+        "implementations" | "impls" => cmd_implementations(),
         "export-rust" => cmd_export(&args),
         "registry-search" => cmd_registry_search(&args),
         "version" => {
@@ -43,13 +45,20 @@ Weavatrix Loom CLI
 
 Usage:
   wvx validate <project.wvx.json>
-  wvx run <project.wvx.json> [--input <file|->] [--input-json <json>]
+  wvx run <project.wvx.json> [options]
+  wvx implementations
   wvx export-rust <project.wvx.json>
   wvx registry-search <registry-dir> [query]
   wvx version
 
-`run` uses built-in pilot playground handlers (JSON pipeline).
-Default input is {{\"hello\":\"world\"}} when neither --input nor --input-json is set.
+Run options:
+  --input <file|->              raw input bytes (default: {{\"hello\":\"world\"}})
+  --input-json <json>           JSON text as input bytes
+  --impl <instance>=<impl-id>   swap implementation without changing the graph
+                                (repeatable; e.g. --impl parse=wvx.reference.json-parse@1)
+
+`run` uses built-in pilot playground handlers. Trace lines show which
+implementation executed for each instance.
 "
     );
 }
@@ -76,31 +85,41 @@ fn cmd_validate(args: &[String]) -> ExitCode {
     }
 }
 
+fn cmd_implementations() -> ExitCode {
+    let resp = implementations_list();
+    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+    ExitCode::SUCCESS
+}
+
 fn cmd_run(args: &[String]) -> ExitCode {
     let Some(path) = args.first() else {
-        eprintln!("usage: wvx run <project.wvx.json> [--input <file|->] [--input-json <json>]");
+        eprintln!("usage: wvx run <project.wvx.json> [--impl id=impl] ...");
         return ExitCode::FAILURE;
     };
 
-    let input_bytes = match resolve_input(args) {
-        Ok(b) => b,
+    let (input_bytes, impl_overrides) = match parse_run_options(&args[1..]) {
+        Ok(v) => v,
         Err(e) => {
             eprintln!("{e}");
             return ExitCode::FAILURE;
         }
     };
 
-    match load_project_path(path.as_ref()).and_then(|p| project_run(&p, input_bytes)) {
+    match load_project_path(path.as_ref()).and_then(|p| project_run(&p, input_bytes, &impl_overrides))
+    {
         Ok(resp) => {
-            // Pretty-print a compact summary for humans; full JSON when WVX_RUN_JSON=1.
             if env::var_os("WVX_RUN_JSON").is_some() {
                 println!("{}", serde_json::to_string_pretty(&resp).unwrap());
             } else if let Some(data) = &resp.data {
                 for tr in &data.traces {
                     let status = if tr.error.is_some() { "ERR" } else { "ok" };
+                    let impl_s = tr
+                        .implementation
+                        .as_deref()
+                        .unwrap_or("-");
                     println!(
-                        "{:>10.3} ms  [{status}]  {}  ({})",
-                        tr.duration_ms, tr.instance_id, tr.capability
+                        "{:>10.3} ms  [{status}]  {}  ({})  impl={}",
+                        tr.duration_ms, tr.instance_id, tr.capability, impl_s
                     );
                 }
                 if let Some(WvxValue::Bytes(b)) = data
@@ -127,37 +146,57 @@ fn cmd_run(args: &[String]) -> ExitCode {
     }
 }
 
-fn resolve_input(args: &[String]) -> Result<Vec<u8>, String> {
-    // args[0] is project path; flags follow as pairs.
-    let flags = &args[1..];
-    if flags.is_empty() {
-        return Ok(br#"{"hello":"world"}"#.to_vec());
-    }
-    match flags[0].as_str() {
-        "--input" => {
-            let path = flags
-                .get(1)
-                .ok_or_else(|| "--input requires a path or -".to_string())?;
-            if path == "-" {
-                use std::io::Read;
-                let mut buf = Vec::new();
-                std::io::stdin()
-                    .read_to_end(&mut buf)
-                    .map_err(|e| e.to_string())?;
-                return Ok(buf);
+fn parse_run_options(flags: &[String]) -> Result<(Vec<u8>, BTreeMap<String, String>), String> {
+    let mut input: Option<Vec<u8>> = None;
+    let mut overrides = BTreeMap::new();
+    let mut i = 0;
+    while i < flags.len() {
+        match flags[i].as_str() {
+            "--input" => {
+                let path = flags
+                    .get(i + 1)
+                    .ok_or_else(|| "--input requires a path or -".to_string())?;
+                input = Some(if path == "-" {
+                    use std::io::Read;
+                    let mut buf = Vec::new();
+                    std::io::stdin()
+                        .read_to_end(&mut buf)
+                        .map_err(|e| e.to_string())?;
+                    buf
+                } else {
+                    fs::read(path).map_err(|e| e.to_string())?
+                });
+                i += 2;
             }
-            fs::read(path).map_err(|e| e.to_string())
+            "--input-json" => {
+                let json = flags
+                    .get(i + 1)
+                    .ok_or_else(|| "--input-json requires a JSON string".to_string())?;
+                let _: serde_json::Value =
+                    serde_json::from_str(json).map_err(|e| format!("invalid --input-json: {e}"))?;
+                input = Some(json.as_bytes().to_vec());
+                i += 2;
+            }
+            "--impl" => {
+                let spec = flags
+                    .get(i + 1)
+                    .ok_or_else(|| "--impl requires instance=implementation-id".to_string())?;
+                let (instance, impl_id) = spec
+                    .split_once('=')
+                    .ok_or_else(|| format!("--impl expected instance=impl-id, got `{spec}`"))?;
+                if instance.is_empty() || impl_id.is_empty() {
+                    return Err(format!("--impl expected instance=impl-id, got `{spec}`"));
+                }
+                overrides.insert(instance.to_string(), impl_id.to_string());
+                i += 2;
+            }
+            other => return Err(format!("unknown run option: {other}")),
         }
-        "--input-json" => {
-            let json = flags
-                .get(1)
-                .ok_or_else(|| "--input-json requires a JSON string".to_string())?;
-            let _: serde_json::Value =
-                serde_json::from_str(json).map_err(|e| format!("invalid --input-json: {e}"))?;
-            Ok(json.as_bytes().to_vec())
-        }
-        other => Err(format!("unknown run option: {other}")),
     }
+    Ok((
+        input.unwrap_or_else(|| br#"{"hello":"world"}"#.to_vec()),
+        overrides,
+    ))
 }
 
 fn cmd_export(args: &[String]) -> ExitCode {

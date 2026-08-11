@@ -67,11 +67,24 @@ Validate and run the JSON pilot fixture:
 ```bash
 cargo run -p wvx-cli -- validate fixtures/pilot-json-pipeline.wvx.json
 cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json
-cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json --input-json "{\"hello\":\"world\"}"
+cargo run -p wvx-cli -- implementations
 ```
 
-`run` uses built-in pilot playground handlers (parse → path-set → serialize).
-Production adapter crates and full export linking come next.
+Swap an implementation **without** changing the capability graph or bindings:
+
+```bash
+# default: serde-json parse + serialize
+cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json
+
+# alternate parse (lite recursive-descent) + pretty serialize
+cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
+  --impl parse=wvx.reference.json-parse@1 \
+  --impl serialize=wvx.reference.json-serialize-pretty@1
+```
+
+`run` uses built-in pilot playground handlers. Trace lines report which
+implementation executed per instance. Production adapter crates and full export
+linking come next.
 
 ## Pilot scope (`0.1`)
 

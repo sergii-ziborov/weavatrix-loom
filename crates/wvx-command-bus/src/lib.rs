@@ -7,7 +7,11 @@ use thiserror::Error;
 use wvx_compiler_rust::{compile_to_rust, GeneratedWorkspace};
 use wvx_ir::Project;
 use wvx_registry_client::{LocalRegistry, RegistryError};
-use wvx_runtime::{run_project, HandlerRegistry, RunResult, RuntimeError, WvxValueMap};
+use std::collections::BTreeMap;
+use wvx_runtime::{
+    apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
+    RunResult, RuntimeError, WvxValueMap,
+};
 use wvx_types::WvxValue;
 use wvx_validator::{validate_project, ValidationReport};
 
@@ -87,15 +91,39 @@ pub fn project_export_rust(project: &Project) -> Result<BusResponse<GeneratedWor
 /// Run a project in the playground with pilot handlers.
 ///
 /// `input_bytes` seeds the entrypoint `bytes` port (typical for the JSON pilot).
+/// `impl_overrides` maps instance id → implementation id (capability graph unchanged).
 pub fn project_run(
     project: &Project,
     input_bytes: Vec<u8>,
+    impl_overrides: &BTreeMap<String, String>,
 ) -> Result<BusResponse<RunResult>, BusError> {
+    let mut project = project.clone();
+    apply_implementation_overrides(&mut project, impl_overrides);
     let handlers = HandlerRegistry::with_pilot();
     let mut seed = WvxValueMap::new();
     seed.insert("bytes".into(), WvxValue::Bytes(input_bytes));
-    let result = run_project(project, &handlers, seed)?;
+    let result = run_project(&project, &handlers, seed)?;
     Ok(BusResponse::ok(result))
+}
+
+/// List pilot playground implementations (capability + implementation id).
+pub fn implementations_list() -> BusResponse<Vec<ImplementationInfo>> {
+    let items = list_pilot_implementations()
+        .into_iter()
+        .map(|p| ImplementationInfo {
+            implementation_id: p.implementation_id.into(),
+            capability: p.capability_key.into(),
+            label: p.label.into(),
+        })
+        .collect();
+    BusResponse::ok(items)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImplementationInfo {
+    pub implementation_id: String,
+    pub capability: String,
+    pub label: String,
 }
 
 /// Search capability ids in a local registry by substring (case-insensitive).

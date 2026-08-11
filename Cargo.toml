@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/wvx-types",
+    "crates/wvx-ir",
+    "crates/wvx-project-graph",
+    "crates/wvx-validator",
+    "crates/wvx-runtime",
+    "crates/wvx-compiler-rust",
+    "crates/wvx-registry-client",
+    "crates/wvx-command-bus",
+    "crates/wvx-cli",
+    "crates/wvx-mcp",
+]
+default-members = [
+    "crates/wvx-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+authors = ["Sergii Ziborov <sergii.ziborov@gmail.com>"]
+license = "MIT OR Apache-2.0"
+homepage = "https://weavatrix.com"
+repository = "https://github.com/sergii-ziborov/weavatrix-loom"
+readme = "README.md"
+publish = false
+
+[workspace.dependencies]
+wvx-types = { path = "crates/wvx-types", version = "0.1.0" }
+wvx-ir = { path = "crates/wvx-ir", version = "0.1.0" }
+wvx-project-graph = { path = "crates/wvx-project-graph", version = "0.1.0" }
+wvx-validator = { path = "crates/wvx-validator", version = "0.1.0" }
+wvx-runtime = { path = "crates/wvx-runtime", version = "0.1.0" }
+wvx-compiler-rust = { path = "crates/wvx-compiler-rust", version = "0.1.0" }
+wvx-registry-client = { path = "crates/wvx-registry-client", version = "0.1.0" }
+wvx-command-bus = { path = "crates/wvx-command-bus", version = "0.1.0" }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+mcport = "0.5.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

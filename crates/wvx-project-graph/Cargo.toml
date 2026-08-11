@@ -1,0 +1,18 @@
+[package]
+name = "wvx-project-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Project graph operations for Weavatrix Loom"
+publish.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+wvx-ir = { workspace = true }
+
+[lints]
+workspace = true

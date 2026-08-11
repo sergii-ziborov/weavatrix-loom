@@ -1,0 +1,24 @@
+[package]
+name = "wvx-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Bounded MCP tools for Weavatrix Loom (via mcport)"
+publish.workspace = true
+
+[[bin]]
+name = "wvx-mcp"
+path = "src/main.rs"
+
+[dependencies]
+mcport = { workspace = true }
+serde_json = { workspace = true }
+wvx-command-bus = { workspace = true }
+wvx-ir = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,23 @@
+[package]
+name = "wvx-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Command-line interface for Weavatrix Loom"
+publish.workspace = true
+
+[[bin]]
+name = "wvx"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = { workspace = true }
+wvx-command-bus = { workspace = true }
+wvx-registry-client = { workspace = true }
+
+[lints]
+workspace = true

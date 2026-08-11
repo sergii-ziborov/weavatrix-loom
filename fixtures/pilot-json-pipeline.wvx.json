@@ -1,0 +1,127 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "pilot-json-pipeline",
+  "name": "JSON pilot pipeline",
+  "entrypoint": "input",
+  "metadata": {
+    "pilot": "true"
+  },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.json.parse",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "value", "type": "json_value", "required": true }
+      ],
+      "errors": ["invalid-syntax", "invalid-unicode", "depth-limit"],
+      "effects": []
+    },
+    {
+      "id": "data.json.path_set",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "value", "type": "json_value", "required": true }
+      ],
+      "outputs": [
+        { "id": "value", "type": "json_value", "required": true }
+      ],
+      "errors": ["path-not-found"],
+      "effects": []
+    },
+    {
+      "id": "data.json.serialize",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "value", "type": "json_value", "required": true }
+      ],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "io.output.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [],
+      "errors": [],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 40, "y": 120 }
+    },
+    {
+      "id": "parse",
+      "capability": { "id": "data.json.parse", "version": "1" },
+      "implementation": "serde-json.parse-owned@1",
+      "config": {},
+      "ui": { "x": 280, "y": 120 }
+    },
+    {
+      "id": "path_set",
+      "capability": { "id": "data.json.path_set", "version": "1" },
+      "implementation": "wvx.reference.path-set@1",
+      "config": { "path": "/tag", "value": "loom" },
+      "ui": { "x": 520, "y": 120 }
+    },
+    {
+      "id": "serialize",
+      "capability": { "id": "data.json.serialize", "version": "1" },
+      "implementation": "serde-json.serialize@1",
+      "config": {},
+      "ui": { "x": 760, "y": 120 }
+    },
+    {
+      "id": "output",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 1000, "y": 120 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "parse", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "parse", "port": "value" },
+      "to": { "instance": "path_set", "port": "value" }
+    },
+    {
+      "from": { "instance": "path_set", "port": "value" },
+      "to": { "instance": "serialize", "port": "value" }
+    },
+    {
+      "from": { "instance": "serialize", "port": "bytes" },
+      "to": { "instance": "output", "port": "bytes" }
+    }
+  ]
+}

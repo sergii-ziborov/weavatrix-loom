@@ -1,0 +1,36 @@
+# Build
+/target/
+**/*.rs.bk
+
+# Private / non-public planning (never publish)
+/plan/
+/private/
+/.local/
+*.private.md
+PLAN.md
+ROADMAP.private.md
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Node (if a sibling studio repo is checked out here by mistake)
+node_modules/
+ui/dist/
+**/dist/
+
+# Logs / local data
+*.log
+.registry-cache/
+.lab/
+*.db
+*.db-journal

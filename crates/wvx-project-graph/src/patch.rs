@@ -142,13 +142,83 @@ fn apply_one(project: &mut Project, op: &GraphOp) -> Result<(), GraphError> {
     }
 }
 
-/// Rule-based pilot proposal: empty graph → full JSON pipeline.
+/// Desired pilot nodes: (instance_id, capability_id, default_impl, x).
+const PILOT_NODES: &[(&str, &str, Option<&str>, f64)] = &[
+    ("input", "io.input.bytes", None, 40.0),
+    (
+        "parse",
+        "data.json.parse",
+        Some("serde-json.parse-owned@1"),
+        280.0,
+    ),
+    (
+        "path_set",
+        "data.json.path_set",
+        Some("wvx.reference.path-set@1"),
+        520.0,
+    ),
+    (
+        "serialize",
+        "data.json.serialize",
+        Some("serde-json.serialize@1"),
+        760.0,
+    ),
+    ("output", "io.output.bytes", None, 1000.0),
+];
+
+const PILOT_EDGES: &[(&str, &str, &str, &str)] = &[
+    ("input", "bytes", "parse", "bytes"),
+    ("parse", "value", "path_set", "value"),
+    ("path_set", "value", "serialize", "value"),
+    ("serialize", "bytes", "output", "bytes"),
+];
+
+/// Rule-based pilot proposal against an **empty** base (full recipe).
 ///
-/// Capabilities should be supplied by the caller (registry). Falls back to
-/// embedded pilot contracts if `capabilities` is empty.
+/// Prefer [`propose_json_pipeline_patch_relative`] when a project already exists.
 pub fn propose_json_pipeline_patch(capabilities: &[Capability]) -> GraphPatch {
+    propose_json_pipeline_patch_relative(&Project::new("empty", "Empty"), capabilities)
+}
+
+/// Rule-based pilot proposal **relative to the current project**.
+///
+/// Only emits ops needed to reach the v0.1 JSON pilot pipeline:
+/// - skips instances / bindings that already match
+/// - adds missing nodes (with capability contracts when available)
+/// - connects missing edges
+/// - sets entrypoint / path_set config / default impls when absent
+///
+/// If the project already matches the pilot recipe, returns an empty op list
+/// (not an error) with a clear rationale.
+pub fn propose_json_pipeline_patch_relative(
+    project: &Project,
+    capabilities: &[Capability],
+) -> GraphPatch {
     let caps = if capabilities.is_empty() {
-        pilot_capabilities()
+        // Prefer contracts already embedded on the project, else pilot defaults.
+        if project.capabilities.is_empty() {
+            pilot_capabilities()
+        } else {
+            let mut merged = project.capabilities.clone();
+            for c in pilot_capabilities() {
+                if project
+                    .capability_for(&CapabilityRef::new(&c.id, &c.version))
+                    .is_none()
+                    && !merged.iter().any(|m| m.id == c.id && m.version == c.version)
+                {
+                    merged.push(c);
+                }
+            }
+            // Also allow registry list via empty→caller; here we only have project.
+            if merged.len() < 5 {
+                for c in pilot_capabilities() {
+                    if !merged.iter().any(|m| m.id == c.id && m.version == c.version) {
+                        merged.push(c);
+                    }
+                }
+            }
+            merged
+        }
     } else {
         capabilities.to_vec()
     };
@@ -157,66 +227,167 @@ pub fn propose_json_pipeline_patch(capabilities: &[Capability]) -> GraphPatch {
         caps.iter()
             .find(|c| c.id == id && c.version == "1")
             .cloned()
+            .or_else(|| {
+                project
+                    .capabilities
+                    .iter()
+                    .find(|c| c.id == id && c.version == "1")
+                    .cloned()
+            })
     };
 
     let mut ops = Vec::new();
-    let nodes = [
-        ("input", "io.input.bytes", None, 40.0),
-        ("parse", "data.json.parse", Some("serde-json.parse-owned@1"), 280.0),
-        ("path_set", "data.json.path_set", Some("wvx.reference.path-set@1"), 520.0),
-        ("serialize", "data.json.serialize", Some("serde-json.serialize@1"), 760.0),
-        ("output", "io.output.bytes", None, 1000.0),
-    ];
+    let mut unresolved = Vec::new();
+    let mut will_exist: std::collections::BTreeSet<String> = project
+        .instances
+        .iter()
+        .map(|i| i.id.clone())
+        .collect();
 
-    for (id, cap_id, impl_id, x) in nodes {
-        let cap = find(cap_id);
+    // --- instances ---
+    for (id, cap_id, impl_id, x) in PILOT_NODES {
+        if let Some(existing) = project.instance(id) {
+            // Id taken: only fix impl/config if same capability family.
+            if existing.capability.id != *cap_id || existing.capability.version != "1" {
+                unresolved.push(format!(
+                    "instance `{id}` exists with capability `{}` (want `{cap_id}@1`); not overwritten",
+                    existing.capability.as_key()
+                ));
+                continue;
+            }
+            if let Some(want_impl) = impl_id {
+                let cur = existing.implementation.as_deref().unwrap_or("");
+                if cur.is_empty() {
+                    ops.push(GraphOp::SelectImplementation {
+                        instance_id: (*id).into(),
+                        implementation: Some((*want_impl).into()),
+                    });
+                }
+            }
+            if *id == "path_set" {
+                let path_ok = existing
+                    .config
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .is_some();
+                let val_ok = existing.config.get("value").is_some();
+                if !path_ok || !val_ok {
+                    let mut c = existing.config.clone();
+                    c.entry("path".into())
+                        .or_insert_with(|| serde_json::json!("/tag"));
+                    c.entry("value".into())
+                        .or_insert_with(|| serde_json::json!("loom"));
+                    ops.push(GraphOp::SetConfig {
+                        instance_id: (*id).into(),
+                        config: c,
+                    });
+                }
+            }
+            continue;
+        }
+
+        // Fresh instance — recipe x on empty canvas; otherwise append to the right.
+        let mut config = BTreeMap::new();
+        if *id == "path_set" {
+            config.insert("path".into(), serde_json::json!("/tag"));
+            config.insert("value".into(), serde_json::json!("loom"));
+        }
+        let pending_adds = ops
+            .iter()
+            .filter(|o| matches!(o, GraphOp::AddInstance { .. }))
+            .count();
+        let layout_x = if project.instances.is_empty() {
+            *x
+        } else {
+            let max_x = project
+                .instances
+                .iter()
+                .filter_map(|i| i.ui.map(|u| u.x))
+                .fold(40.0_f64, f64::max);
+            max_x + 260.0 * (pending_adds as f64 + 1.0)
+        };
+
         ops.push(GraphOp::AddInstance {
             instance: Instance {
-                id: id.into(),
-                capability: CapabilityRef::new(cap_id, "1"),
+                id: (*id).into(),
+                capability: CapabilityRef::new(*cap_id, "1"),
                 implementation: impl_id.map(str::to_string),
-                config: if id == "path_set" {
-                    let mut c = BTreeMap::new();
-                    c.insert("path".into(), serde_json::json!("/tag"));
-                    c.insert("value".into(), serde_json::json!("loom"));
-                    c
-                } else {
-                    BTreeMap::new()
-                },
-                ui: Some(UiPosition { x, y: 120.0 }),
+                config,
+                ui: Some(UiPosition {
+                    x: layout_x,
+                    y: 120.0,
+                }),
             },
-            capability: cap,
+            capability: find(cap_id),
+        });
+        will_exist.insert((*id).into());
+    }
+
+    // --- bindings ---
+    for (fi, fp, ti, tp) in PILOT_EDGES {
+        let from = PortPath::new(*fi, *fp);
+        let to = PortPath::new(*ti, *tp);
+        let already = project
+            .bindings
+            .iter()
+            .any(|b| b.from == from && b.to == to);
+        if already {
+            continue;
+        }
+        if !will_exist.contains(*fi) || !will_exist.contains(*ti) {
+            unresolved.push(format!(
+                "cannot connect {fi}.{fp} → {ti}.{tp}: missing endpoint instance"
+            ));
+            continue;
+        }
+        ops.push(GraphOp::Connect { from, to });
+    }
+
+    // --- entrypoint ---
+    if project.entrypoint.as_deref() != Some("input") && will_exist.contains("input") {
+        ops.push(GraphOp::SetEntrypoint {
+            instance_id: Some("input".into()),
         });
     }
 
-    ops.push(GraphOp::Connect {
-        from: PortPath::new("input", "bytes"),
-        to: PortPath::new("parse", "bytes"),
-    });
-    ops.push(GraphOp::Connect {
-        from: PortPath::new("parse", "value"),
-        to: PortPath::new("path_set", "value"),
-    });
-    ops.push(GraphOp::Connect {
-        from: PortPath::new("path_set", "value"),
-        to: PortPath::new("serialize", "value"),
-    });
-    ops.push(GraphOp::Connect {
-        from: PortPath::new("serialize", "bytes"),
-        to: PortPath::new("output", "bytes"),
-    });
-    ops.push(GraphOp::SetEntrypoint {
-        instance_id: Some("input".into()),
-    });
+    if ops.is_empty() && unresolved.is_empty() {
+        return GraphPatch {
+            ops,
+            rationale: "Relative propose: project already matches the JSON pilot pipeline (no ops)."
+                .into(),
+            unresolved: vec![
+                "Choose parse implementation (serde-json vs reference)".into(),
+                "Choose serialize implementation (compact vs pretty)".into(),
+            ],
+        };
+    }
+
+    let added = ops
+        .iter()
+        .filter(|o| matches!(o, GraphOp::AddInstance { .. }))
+        .count();
+    let connected = ops
+        .iter()
+        .filter(|o| matches!(o, GraphOp::Connect { .. }))
+        .count();
+    let rationale = if project.instances.is_empty() {
+        "Propose the v0.1 JSON pilot pipeline: Input → Parse → PathSet → Serialize → Output."
+            .to_string()
+    } else {
+        format!(
+            "Relative propose against current project: +{added} instance(s), +{connected} binding(s) toward JSON pilot pipeline."
+        )
+    };
+
+    if unresolved.is_empty() {
+        unresolved.push("Choose parse implementation (serde-json vs reference)".into());
+        unresolved.push("Choose serialize implementation (compact vs pretty)".into());
+    }
 
     GraphPatch {
         ops,
-        rationale: "Propose the v0.1 JSON pilot pipeline: Input → Parse → PathSet → Serialize → Output."
-            .into(),
-        unresolved: vec![
-            "Choose parse implementation (serde-json vs reference)".into(),
-            "Choose serialize implementation (compact vs pretty)".into(),
-        ],
+        rationale,
+        unresolved,
     }
 }
 
@@ -318,5 +489,86 @@ mod tests {
         assert!(result.validation.is_ok(), "{:?}", result.validation.diagnostics);
         assert_eq!(result.project.instances.len(), 5);
         assert_eq!(result.project.bindings.len(), 4);
+    }
+
+    #[test]
+    fn relative_propose_is_noop_on_full_pilot() {
+        let mut project = Project::new("empty", "Empty");
+        project.schema_version = PROJECT_SCHEMA_VERSION.into();
+        let full = propose_json_pipeline_patch(&[]);
+        let applied = apply_graph_patch(&project, &full).unwrap();
+        let relative = propose_json_pipeline_patch_relative(&applied.project, &[]);
+        assert!(
+            relative.ops.is_empty(),
+            "expected no ops, got {:?}",
+            relative.ops
+        );
+        assert!(relative.rationale.contains("already matches"));
+    }
+
+    #[test]
+    fn relative_propose_fills_missing_tail() {
+        let mut project = Project::new("partial", "Partial");
+        project.schema_version = PROJECT_SCHEMA_VERSION.into();
+        // Only input node
+        project.instances.push(Instance {
+            id: "input".into(),
+            capability: CapabilityRef::new("io.input.bytes", "1"),
+            implementation: None,
+            config: BTreeMap::new(),
+            ui: Some(UiPosition { x: 40.0, y: 120.0 }),
+        });
+        project.capabilities = pilot_capabilities();
+        project.entrypoint = Some("input".into());
+
+        let patch = propose_json_pipeline_patch_relative(&project, &[]);
+        assert!(
+            patch.ops.iter().any(|o| matches!(
+                o,
+                GraphOp::AddInstance {
+                    instance: Instance { id, .. },
+                    ..
+                } if id == "parse"
+            )),
+            "should add parse: {:?}",
+            patch.ops
+        );
+        // Must not re-add input
+        assert!(
+            !patch.ops.iter().any(|o| matches!(
+                o,
+                GraphOp::AddInstance {
+                    instance: Instance { id, .. },
+                    ..
+                } if id == "input"
+            )),
+            "must not re-add input"
+        );
+
+        let result = apply_graph_patch(&project, &patch).unwrap();
+        assert!(result.validation.is_ok(), "{:?}", result.validation.diagnostics);
+        assert_eq!(result.project.instances.len(), 5);
+        assert_eq!(result.project.bindings.len(), 4);
+    }
+
+    #[test]
+    fn relative_propose_adds_missing_binding_only() {
+        let mut project = Project::new("p", "P");
+        project.schema_version = PROJECT_SCHEMA_VERSION.into();
+        let full = propose_json_pipeline_patch(&[]);
+        let mut applied = apply_graph_patch(&project, &full).unwrap().project;
+        // Drop one binding
+        applied.bindings.retain(|b| {
+            !(b.from.instance == "parse" && b.to.instance == "path_set")
+        });
+        let patch = propose_json_pipeline_patch_relative(&applied, &[]);
+        assert_eq!(patch.ops.len(), 1, "ops={:?}", patch.ops);
+        assert!(matches!(
+            &patch.ops[0],
+            GraphOp::Connect {
+                from,
+                to
+            } if from.instance == "parse" && to.instance == "path_set"
+        ));
     }
 }

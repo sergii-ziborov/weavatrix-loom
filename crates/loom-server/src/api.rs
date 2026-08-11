@@ -10,8 +10,9 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
     forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch, implementations_list,
-    project_export_rust, project_run, project_validate, registry_implementations, registry_inspect,
-    registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
+    project_export_rust_hydrated, project_run_hydrated, project_validate_hydrated,
+    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
+    BusResponse, PROTOCOL_VERSION,
 };
 use wvx_ir::Project;
 use wvx_project_graph::GraphPatch;
@@ -56,8 +57,14 @@ struct ProjectBody {
     project: Project,
 }
 
-async fn validate_project(Json(body): Json<ProjectBody>) -> impl IntoResponse {
-    Json(project_validate(&body.project))
+async fn validate_project(
+    State(state): State<AppState>,
+    Json(body): Json<ProjectBody>,
+) -> impl IntoResponse {
+    Json(project_validate_hydrated(
+        &body.project,
+        Some(state.registry.as_ref()),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,7 +81,7 @@ struct RunBody {
     impls: BTreeMap<String, String>,
 }
 
-async fn run_project(Json(body): Json<RunBody>) -> Response {
+async fn run_project(State(state): State<AppState>, Json(body): Json<RunBody>) -> Response {
     let input = match resolve_input(&body) {
         Ok(b) => b,
         Err(msg) => {
@@ -85,8 +92,21 @@ async fn run_project(Json(body): Json<RunBody>) -> Response {
                 .into_response();
         }
     };
-    match project_run(&body.project, input, &body.impls) {
-        Ok(resp) => Json(resp).into_response(),
+    match project_run_hydrated(
+        &body.project,
+        input,
+        &body.impls,
+        Some(state.registry.as_ref()),
+    ) {
+        Ok(resp) => {
+            if resp.ok {
+                Json(resp).into_response()
+            } else {
+                // Validation failures from the runtime surface as BusResponse.ok=false
+                // without Err; still return 422 so Studio can treat them as hard errors.
+                (StatusCode::UNPROCESSABLE_ENTITY, Json(resp)).into_response()
+            }
+        }
         Err(e) => bus_error(e),
     }
 }
@@ -144,10 +164,10 @@ struct ExportBody {
     impls: BTreeMap<String, String>,
 }
 
-async fn export_rust(Json(body): Json<ExportBody>) -> Response {
+async fn export_rust(State(state): State<AppState>, Json(body): Json<ExportBody>) -> Response {
     let mut project = body.project;
     wvx_runtime::apply_implementation_overrides(&mut project, &body.impls);
-    match project_export_rust(&project) {
+    match project_export_rust_hydrated(&project, Some(state.registry.as_ref())) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
@@ -239,8 +259,18 @@ async fn forge_extract_handler(Json(body): Json<ForgeInventoryBody>) -> Response
     }
 }
 
-async fn propose_patch(State(state): State<AppState>) -> Response {
-    match graph_propose_patch(Some(state.registry.as_ref())) {
+#[derive(Debug, Default, Deserialize)]
+struct ProposeBody {
+    /// When present, proposal is relative to this project (only missing pilot pieces).
+    #[serde(default)]
+    project: Option<Project>,
+}
+
+async fn propose_patch(
+    State(state): State<AppState>,
+    Json(body): Json<ProposeBody>,
+) -> Response {
+    match graph_propose_patch(Some(state.registry.as_ref()), body.project.as_ref()) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
@@ -389,6 +419,36 @@ mod tests {
         // Find serialize output in traces/outputs
         let outputs = &v["data"]["outputs"];
         assert!(outputs.get("serialize.bytes").is_some() || outputs.get("output.bytes").is_some() || outputs.as_object().map(|o| !o.is_empty()).unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn run_hydrates_missing_capabilities_from_registry() {
+        let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
+        let mut project: Project = serde_json::from_str(text).unwrap();
+        project.capabilities.clear();
+        let app = test_app();
+        let body = serde_json::json!({
+            "project": project,
+            "input_json": "{\"hello\":\"world\"}"
+        });
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/project/run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true, "body={v}");
+        assert!(v["data"]["traces"].as_array().map(|a| a.len() >= 4).unwrap_or(false));
     }
 
     #[test]

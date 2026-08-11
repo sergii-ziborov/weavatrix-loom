@@ -160,7 +160,14 @@ impl LocalRegistry {
     }
 
     pub fn search_capabilities(&self, query: &str) -> Result<Vec<CapabilityHit>, RegistryError> {
-        let q = query.trim().to_ascii_lowercase();
+        // Tokenized AND search: "json parse" matches data.json.parse.
+        // Also matches kind, port ids, and type labels (json_value / bytes / …).
+        let tokens: Vec<String> = query
+            .split(|c: char| c.is_whitespace() || c == ',' || c == '|')
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_ascii_lowercase())
+            .collect();
         let impls = self.list_implementations()?;
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         for imp in &impls {
@@ -171,11 +178,24 @@ impl LocalRegistry {
         let mut hits = Vec::new();
         for cap in self.list_capabilities()? {
             let key = cap.as_ref_key().as_key();
-            if q.is_empty()
-                || key.to_ascii_lowercase().contains(&q)
-                || cap.kind.to_ascii_lowercase().contains(&q)
-                || cap.id.to_ascii_lowercase().contains(&q)
-            {
+            let mut hay = format!(
+                "{} {} {} {}",
+                key.to_ascii_lowercase(),
+                cap.id.to_ascii_lowercase(),
+                cap.kind.to_ascii_lowercase(),
+                cap.version.to_ascii_lowercase()
+            );
+            for p in cap.inputs.iter().chain(cap.outputs.iter()) {
+                hay.push(' ');
+                hay.push_str(&p.id.to_ascii_lowercase());
+                hay.push(' ');
+                hay.push_str(&p.ty.to_string().to_ascii_lowercase());
+                // also snake form of type (json.value → json_value)
+                hay.push(' ');
+                hay.push_str(&p.ty.to_string().to_ascii_lowercase().replace('.', "_"));
+            }
+            let ok = tokens.is_empty() || tokens.iter().all(|t| hay.contains(t));
+            if ok {
                 hits.push(CapabilityHit {
                     key: key.clone(),
                     id: cap.id,
@@ -184,6 +204,31 @@ impl LocalRegistry {
                     implementation_count: *counts.get(&key).unwrap_or(&0),
                 });
             }
+        }
+        // Prefer more specific id matches first when query non-empty.
+        if !tokens.is_empty() {
+            hits.sort_by(|a, b| {
+                let score = |h: &CapabilityHit| {
+                    let id = h.id.to_ascii_lowercase();
+                    tokens
+                        .iter()
+                        .map(|t| {
+                            if id == *t {
+                                0
+                            } else if id.ends_with(t.as_str()) {
+                                1
+                            } else if id.contains(t.as_str()) {
+                                2
+                            } else {
+                                3
+                            }
+                        })
+                        .sum::<i32>()
+                };
+                score(a).cmp(&score(b)).then_with(|| a.id.cmp(&b.id))
+            });
+        } else {
+            hits.sort_by(|a, b| a.id.cmp(&b.id));
         }
         Ok(hits)
     }
@@ -301,6 +346,17 @@ mod tests {
         let reg = LocalRegistry::open(registry_dev()).unwrap();
         let hits = reg.search_capabilities("json").unwrap();
         assert!(hits.iter().any(|h| h.key.starts_with("data.json.")));
+    }
+
+    #[test]
+    fn search_multi_token_and_port_type() {
+        let reg = LocalRegistry::open(registry_dev()).unwrap();
+        let parse = reg.search_capabilities("json parse").unwrap();
+        assert_eq!(parse.len(), 1);
+        assert_eq!(parse[0].id, "data.json.parse");
+        let by_type = reg.search_capabilities("bytes").unwrap();
+        assert!(by_type.iter().any(|h| h.id == "io.input.bytes"));
+        assert!(by_type.iter().any(|h| h.id == "data.json.parse")); // has bytes port
     }
 
     #[test]

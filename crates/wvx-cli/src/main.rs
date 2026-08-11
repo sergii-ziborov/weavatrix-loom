@@ -30,6 +30,7 @@ fn main() -> ExitCode {
         "registry" => cmd_registry(&args),
         "forge" => cmd_forge(&args),
         "patch" => cmd_patch(&args),
+        "conformance" => cmd_conformance(&args),
         "registry-search" => {
             // Back-compat alias: registry search [query]
             let mut rest = vec!["search".into()];
@@ -64,8 +65,9 @@ Usage:
   wvx registry inspect <key> [--path <dir>]
   wvx forge inventory <crate-or-workspace-path>
   wvx forge extract <crate-path>
-  wvx patch propose
+  wvx patch propose [project.wvx.json]   relative if project given; full pilot if omitted
   wvx patch apply <project.wvx.json> [--patch <patch.json>]
+  wvx conformance [--golden]
   wvx version
 
 Run options:
@@ -82,9 +84,63 @@ Export options:
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
 
+  wvx conformance               pilot capability vectors (parse/serialize/path_set)
+  wvx conformance --golden      also dynamic≡static export combos (invokes cargo)
+
 Registry defaults to ./registry-dev (or $WVX_REGISTRY).
 "
     );
+}
+
+fn cmd_conformance(args: &[String]) -> ExitCode {
+    let golden = args.iter().any(|a| a == "--golden");
+    let report = wvx_conformance::run_pilot_conformance();
+    let failed = report.cases.iter().filter(|c| !c.ok).count();
+    println!(
+        "conformance: {} cases, {} failed",
+        report.cases.len(),
+        failed
+    );
+    for c in &report.cases {
+        let mark = if c.ok { "ok" } else { "FAIL" };
+        println!(
+            "  [{mark}] {} / {} / {}",
+            c.capability, c.implementation, c.case
+        );
+        if let Some(d) = &c.detail {
+            println!("         {d}");
+        }
+    }
+    if !report.ok {
+        return ExitCode::FAILURE;
+    }
+
+    if golden {
+        println!("golden dynamic≡static (compact combos)…");
+        let goldens = wvx_conformance::run_all_goldens(br#"{"hello":"world"}"#);
+        let mut all_ok = true;
+        for g in &goldens {
+            let mark = if g.ok { "ok" } else { "FAIL" };
+            println!(
+                "  [{mark}] parse={} serialize={}",
+                g.parse_impl, g.serialize_impl
+            );
+            if let Some(d) = &g.detail {
+                println!("         {d}");
+            }
+            if g.ok {
+                println!("         json={}", g.dynamic_json);
+            }
+            all_ok &= g.ok;
+        }
+        if !all_ok {
+            return ExitCode::FAILURE;
+        }
+        println!("golden: all combos passed");
+    }
+
+    println!("conformance: PASS");
+    ExitCode::SUCCESS
 }
 
 fn open_registry(args: &[String]) -> Result<LocalRegistry, String> {
@@ -174,7 +230,19 @@ fn cmd_patch(args: &[String]) -> ExitCode {
     match args[0].as_str() {
         "propose" => {
             let reg = LocalRegistry::open_default().ok();
-            match graph_propose_patch(reg.as_ref()) {
+            // Optional: wvx patch propose [project.wvx.json]  → relative propose
+            let base = if let Some(path) = args.get(1) {
+                match load_project_path(path.as_ref()) {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            } else {
+                None
+            };
+            match graph_propose_patch(reg.as_ref(), base.as_ref()) {
                 Ok(resp) => {
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                     ExitCode::SUCCESS
@@ -220,19 +288,29 @@ fn cmd_patch(args: &[String]) -> ExitCode {
                     i += 1;
                 }
             }
+            let project = match load_project_path(project_path.as_ref()) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::FAILURE;
+                }
+            };
             let patch = match patch {
                 Some(p) => p,
-                None => match graph_propose_patch(LocalRegistry::open_default().ok().as_ref()) {
-                    Ok(r) => r.data.expect("patch"),
-                    Err(e) => {
-                        eprintln!("{e}");
-                        return ExitCode::FAILURE;
+                None => {
+                    match graph_propose_patch(
+                        LocalRegistry::open_default().ok().as_ref(),
+                        Some(&project),
+                    ) {
+                        Ok(r) => r.data.expect("patch"),
+                        Err(e) => {
+                            eprintln!("{e}");
+                            return ExitCode::FAILURE;
+                        }
                     }
-                },
+                }
             };
-            match load_project_path(project_path.as_ref())
-                .and_then(|p| graph_apply_patch(&p, &patch))
-            {
+            match graph_apply_patch(&project, &patch) {
                 Ok(resp) => {
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                     if resp.ok {

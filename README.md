@@ -130,7 +130,7 @@ cargo run -p loom-server
 | GET | `/api/v1/pilot/implementations` | playground handler catalog |
 | POST | `/api/v1/forge/inventory` | body `{ "path": "<crate-or-workspace>" }` static scan |
 | POST | `/api/v1/forge/extract` | public API candidates from `src/` |
-| POST | `/api/v1/graph/propose_patch` | rule-based GraphPatch (JSON pilot) |
+| POST | `/api/v1/graph/propose_patch` | body `{ project? }` — relative pilot GraphPatch |
 | POST | `/api/v1/graph/apply_patch` | body `{ project, patch }` |
 
 ### Forge (static inventory)
@@ -158,6 +158,19 @@ crate). Run the server here, then:
 cd ../loom-studio
 npm install
 npm run dev
+```
+
+## Conformance & golden (pilot)
+
+```bash
+# Capability vectors: all pilot parse/serialize/path_set impls
+cargo run -p wvx-cli -- conformance
+
+# Plus dynamic playground ≡ static export (invokes cargo for each combo)
+cargo run -p wvx-cli -- conformance --golden
+
+# Or as unit tests
+cargo test -p wvx-conformance
 ```
 
 ## Pilot scope (`0.1`)

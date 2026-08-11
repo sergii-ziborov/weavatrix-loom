@@ -885,6 +885,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "wvx-command-bus",
+ "wvx-conformance",
  "wvx-project-graph",
  "wvx-registry-client",
  "wvx-runtime",
@@ -918,6 +919,19 @@ dependencies = [
  "wvx-ir",
  "wvx-types",
  "wvx-validator",
+]
+
+[[package]]
+name = "wvx-conformance"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wvx-compiler-rust",
+ "wvx-ir",
+ "wvx-runtime",
+ "wvx-types",
 ]
 
 [[package]]

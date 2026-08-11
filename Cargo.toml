@@ -13,6 +13,7 @@ members = [
     "crates/wvx-mcp",
     "crates/wvx-forge",
     "crates/wvx-adapters",
+    "crates/wvx-conformance",
     "crates/loom-server",
 ]
 default-members = [
@@ -41,6 +42,7 @@ wvx-registry-client = { path = "crates/wvx-registry-client", version = "0.1.0" }
 wvx-command-bus = { path = "crates/wvx-command-bus", version = "0.1.0" }
 wvx-forge = { path = "crates/wvx-forge", version = "0.1.0" }
 wvx-adapters = { path = "crates/wvx-adapters", version = "0.1.0" }
+wvx-conformance = { path = "crates/wvx-conformance", version = "0.1.0" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

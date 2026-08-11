@@ -13,7 +13,8 @@ use wvx_forge::{
 };
 use wvx_ir::Project;
 use wvx_project_graph::{
-    apply_graph_patch, propose_json_pipeline_patch, GraphPatch, PatchApplyResult, PatchError,
+    apply_graph_patch, propose_json_pipeline_patch_relative, GraphPatch, PatchApplyResult,
+    PatchError,
 };
 use wvx_registry_client::{
     CapabilityHit, ImplementationHit, LocalRegistry, RegistryError, RegistrySummary,
@@ -94,9 +95,29 @@ impl<T> BusResponse<T> {
     }
 }
 
+/// Fill missing capability contracts from a local registry (no-op when `None`).
+pub fn hydrate_project(project: &mut Project, registry: Option<&LocalRegistry>) -> Result<usize, BusError> {
+    match registry {
+        Some(reg) => Ok(reg.hydrate_project_capabilities(project)?),
+        None => Ok(0),
+    }
+}
+
 /// Validate a project document.
 pub fn project_validate(project: &Project) -> BusResponse<ValidationReport> {
-    let report = validate_project(project);
+    project_validate_hydrated(project, None)
+}
+
+/// Validate after optionally hydrating capability contracts from a registry.
+pub fn project_validate_hydrated(
+    project: &Project,
+    registry: Option<&LocalRegistry>,
+) -> BusResponse<ValidationReport> {
+    let mut project = project.clone();
+    if let Err(e) = hydrate_project(&mut project, registry) {
+        return BusResponse::err(vec![format!("registry hydrate failed: {e}")]);
+    }
+    let report = validate_project(&project);
     if report.is_ok() {
         BusResponse::ok(report)
     } else {
@@ -109,7 +130,17 @@ pub fn project_validate(project: &Project) -> BusResponse<ValidationReport> {
 
 /// Compile a project to a generated Rust package (in memory).
 pub fn project_export_rust(project: &Project) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
-    match compile_to_rust(project) {
+    project_export_rust_hydrated(project, None)
+}
+
+/// Compile after optionally hydrating capability contracts from a registry.
+pub fn project_export_rust_hydrated(
+    project: &Project,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
+    let mut project = project.clone();
+    hydrate_project(&mut project, registry)?;
+    match compile_to_rust(&project) {
         Ok(ws) => Ok(BusResponse::ok(ws)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }
@@ -137,7 +168,21 @@ pub fn project_run(
     input_bytes: Vec<u8>,
     impl_overrides: &BTreeMap<String, String>,
 ) -> Result<BusResponse<RunResult>, BusError> {
+    project_run_hydrated(project, input_bytes, impl_overrides, None)
+}
+
+/// Run after optionally hydrating missing capability contracts from a registry.
+///
+/// Studio often stores instances without embedding full capability contracts; the
+/// HTTP host should pass the open registry so validation/run still succeed.
+pub fn project_run_hydrated(
+    project: &Project,
+    input_bytes: Vec<u8>,
+    impl_overrides: &BTreeMap<String, String>,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<RunResult>, BusError> {
     let mut project = project.clone();
+    hydrate_project(&mut project, registry)?;
     apply_implementation_overrides(&mut project, impl_overrides);
     let handlers = HandlerRegistry::with_pilot();
     let mut seed = WvxValueMap::new();
@@ -246,15 +291,23 @@ pub fn forge_extract(path: &Path) -> Result<BusResponse<ExtractReport>, BusError
 }
 
 /// Propose a GraphPatch (rule-based pilot: JSON pipeline).
+///
+/// When `base` is provided, the proposal is **relative** to that project
+/// (only missing pilot nodes/edges). When `None`, behaves like empty base.
 pub fn graph_propose_patch(
     registry: Option<&LocalRegistry>,
+    base: Option<&Project>,
 ) -> Result<BusResponse<GraphPatch>, BusError> {
     let caps = if let Some(reg) = registry {
         reg.list_capabilities()?
     } else {
         Vec::new()
     };
-    Ok(BusResponse::ok(propose_json_pipeline_patch(&caps)))
+    let empty = Project::new("empty", "Empty");
+    let project = base.unwrap_or(&empty);
+    Ok(BusResponse::ok(propose_json_pipeline_patch_relative(
+        project, &caps,
+    )))
 }
 
 /// Validate a patch against a project (does not persist).

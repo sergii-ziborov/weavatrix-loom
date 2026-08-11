@@ -108,6 +108,29 @@ cargo run -p wvx-cli -- registry inspect serde-json.parse-owned@1
 
 Override the path with `--path` or `WVX_REGISTRY`.
 
+## HTTP server
+
+```bash
+cargo run -p loom-server
+# http://127.0.0.1:43917/health
+# WVX_HTTP_ADDR=127.0.0.1:44000 WVX_REGISTRY=./registry-dev cargo run -p loom-server
+```
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/health` | liveness |
+| GET | `/api/v1/protocol` | protocol version |
+| POST | `/api/v1/project/validate` | body: `{ "project": … }` |
+| POST | `/api/v1/project/run` | body: `{ "project", "input_json"?, "impls"? }` |
+| POST | `/api/v1/project/export-rust` | in-memory generated package |
+| GET | `/api/v1/registry/summary` | |
+| GET | `/api/v1/registry/search?q=` | |
+| GET | `/api/v1/registry/implementations?capability=` | |
+| GET | `/api/v1/registry/inspect/{key}` | |
+| GET | `/api/v1/pilot/implementations` | playground handler catalog |
+
+CORS is open for local Studio development. Bind stays loopback by default.
+
 ## Pilot scope (`0.1`)
 
 The first vertical slice is a pure data-transform pipeline:

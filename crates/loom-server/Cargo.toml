@@ -1,0 +1,35 @@
+[package]
+name = "loom-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "HTTP host for Weavatrix Loom command bus (Studio / remote clients)"
+publish.workspace = true
+
+[[bin]]
+name = "loom-server"
+path = "src/main.rs"
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+wvx-command-bus = { workspace = true }
+wvx-ir = { workspace = true }
+wvx-registry-client = { workspace = true }
+wvx-runtime = { workspace = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[lints]
+workspace = true

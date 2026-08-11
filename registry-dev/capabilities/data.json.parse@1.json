@@ -1,0 +1,13 @@
+{
+  "id": "data.json.parse",
+  "version": "1",
+  "kind": "transform",
+  "inputs": [
+    { "id": "bytes", "type": "bytes", "required": true }
+  ],
+  "outputs": [
+    { "id": "value", "type": "json_value", "required": true }
+  ],
+  "errors": ["invalid-syntax", "invalid-unicode", "depth-limit"],
+  "effects": []
+}

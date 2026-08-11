@@ -1,0 +1,20 @@
+{
+  "data.json.parse@1": [
+    "serde-json.parse-owned@1",
+    "wvx.reference.json-parse@1"
+  ],
+  "data.json.path_set@1": [
+    "wvx.reference.path-set@1"
+  ],
+  "data.json.serialize@1": [
+    "serde-json.serialize@1",
+    "wvx.reference.json-serialize@1",
+    "wvx.reference.json-serialize-pretty@1"
+  ],
+  "io.input.bytes@1": [
+    "wvx.reference.io-input-bytes@1"
+  ],
+  "io.output.bytes@1": [
+    "wvx.reference.io-output-bytes@1"
+  ]
+}

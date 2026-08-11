@@ -1,0 +1,13 @@
+{
+  "id": "data.json.serialize",
+  "version": "1",
+  "kind": "transform",
+  "inputs": [
+    { "id": "value", "type": "json_value", "required": true }
+  ],
+  "outputs": [
+    { "id": "bytes", "type": "bytes", "required": true }
+  ],
+  "errors": [],
+  "effects": []
+}

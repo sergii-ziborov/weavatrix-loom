@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
     implementations_list, load_project_path, project_export_rust, project_export_to_dir,
-    project_run, project_validate, registry_search, BusError,
+    project_run, project_validate, registry_implementations, registry_inspect, registry_search,
+    registry_summary, BusError,
 };
 use wvx_registry_client::LocalRegistry;
 use wvx_types::WvxValue;
@@ -25,7 +26,13 @@ fn main() -> ExitCode {
         "run" => cmd_run(&args),
         "implementations" | "impls" => cmd_implementations(),
         "export-rust" => cmd_export(&args),
-        "registry-search" => cmd_registry_search(&args),
+        "registry" => cmd_registry(&args),
+        "registry-search" => {
+            // Back-compat alias: registry search [query]
+            let mut rest = vec!["search".into()];
+            rest.extend(args);
+            cmd_registry(&rest)
+        }
         "version" => {
             println!("wvx {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -48,7 +55,10 @@ Usage:
   wvx run <project.wvx.json> [options]
   wvx implementations
   wvx export-rust <project.wvx.json> [-o <dir>] [--check] [--run] [--impl id=impl]...
-  wvx registry-search <registry-dir> [query]
+  wvx registry summary [--path <dir>]
+  wvx registry search [query] [--path <dir>]
+  wvx registry implementations [--capability key] [query] [--path <dir>]
+  wvx registry inspect <key> [--path <dir>]
   wvx version
 
 Run options:
@@ -64,8 +74,113 @@ Export options:
 
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
+
+Registry defaults to ./registry-dev (or $WVX_REGISTRY).
 "
     );
+}
+
+fn open_registry(args: &[String]) -> Result<LocalRegistry, String> {
+    let mut path: Option<PathBuf> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--path" {
+            let p = args
+                .get(i + 1)
+                .ok_or_else(|| "--path requires a directory".to_string())?;
+            path = Some(PathBuf::from(p));
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    match path {
+        Some(p) => LocalRegistry::open(p).map_err(|e| e.to_string()),
+        None => LocalRegistry::open_default().map_err(|e| e.to_string()),
+    }
+}
+
+fn args_without_path(args: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--path" {
+            i += 2;
+            continue;
+        }
+        out.push(args[i].clone());
+        i += 1;
+    }
+    out
+}
+
+fn cmd_registry(args: &[String]) -> ExitCode {
+    if args.is_empty() {
+        eprintln!("usage: wvx registry <summary|search|implementations|inspect> ...");
+        return ExitCode::FAILURE;
+    }
+    let sub = args[0].as_str();
+    let rest = &args[1..];
+    let reg = match open_registry(rest) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let rest = args_without_path(rest);
+
+    let result = match sub {
+        "summary" | "list" => registry_summary(&reg).map(|r| serde_json::to_string_pretty(&r).unwrap()),
+        "search" => {
+            let q = rest.first().map(String::as_str).unwrap_or("");
+            registry_search(&reg, q).map(|r| serde_json::to_string_pretty(&r).unwrap())
+        }
+        "implementations" | "impls" => {
+            let mut capability = None;
+            let mut query = String::new();
+            let mut i = 0;
+            while i < rest.len() {
+                if rest[i] == "--capability" || rest[i] == "-c" {
+                    capability = rest.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                if query.is_empty() {
+                    query = rest[i].clone();
+                }
+                i += 1;
+            }
+            registry_implementations(&reg, capability, &query)
+                .map(|r| serde_json::to_string_pretty(&r).unwrap())
+        }
+        "inspect" => {
+            let Some(key) = rest.first() else {
+                eprintln!("usage: wvx registry inspect <capability-or-impl-key>");
+                return ExitCode::FAILURE;
+            };
+            registry_inspect(&reg, key).map(|r| serde_json::to_string_pretty(&r).unwrap())
+        }
+        other => {
+            eprintln!("unknown registry subcommand: {other}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match result {
+        Ok(text) => {
+            println!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(BusError::Registry(e)) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn cmd_validate(args: &[String]) -> ExitCode {
@@ -334,32 +449,4 @@ fn cmd_export(args: &[String]) -> ExitCode {
     }
 }
 
-fn cmd_registry_search(args: &[String]) -> ExitCode {
-    let Some(root) = args.first() else {
-        eprintln!("usage: wvx registry-search <registry-dir> [query]");
-        return ExitCode::FAILURE;
-    };
-    let query = args.get(1).map(String::as_str).unwrap_or("");
-    let root = PathBuf::from(root);
-    let reg = match LocalRegistry::open(&root) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    match registry_search(&reg, query) {
-        Ok(resp) => {
-            println!("{}", serde_json::to_string_pretty(&resp).unwrap());
-            ExitCode::SUCCESS
-        }
-        Err(BusError::Registry(e)) => {
-            eprintln!("{e}");
-            ExitCode::FAILURE
-        }
-        Err(e) => {
-            eprintln!("{e}");
-            ExitCode::FAILURE
-        }
-    }
-}
+

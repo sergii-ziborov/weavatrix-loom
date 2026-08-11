@@ -1,0 +1,11 @@
+{
+  "id": "io.output.bytes",
+  "version": "1",
+  "kind": "io",
+  "inputs": [
+    { "id": "bytes", "type": "bytes", "required": true }
+  ],
+  "outputs": [],
+  "errors": [],
+  "effects": []
+}

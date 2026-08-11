@@ -94,6 +94,20 @@ cargo run -p wvx-cli -- export-rust fixtures/pilot-json-pipeline.wvx.json \
 
 The export is a normal Cargo package with `run_pipeline(&[u8]) -> Result<Vec<u8>, String>`.
 
+## Local registry (`registry-dev`)
+
+Pilot capability contracts and implementation manifests live in
+[`registry-dev/`](registry-dev/). Query them with:
+
+```bash
+cargo run -p wvx-cli -- registry summary
+cargo run -p wvx-cli -- registry search json
+cargo run -p wvx-cli -- registry implementations --capability data.json.parse@1
+cargo run -p wvx-cli -- registry inspect serde-json.parse-owned@1
+```
+
+Override the path with `--path` or `WVX_REGISTRY`.
+
 ## Pilot scope (`0.1`)
 
 The first vertical slice is a pure data-transform pipeline:

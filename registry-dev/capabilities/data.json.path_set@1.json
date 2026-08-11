@@ -1,0 +1,13 @@
+{
+  "id": "data.json.path_set",
+  "version": "1",
+  "kind": "transform",
+  "inputs": [
+    { "id": "value", "type": "json_value", "required": true }
+  ],
+  "outputs": [
+    { "id": "value", "type": "json_value", "required": true }
+  ],
+  "errors": ["path-not-found"],
+  "effects": []
+}

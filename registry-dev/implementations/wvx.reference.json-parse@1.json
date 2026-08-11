@@ -1,0 +1,14 @@
+{
+  "id": "wvx.reference.json-parse",
+  "version": "1",
+  "capability": { "id": "data.json.parse", "version": "1" },
+  "source": {
+    "kind": "pilot-reference",
+    "package": "wvx-runtime-lite-json",
+    "package_version": "0.1.0"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapter-reference-json-parse",
+    "execution": "native-rust"
+  }
+}

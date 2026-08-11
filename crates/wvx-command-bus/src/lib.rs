@@ -9,7 +9,9 @@ use wvx_compiler_rust::{
     compile_to_rust, export_to_directory, ExportReport, GeneratedWorkspace,
 };
 use wvx_ir::Project;
-use wvx_registry_client::{LocalRegistry, RegistryError};
+use wvx_registry_client::{
+    CapabilityHit, ImplementationHit, LocalRegistry, RegistryError, RegistrySummary,
+};
 use std::collections::BTreeMap;
 use wvx_runtime::{
     apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
@@ -142,28 +144,65 @@ pub struct ImplementationInfo {
     pub label: String,
 }
 
-/// Search capability ids in a local registry by substring (case-insensitive).
+/// Registry root summary.
+pub fn registry_summary(registry: &LocalRegistry) -> Result<BusResponse<RegistrySummary>, BusError> {
+    Ok(BusResponse::ok(registry.summary()?))
+}
+
+/// Search capabilities in a local registry (substring, case-insensitive).
 pub fn registry_search(
     registry: &LocalRegistry,
     query: &str,
-) -> Result<BusResponse<Vec<String>>, BusError> {
-    let q = query.trim().to_ascii_lowercase();
-    let mut ids: Vec<String> = registry
-        .list_capabilities()?
-        .into_iter()
-        .filter(|c| {
-            if q.is_empty() {
-                true
-            } else {
-                c.id.to_ascii_lowercase().contains(&q)
-                    || c.kind.to_ascii_lowercase().contains(&q)
-            }
-        })
-        .map(|c| format!("{}@{}", c.id, c.version))
-        .collect();
-    ids.sort();
-    ids.dedup();
-    Ok(BusResponse::ok(ids))
+) -> Result<BusResponse<Vec<CapabilityHit>>, BusError> {
+    Ok(BusResponse::ok(registry.search_capabilities(query)?))
+}
+
+/// Search or list implementations; optional capability filter `data.json.parse@1`.
+pub fn registry_implementations(
+    registry: &LocalRegistry,
+    capability: Option<&str>,
+    query: &str,
+) -> Result<BusResponse<Vec<ImplementationHit>>, BusError> {
+    let hits = if let Some(cap) = capability {
+        registry
+            .implementations_for_capability(cap)?
+            .into_iter()
+            .map(|i| ImplementationHit {
+                full_id: i.full_id(),
+                capability: i.capability.as_key(),
+                source_kind: i.source.kind,
+                package: i.source.package,
+                adapter: i.adapter.map(|a| a.crate_name),
+            })
+            .filter(|h| {
+                let q = query.trim().to_ascii_lowercase();
+                q.is_empty()
+                    || h.full_id.to_ascii_lowercase().contains(&q)
+                    || h.package.to_ascii_lowercase().contains(&q)
+            })
+            .collect()
+    } else {
+        registry.search_implementations(query)?
+    };
+    Ok(BusResponse::ok(hits))
+}
+
+/// Inspect one capability or implementation by key (`data.json.parse@1` or impl full id).
+pub fn registry_inspect(
+    registry: &LocalRegistry,
+    key: &str,
+) -> Result<BusResponse<serde_json::Value>, BusError> {
+    if let Some(cap) = registry.find_capability_key(key)? {
+        return Ok(BusResponse::ok(serde_json::to_value(cap).map_err(|e| {
+            BusError::Io(e.to_string())
+        })?));
+    }
+    if let Some(imp) = registry.find_implementation(key)? {
+        return Ok(BusResponse::ok(serde_json::to_value(imp).map_err(|e| {
+            BusError::Io(e.to_string())
+        })?));
+    }
+    Ok(BusResponse::err(vec![format!("not found: {key}")]))
 }
 
 /// Load a project JSON file from disk.

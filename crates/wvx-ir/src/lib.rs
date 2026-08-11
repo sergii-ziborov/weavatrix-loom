@@ -94,6 +94,13 @@ pub struct Implementation {
     pub adapter: Option<AdapterRef>,
 }
 
+impl Implementation {
+    /// Full registry key: `id@version` (e.g. `serde-json.parse-owned@1`).
+    pub fn full_id(&self) -> String {
+        format!("{}@{}", self.id, self.version)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ImplementationSource {
     #[serde(default)]

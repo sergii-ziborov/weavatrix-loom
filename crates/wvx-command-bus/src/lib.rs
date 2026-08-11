@@ -4,7 +4,10 @@
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use wvx_compiler_rust::{compile_to_rust, GeneratedWorkspace};
+use std::path::Path;
+use wvx_compiler_rust::{
+    compile_to_rust, export_to_directory, ExportReport, GeneratedWorkspace,
+};
 use wvx_ir::Project;
 use wvx_registry_client::{LocalRegistry, RegistryError};
 use std::collections::BTreeMap;
@@ -80,10 +83,23 @@ pub fn project_validate(project: &Project) -> BusResponse<ValidationReport> {
     }
 }
 
-/// Compile a project to a generated Rust workspace (in memory).
+/// Compile a project to a generated Rust package (in memory).
 pub fn project_export_rust(project: &Project) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
     match compile_to_rust(project) {
         Ok(ws) => Ok(BusResponse::ok(ws)),
+        Err(e) => Err(BusError::Compile(e.to_string())),
+    }
+}
+
+/// Export a project to a directory; optionally `cargo check` and run.
+pub fn project_export_to_dir(
+    project: &Project,
+    out_dir: &Path,
+    check: bool,
+    run_input: Option<&[u8]>,
+) -> Result<BusResponse<ExportReport>, BusError> {
+    match export_to_directory(project, out_dir, check, run_input) {
+        Ok(report) => Ok(BusResponse::ok(report)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }
 }

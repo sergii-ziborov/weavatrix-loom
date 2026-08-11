@@ -199,6 +199,7 @@ dependencies = [
  "serde_json",
  "wvx-command-bus",
  "wvx-registry-client",
+ "wvx-runtime",
  "wvx-types",
 ]
 
@@ -223,6 +224,7 @@ name = "wvx-compiler-rust"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "thiserror",
  "wvx-ir",
  "wvx-types",

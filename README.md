@@ -83,8 +83,16 @@ cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
 ```
 
 `run` uses built-in pilot playground handlers. Trace lines report which
-implementation executed per instance. Production adapter crates and full export
-linking come next.
+implementation executed per instance.
+
+Export a native Rust package (adapters inlined, `cargo check` / run):
+
+```bash
+cargo run -p wvx-cli -- export-rust fixtures/pilot-json-pipeline.wvx.json \
+  -o /tmp/loom-export --check --run
+```
+
+The export is a normal Cargo package with `run_pipeline(&[u8]) -> Result<Vec<u8>, String>`.
 
 ## Pilot scope (`0.1`)
 

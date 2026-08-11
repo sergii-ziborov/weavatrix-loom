@@ -6,8 +6,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    implementations_list, load_project_path, project_export_rust, project_run, project_validate,
-    registry_search, BusError,
+    implementations_list, load_project_path, project_export_rust, project_export_to_dir,
+    project_run, project_validate, registry_search, BusError,
 };
 use wvx_registry_client::LocalRegistry;
 use wvx_types::WvxValue;
@@ -47,7 +47,7 @@ Usage:
   wvx validate <project.wvx.json>
   wvx run <project.wvx.json> [options]
   wvx implementations
-  wvx export-rust <project.wvx.json>
+  wvx export-rust <project.wvx.json> [-o <dir>] [--check] [--run] [--impl id=impl]...
   wvx registry-search <registry-dir> [query]
   wvx version
 
@@ -57,8 +57,13 @@ Run options:
   --impl <instance>=<impl-id>   swap implementation without changing the graph
                                 (repeatable; e.g. --impl parse=wvx.reference.json-parse@1)
 
-`run` uses built-in pilot playground handlers. Trace lines show which
-implementation executed for each instance.
+Export options:
+  -o, --out <dir>               write Cargo package to directory
+  --check                       run cargo check after write
+  --run                         cargo run after check (uses same input as run)
+
+`run` uses the playground. `export-rust` emits a native Rust package whose
+`run_pipeline` should match playground results for the pilot adapters.
 "
     );
 }
@@ -201,26 +206,130 @@ fn parse_run_options(flags: &[String]) -> Result<(Vec<u8>, BTreeMap<String, Stri
 
 fn cmd_export(args: &[String]) -> ExitCode {
     let Some(path) = args.first() else {
-        eprintln!("usage: wvx export-rust <project.wvx.json>");
+        eprintln!(
+            "usage: wvx export-rust <project.wvx.json> [-o dir] [--check] [--run] [--impl id=impl]"
+        );
         return ExitCode::FAILURE;
     };
-    match load_project_path(path.as_ref()).and_then(|p| project_export_rust(&p)) {
-        Ok(resp) => {
-            if let Some(ws) = &resp.data {
-                for file in &ws.files {
-                    println!("// --- {} ---", file.relative_path);
-                    println!("{}", file.contents);
+
+    let mut out_dir: Option<PathBuf> = None;
+    let mut check = false;
+    let mut do_run = false;
+    let mut overrides = BTreeMap::new();
+    let mut input = br#"{"hello":"world"}"#.to_vec();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" | "--out" => {
+                let d = args
+                    .get(i + 1)
+                    .ok_or_else(|| "-o requires a directory".to_string());
+                match d {
+                    Ok(dir) => {
+                        out_dir = Some(PathBuf::from(dir));
+                        i += 2;
+                    }
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return ExitCode::FAILURE;
+                    }
                 }
             }
-            if resp.ok {
-                ExitCode::SUCCESS
-            } else {
+            "--check" => {
+                check = true;
+                i += 1;
+            }
+            "--run" => {
+                do_run = true;
+                check = true;
+                i += 1;
+            }
+            "--impl" => {
+                let spec = match args.get(i + 1) {
+                    Some(s) => s,
+                    None => {
+                        eprintln!("--impl requires instance=implementation-id");
+                        return ExitCode::FAILURE;
+                    }
+                };
+                let Some((instance, impl_id)) = spec.split_once('=') else {
+                    eprintln!("--impl expected instance=impl-id");
+                    return ExitCode::FAILURE;
+                };
+                overrides.insert(instance.to_string(), impl_id.to_string());
+                i += 2;
+            }
+            "--input-json" => {
+                let json = match args.get(i + 1) {
+                    Some(s) => s,
+                    None => {
+                        eprintln!("--input-json requires JSON");
+                        return ExitCode::FAILURE;
+                    }
+                };
+                if let Err(e) = serde_json::from_str::<serde_json::Value>(json) {
+                    eprintln!("invalid --input-json: {e}");
+                    return ExitCode::FAILURE;
+                }
+                input = json.as_bytes().to_vec();
+                i += 2;
+            }
+            other => {
+                eprintln!("unknown export option: {other}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let mut project = match load_project_path(path.as_ref()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    wvx_runtime::apply_implementation_overrides(&mut project, &overrides);
+
+    if let Some(dir) = out_dir {
+        let run_input = if do_run { Some(input.as_slice()) } else { None };
+        match project_export_to_dir(&project, &dir, check, run_input) {
+            Ok(resp) => {
+                println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                if let Some(data) = &resp.data {
+                    if let Some(stdout) = &data.run_stdout {
+                        println!("\n--- pipeline stdout ---\n{stdout}");
+                    }
+                }
+                if resp.ok {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::FAILURE
+                }
+            }
+            Err(e) => {
+                eprintln!("{e}");
                 ExitCode::FAILURE
             }
         }
-        Err(e) => {
-            eprintln!("{e}");
-            ExitCode::FAILURE
+    } else {
+        match project_export_rust(&project) {
+            Ok(resp) => {
+                if let Some(ws) = &resp.data {
+                    for file in &ws.files {
+                        println!("// --- {} ---", file.relative_path);
+                        println!("{}", file.contents);
+                    }
+                }
+                if resp.ok {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::FAILURE
+                }
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
         }
     }
 }

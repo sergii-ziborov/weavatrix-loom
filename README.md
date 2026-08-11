@@ -62,11 +62,16 @@ cargo check --workspace
 cargo run -p wvx-cli -- --help
 ```
 
-Validate a fixture project (as the CLI grows):
+Validate and run the JSON pilot fixture:
 
 ```bash
 cargo run -p wvx-cli -- validate fixtures/pilot-json-pipeline.wvx.json
+cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json
+cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json --input-json "{\"hello\":\"world\"}"
 ```
+
+`run` uses built-in pilot playground handlers (parse → path-set → serialize).
+Production adapter crates and full export linking come next.
 
 ## Pilot scope (`0.1`)
 

@@ -7,6 +7,8 @@ use thiserror::Error;
 use wvx_compiler_rust::{compile_to_rust, GeneratedWorkspace};
 use wvx_ir::Project;
 use wvx_registry_client::{LocalRegistry, RegistryError};
+use wvx_runtime::{run_project, HandlerRegistry, RunResult, RuntimeError, WvxValueMap};
+use wvx_types::WvxValue;
 use wvx_validator::{validate_project, ValidationReport};
 
 pub const PROTOCOL_VERSION: &str = "0.1";
@@ -19,8 +21,16 @@ pub enum BusError {
     InvalidProject(String),
     #[error("compile failed: {0}")]
     Compile(String),
+    #[error("run failed: {0}")]
+    Run(String),
     #[error("io: {0}")]
     Io(String),
+}
+
+impl From<RuntimeError> for BusError {
+    fn from(value: RuntimeError) -> Self {
+        BusError::Run(value.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +82,20 @@ pub fn project_export_rust(project: &Project) -> Result<BusResponse<GeneratedWor
         Ok(ws) => Ok(BusResponse::ok(ws)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }
+}
+
+/// Run a project in the playground with pilot handlers.
+///
+/// `input_bytes` seeds the entrypoint `bytes` port (typical for the JSON pilot).
+pub fn project_run(
+    project: &Project,
+    input_bytes: Vec<u8>,
+) -> Result<BusResponse<RunResult>, BusError> {
+    let handlers = HandlerRegistry::with_pilot();
+    let mut seed = WvxValueMap::new();
+    seed.insert("bytes".into(), WvxValue::Bytes(input_bytes));
+    let result = run_project(project, &handlers, seed)?;
+    Ok(BusResponse::ok(result))
 }
 
 /// Search capability ids in a local registry by substring (case-insensitive).

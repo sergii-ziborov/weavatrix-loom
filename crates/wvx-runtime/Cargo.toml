@@ -11,6 +11,8 @@ description = "Dynamic playground runtime for WVX graphs"
 publish.workspace = true
 
 [dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 wvx-ir = { workspace = true }
 wvx-types = { workspace = true }

@@ -2,6 +2,11 @@
 //!
 //! Production performance is measured on compiled native adapters, not here.
 
+mod pilot;
+
+pub use pilot::register_pilot_handlers;
+
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use thiserror::Error;
 use wvx_ir::{PortPath, Project};
@@ -21,23 +26,25 @@ pub enum RuntimeError {
 }
 
 pub type WvxValueMap = BTreeMap<String, WvxValue>;
+pub type ConfigMap = BTreeMap<String, serde_json::Value>;
 
 /// Erased component: inputs by port id → outputs by port id.
 pub trait ErasedComponent: Send + Sync {
     fn capability_key(&self) -> &str;
-    fn execute(&self, inputs: &WvxValueMap) -> Result<WvxValueMap, String>;
+    fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeTrace {
     pub instance_id: String,
     pub capability: String,
     pub duration_ms: f64,
     pub outputs: WvxValueMap,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunResult {
     pub traces: Vec<NodeTrace>,
     pub outputs: WvxValueMap,
@@ -62,6 +69,13 @@ impl HandlerRegistry {
     pub fn get(&self, key: &str) -> Option<&dyn ErasedComponent> {
         self.handlers.get(key).map(|h| h.as_ref())
     }
+
+    /// Pilot JSON pipeline handlers (parse / path-set / serialize / I/O).
+    pub fn with_pilot() -> Self {
+        let mut reg = Self::new();
+        register_pilot_handlers(&mut reg);
+        reg
+    }
 }
 
 /// Execute instances in binding order (simple Kahn-style topo for v0.1 DAGs).
@@ -83,7 +97,6 @@ pub fn run_project(
     let order = topo_order(project).map_err(RuntimeError::InvalidProject)?;
     let mut port_values: BTreeMap<String, WvxValue> = BTreeMap::new();
 
-    // Seed entrypoint outputs if provided as `instance.port` or bare port names on entrypoint.
     for (k, v) in entry_outputs {
         if k.contains('.') {
             port_values.insert(k, v);
@@ -101,9 +114,42 @@ pub fn run_project(
             .instance(&instance_id)
             .expect("topo order only yields known instances");
         let cap_key = instance.capability.as_key();
+        let cap = project.capability_for(&instance.capability);
+
+        // Seeded sources (e.g. CLI input → entrypoint bytes) keep their values.
+        let fully_seeded = cap
+            .map(|c| {
+                !c.outputs.is_empty()
+                    && c.inputs.is_empty()
+                    && c.outputs.iter().all(|o| {
+                        port_values.contains_key(&format!("{instance_id}.{}", o.id))
+                    })
+            })
+            .unwrap_or(false);
+        if fully_seeded {
+            traces.push(NodeTrace {
+                instance_id: instance_id.clone(),
+                capability: cap_key.clone(),
+                duration_ms: 0.0,
+                outputs: cap
+                    .map(|c| {
+                        c.outputs
+                            .iter()
+                            .filter_map(|o| {
+                                let key = format!("{instance_id}.{}", o.id);
+                                port_values
+                                    .get(&key)
+                                    .map(|v| (o.id.clone(), v.clone()))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                error: None,
+            });
+            continue;
+        }
+
         let Some(handler) = handlers.get(&cap_key) else {
-            // I/O sources may already have outputs seeded.
-            let cap = project.capability_for(&instance.capability);
             let has_seed = cap
                 .map(|c| {
                     c.outputs.iter().any(|o| {
@@ -140,7 +186,7 @@ pub fn run_project(
         }
 
         let started = std::time::Instant::now();
-        match handler.execute(&inputs) {
+        match handler.execute(&inputs, &instance.config) {
             Ok(outputs) => {
                 for (port, value) in &outputs {
                     port_values.insert(format!("{instance_id}.{port}"), value.clone());
@@ -234,7 +280,7 @@ mod tests {
         fn capability_key(&self) -> &str {
             "test.identity.bytes@1"
         }
-        fn execute(&self, inputs: &WvxValueMap) -> Result<WvxValueMap, String> {
+        fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
             let mut out = WvxValueMap::new();
             out.insert(
                 "bytes".into(),
@@ -309,5 +355,29 @@ mod tests {
             result.outputs.get("id.bytes"),
             Some(&WvxValue::Bytes(b"hi".to_vec()))
         );
+    }
+
+    #[test]
+    fn pilot_json_pipeline() {
+        let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
+        let project: Project = serde_json::from_str(text).unwrap();
+        let handlers = HandlerRegistry::with_pilot();
+        let mut seed = WvxValueMap::new();
+        seed.insert(
+            "bytes".into(),
+            WvxValue::Bytes(br#"{"hello":"world"}"#.to_vec()),
+        );
+        let result = run_project(&project, &handlers, seed).unwrap();
+        let out = result
+            .outputs
+            .get("output.bytes")
+            .or_else(|| result.outputs.get("serialize.bytes"))
+            .expect("output bytes");
+        let WvxValue::Bytes(raw) = out else {
+            panic!("expected bytes");
+        };
+        let v: serde_json::Value = serde_json::from_slice(raw).unwrap();
+        assert_eq!(v["hello"], "world");
+        assert_eq!(v["tag"], "loom");
     }
 }

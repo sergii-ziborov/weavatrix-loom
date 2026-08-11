@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weavatrix.com/schemas/wvx.graph_patch.v0.1.json",
+  "title": "WVX GraphPatch v0.1",
+  "description": "Structured edit batch (ADR-0004). Ops are externally tagged with \"op\".",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ops"],
+  "properties": {
+    "ops": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/graphOp" }
+    },
+    "rationale": { "type": "string", "default": "" },
+    "unresolved": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    }
+  },
+  "$defs": {
+    "portPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instance", "port"],
+      "properties": {
+        "instance": { "type": "string" },
+        "port": { "type": "string" }
+      }
+    },
+    "capabilityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "required": ["id", "capability"],
+      "properties": {
+        "id": { "type": "string" },
+        "capability": { "$ref": "#/$defs/capabilityRef" },
+        "implementation": { "type": ["string", "null"] },
+        "config": { "type": "object" },
+        "ui": {
+          "type": ["object", "null"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        }
+      }
+    },
+    "graphOp": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["op", "instance"],
+          "properties": {
+            "op": { "const": "add_instance" },
+            "instance": { "$ref": "#/$defs/instance" },
+            "capability": { "type": "object" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "id"],
+          "properties": {
+            "op": { "const": "remove_instance" },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "from", "to"],
+          "properties": {
+            "op": { "const": "connect" },
+            "from": { "$ref": "#/$defs/portPath" },
+            "to": { "$ref": "#/$defs/portPath" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "from", "to"],
+          "properties": {
+            "op": { "const": "disconnect" },
+            "from": { "$ref": "#/$defs/portPath" },
+            "to": { "$ref": "#/$defs/portPath" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "instance_id"],
+          "properties": {
+            "op": { "const": "select_implementation" },
+            "instance_id": { "type": "string" },
+            "implementation": { "type": ["string", "null"] }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op", "instance_id", "config"],
+          "properties": {
+            "op": { "const": "set_config" },
+            "instance_id": { "type": "string" },
+            "config": { "type": "object" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["op"],
+          "properties": {
+            "op": { "const": "set_entrypoint" },
+            "instance_id": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weavatrix.com/schemas/wvx.capability.v0.1.json",
+  "title": "WVX Capability Contract v0.1",
+  "description": "Registry capability document (e.g. registry-dev/capabilities/*.json). Same PortSpec/TypeRef rules as the project schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "kind", "inputs", "outputs"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "minLength": 1 },
+    "inputs": {
+      "type": "array",
+      "items": { "$ref": "wvx.project.v0.1.json#/$defs/portSpec" }
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "$ref": "wvx.project.v0.1.json#/$defs/portSpec" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "effects": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    }
+  }
+}

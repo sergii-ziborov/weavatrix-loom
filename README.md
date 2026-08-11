@@ -37,6 +37,16 @@ Boundary types in `0.1` are owned and canonical (`string`, `bytes`,
 `json.value`, lists, options, records, …). Upstream crates may use any Rust
 types internally; adapters normalize them at the component boundary.
 
+## Schemas & decisions
+
+| Path | What |
+| --- | --- |
+| [`schemas/`](schemas/) | JSON Schema for project, capability, GraphPatch (`wvx.project.v0.1`, …) |
+| [`docs/adr/`](docs/adr/) | Architecture Decision Records (Rust-first, GraphPatch, export, …) |
+| [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md) | Gate A/D evidence on the JSON pilot |
+
+Rust IR types remain authoritative if schema and code diverge.
+
 ## Workspace
 
 This repository is a **Rust library platform** plus thin hosts. The visual

@@ -6,7 +6,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch, implementations_list,
+    forge_extract, forge_inventory, graph_apply_patch, graph_propose_intent, graph_propose_patch,
+    implementations_list,
     load_project_path, project_export_rust, project_export_to_dir, project_run, project_validate,
     registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
 };
@@ -66,6 +67,7 @@ Usage:
   wvx forge inventory <crate-or-workspace-path>
   wvx forge extract <crate-path>
   wvx patch propose [project.wvx.json]   relative if project given; full pilot if omitted
+  wvx patch intent <text> [--project <file>]   heuristic or LLM (XAI_API_KEY) → GraphPatch
   wvx patch apply <project.wvx.json> [--patch <patch.json>]
   wvx conformance [--golden]
   wvx version
@@ -246,6 +248,54 @@ fn cmd_patch(args: &[String]) -> ExitCode {
                 Ok(resp) => {
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                     ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "intent" => {
+            // wvx patch intent "install pilot" [--project file]
+            let mut intent_parts = Vec::new();
+            let mut project_path: Option<String> = None;
+            let mut i = 1;
+            while i < args.len() {
+                if args[i] == "--project" {
+                    project_path = args.get(i + 1).cloned();
+                    i += 2;
+                    continue;
+                }
+                intent_parts.push(args[i].clone());
+                i += 1;
+            }
+            let intent = intent_parts.join(" ");
+            if intent.trim().is_empty() {
+                eprintln!("usage: wvx patch intent <text> [--project file.wvx.json]");
+                return ExitCode::FAILURE;
+            }
+            let project = if let Some(p) = project_path {
+                match load_project_path(p.as_ref()) {
+                    Ok(proj) => proj,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            } else {
+                let mut p = wvx_ir::Project::new("intent", "Intent base");
+                p.schema_version = wvx_ir::PROJECT_SCHEMA_VERSION.into();
+                p
+            };
+            let reg = LocalRegistry::open_default().ok();
+            match graph_propose_intent(reg.as_ref(), &project, &intent) {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
                 }
                 Err(e) => {
                     eprintln!("{e}");

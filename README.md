@@ -64,6 +64,7 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | `wvx-command-bus` | Shared semantic API for CLI, MCP, and future HTTP hosts |
 | `wvx-cli` | Command-line entry point |
 | `wvx-mcp` | Bounded MCP tools over the command bus ([`mcport`](https://crates.io/crates/mcport)) |
+| `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) |
 
 ## CI
 
@@ -150,6 +151,7 @@ cargo run -p loom-server
 | POST | `/api/v1/forge/inventory` | body `{ "path": "<crate-or-workspace>" }` static scan |
 | POST | `/api/v1/forge/extract` | public API candidates from `src/` |
 | POST | `/api/v1/graph/propose_patch` | body `{ project? }` — relative pilot GraphPatch |
+| POST | `/api/v1/graph/propose_intent` | body `{ project, intent }` — heuristic or LLM (ops only) |
 | POST | `/api/v1/graph/apply_patch` | body `{ project, patch }` |
 
 ### Forge (static inventory)
@@ -195,6 +197,20 @@ cargo test -p wvx-conformance
 Go/No-Go evidence for Gates **A** (interchangeability) and **D** (dynamic≡static) is recorded in
 [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md)
 (**A: Go parse** — 3 parse backends incl. `json-crate.parse@1`; **D: Go pilot** as of 2026-08-12).
+
+### Intent → GraphPatch (Cortex)
+
+```bash
+# Offline heuristics (no API key):
+cargo run -p wvx-cli -- patch intent "install the pilot json pipeline"
+cargo run -p wvx-cli -- patch intent "use pretty serialize" --project fixtures/pilot-json-pipeline.wvx.json
+cargo run -p wvx-cli -- patch intent "switch parse to json-crate" --project fixtures/pilot-json-pipeline.wvx.json
+
+# LLM (server-side only): set XAI_API_KEY, optional WVX_LLM_MODEL / XAI_BASE_URL
+# Never put the key in the Studio browser bundle.
+```
+
+Studio: toolbar **intent** field + **Propose intent** → Accept/Reject (same ghost banner as rule propose).
 
 ## Pilot scope (`0.1`)
 

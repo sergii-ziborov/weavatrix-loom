@@ -22,6 +22,7 @@ wvx-registry-client = { workspace = true }
 wvx-project-graph = { workspace = true }
 wvx-runtime = { workspace = true }
 wvx-types = { workspace = true }
+wvx-ir = { workspace = true }
 
 [lints]
 workspace = true

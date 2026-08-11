@@ -11,8 +11,8 @@ use serde::Deserialize;
 use wvx_command_bus::{
     forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch, implementations_list,
     project_export_rust_hydrated, project_run_hydrated, project_validate_hydrated,
-    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
-    BusResponse, PROTOCOL_VERSION,
+    graph_propose_intent, registry_implementations, registry_inspect, registry_search,
+    registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
 };
 use wvx_ir::Project;
 use wvx_project_graph::GraphPatch;
@@ -34,6 +34,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
         .route("/api/v1/forge/extract", post(forge_extract_handler))
         .route("/api/v1/graph/propose_patch", post(propose_patch))
+        .route("/api/v1/graph/propose_intent", post(propose_intent))
         .route("/api/v1/graph/validate_patch", post(validate_patch))
         .route("/api/v1/graph/apply_patch", post(apply_patch))
         .with_state(state)
@@ -277,6 +278,26 @@ async fn propose_patch(
 }
 
 #[derive(Debug, Deserialize)]
+struct ProposeIntentBody {
+    intent: String,
+    project: Project,
+}
+
+async fn propose_intent(
+    State(state): State<AppState>,
+    Json(body): Json<ProposeIntentBody>,
+) -> Response {
+    match graph_propose_intent(
+        Some(state.registry.as_ref()),
+        &body.project,
+        &body.intent,
+    ) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct PatchBody {
     project: Project,
     patch: GraphPatch,
@@ -302,7 +323,8 @@ fn bus_error(e: BusError) -> Response {
         | BusError::Run(_)
         | BusError::Compile(_)
         | BusError::Forge(_)
-        | BusError::Patch(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        | BusError::Patch(_)
+        | BusError::Cortex(_) => StatusCode::UNPROCESSABLE_ENTITY,
         BusError::Registry(_) => StatusCode::BAD_REQUEST,
         BusError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };

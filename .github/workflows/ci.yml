@@ -54,6 +54,13 @@ jobs:
           cargo run -p wvx-cli --quiet -- run fixtures/pilot-json-pipeline.wvx.json \
             --impl parse=json-crate.parse@1
 
+      - name: Cortex intent heuristics (no API key)
+        run: |
+          cargo test -p wvx-cortex -- --nocapture
+          cargo run -p wvx-cli --quiet -- patch intent "install the pilot json pipeline"
+          cargo run -p wvx-cli --quiet -- patch intent "use pretty serialize" \
+            --project fixtures/pilot-json-pipeline.wvx.json
+
   docs-and-schemas:
     name: Schemas present
     runs-on: ubuntu-latest

@@ -26,6 +26,7 @@ use wvx_runtime::{
 };
 use wvx_types::WvxValue;
 use wvx_validator::{validate_project, ValidationReport};
+use wvx_cortex::{propose_from_intent, CortexError, IntentProposeResult};
 
 pub const PROTOCOL_VERSION: &str = "0.1";
 
@@ -45,6 +46,14 @@ pub enum BusError {
     Forge(String),
     #[error("patch: {0}")]
     Patch(String),
+    #[error("cortex: {0}")]
+    Cortex(String),
+}
+
+impl From<CortexError> for BusError {
+    fn from(value: CortexError) -> Self {
+        BusError::Cortex(value.to_string())
+    }
 }
 
 impl From<PatchError> for BusError {
@@ -308,6 +317,31 @@ pub fn graph_propose_patch(
     Ok(BusResponse::ok(propose_json_pipeline_patch_relative(
         project, &caps,
     )))
+}
+
+/// Propose a GraphPatch from natural-language intent (ops only).
+///
+/// Uses offline heuristics when possible; otherwise xAI (`XAI_API_KEY`).
+/// Never auto-applies — caller must `graph_apply_patch` after user approval.
+pub fn graph_propose_intent(
+    registry: Option<&LocalRegistry>,
+    project: &Project,
+    intent: &str,
+) -> Result<BusResponse<IntentProposeResult>, BusError> {
+    let caps = if let Some(reg) = registry {
+        reg.list_capabilities()?
+    } else {
+        Vec::new()
+    };
+    let result = propose_from_intent(intent, project, &caps)?;
+    let mut resp = BusResponse::ok(result);
+    if !resp.data.as_ref().map(|d| d.dry_run_ok).unwrap_or(false) {
+        if let Some(d) = &resp.data {
+            resp.diagnostics = d.dry_run_errors.clone();
+            // Keep ok=true so clients still receive the patch for review (ghost).
+        }
+    }
+    Ok(resp)
 }
 
 /// Validate a patch against a project (does not persist).

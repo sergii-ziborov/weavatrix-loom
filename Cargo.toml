@@ -14,6 +14,7 @@ members = [
     "crates/wvx-forge",
     "crates/wvx-adapters",
     "crates/wvx-conformance",
+    "crates/wvx-cortex",
     "crates/loom-server",
 ]
 default-members = [
@@ -43,11 +44,13 @@ wvx-command-bus = { path = "crates/wvx-command-bus", version = "0.1.0" }
 wvx-forge = { path = "crates/wvx-forge", version = "0.1.0" }
 wvx-adapters = { path = "crates/wvx-adapters", version = "0.1.0" }
 wvx-conformance = { path = "crates/wvx-conformance", version = "0.1.0" }
+wvx-cortex = { path = "crates/wvx-cortex", version = "0.1.0" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
 mcport = "0.5.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 axum = { version = "0.8", features = ["json", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }

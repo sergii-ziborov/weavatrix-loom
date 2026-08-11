@@ -1,5 +1,5 @@
 [package]
-name = "wvx-command-bus"
+name = "wvx-cortex"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,22 +7,17 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Shared semantic command surface for Loom CLI, MCP, and HTTP hosts"
+description = "Intent → GraphPatch (rule heuristics + optional xAI LLM); ops only"
 publish.workspace = true
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-wvx-compiler-rust = { workspace = true }
-wvx-forge = { workspace = true }
+reqwest = { workspace = true }
 wvx-ir = { workspace = true }
 wvx-project-graph = { workspace = true }
-wvx-registry-client = { workspace = true }
-wvx-runtime = { workspace = true }
 wvx-types = { workspace = true }
-wvx-validator = { workspace = true }
-wvx-cortex = { workspace = true }
 
 [lints]
 workspace = true

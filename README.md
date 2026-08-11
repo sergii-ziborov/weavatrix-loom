@@ -173,6 +173,10 @@ cargo run -p wvx-cli -- conformance --golden
 cargo test -p wvx-conformance
 ```
 
+Go/No-Go evidence for Gates **A** (interchangeability) and **D** (dynamic≡static) is recorded in
+[`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md)
+(**A: Go partial**, **D: Go pilot** as of 2026-08-12).
+
 ## Pilot scope (`0.1`)
 
 The first vertical slice is a pure data-transform pipeline:

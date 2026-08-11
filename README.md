@@ -131,6 +131,17 @@ cargo run -p loom-server
 
 CORS is open for local Studio development. Bind stays loopback by default.
 
+## Loom Studio (separate repo)
+
+The visual editor lives in the sibling repository **`loom-studio`** (not this
+crate). Run the server here, then:
+
+```bash
+cd ../loom-studio
+npm install
+npm run dev
+```
+
 ## Pilot scope (`0.1`)
 
 The first vertical slice is a pure data-transform pipeline:

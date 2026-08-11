@@ -172,5 +172,5 @@ Registry: `registry-dev/`
 2. Next evidence upgrades:
    - Expand JSON vectors (unicode, deep trees, invalid-input error codes).
    - Optional second `path_set` backend if that capability becomes swap-critical.
-   - CI job: `cargo test -p wvx-conformance` on every PR.
+   - CI: `.github/workflows/ci.yml` already runs `wvx conformance` + `cargo test -p wvx-conformance` on every PR.
 3. Do not expand registry beyond pure transforms until Gate D remains green when new adapters land.

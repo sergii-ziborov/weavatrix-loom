@@ -65,6 +65,15 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | `wvx-cli` | Command-line entry point |
 | `wvx-mcp` | Bounded MCP tools over the command bus ([`mcport`](https://crates.io/crates/mcport)) |
 
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`:
+
+1. `cargo check --workspace` + `cargo test --workspace`
+2. **Gates A/D:** `wvx conformance` + `cargo test -p wvx-conformance` (includes golden export)
+3. Smoke run with `json-crate.parse@1`
+4. Presence checks for schemas / ADRs / pilot fixture
+
 ## Quick start
 
 ```bash

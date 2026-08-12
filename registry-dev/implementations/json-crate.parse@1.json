@@ -1,14 +1,27 @@
 {
-  "id": "json-crate.parse",
-  "version": "1",
-  "capability": { "id": "data.json.parse", "version": "1" },
-  "source": {
-    "kind": "crates-io",
-    "package": "json",
-    "package_version": "0.12"
-  },
-  "adapter": {
-    "crate_name": "wvx-adapter-json-crate-parse",
-    "execution": "native-rust"
-  }
+    "id":  "json-crate.parse",
+    "version":  "1",
+    "capability":  {
+                       "id":  "data.json.parse",
+                       "version":  "1"
+                   },
+    "source":  {
+                   "kind":  "crates-io",
+                   "package":  "json",
+                   "package_version":  "0.12"
+               },
+    "adapter":  {
+                    "crate_name":  "wvx-adapter-json-crate-parse",
+                    "execution":  "native-rust"
+                },
+    "status":  "conformant",
+    "evidence":  {
+                     "build":  "pass",
+                     "conformance":  "pass",
+                     "benchmark":  "absent",
+                     "license":  "pass",
+                     "security":  "absent"
+                 },
+    "notes":  "JSON pilot; Gate A vectors pass. Not production admission."
 }
+

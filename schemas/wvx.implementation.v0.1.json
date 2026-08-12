@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weavatrix.com/schemas/wvx.implementation.v0.1.json",
+  "title": "WVX Implementation Manifest v0.1",
+  "description": "Registry implementation document (registry-dev/implementations/*.json). Lifecycle labels and multi-fact evidence follow ADR-0007/0008 — no global readiness percentage.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["id", "version", "capability"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "capability": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string" },
+        "package": { "type": "string" },
+        "package_version": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "properties": {
+        "crate_name": { "type": "string" },
+        "execution": { "type": "string" }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["inventory_only", "candidate", "conformant", "admitted"],
+      "description": "Lifecycle chip only — not an aggregate score",
+      "default": "candidate"
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Independent axes; each is pass|fail|absent|unknown",
+      "properties": {
+        "build": { "$ref": "#/$defs/axisFact" },
+        "conformance": { "$ref": "#/$defs/axisFact" },
+        "benchmark": { "$ref": "#/$defs/axisFact" },
+        "license": { "$ref": "#/$defs/axisFact" },
+        "security": { "$ref": "#/$defs/axisFact" }
+      },
+      "additionalProperties": false
+    },
+    "notes": { "type": "string" }
+  },
+  "$defs": {
+    "axisFact": {
+      "type": "string",
+      "enum": ["pass", "fail", "absent", "unknown"]
+    }
+  }
+}

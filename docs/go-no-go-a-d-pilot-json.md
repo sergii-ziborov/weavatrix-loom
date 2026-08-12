@@ -179,7 +179,7 @@ Registry: `registry-dev/`
 |------|--------|-----------------|
 | **B** Visual advantage | Open | No timed UX study vs raw crates |
 | **C** Forge economics | Open | Inventory/extract only; no auto adapter cost study |
-| **E** Registry trust | Open | No reproducible benchmark/provenance admission pipeline |
+| **E** Registry trust | Open | Lifecycle chips + multi-fact evidence fields exist on pilot manifests; no reproducible benchmark/provenance **admission** pipeline yet |
 
 ---
 

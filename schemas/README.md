@@ -6,6 +6,7 @@ JSON Schema (draft 2020-12) for WVX wire documents.
 |------|---------|
 | [`wvx.project.v0.1.json`](wvx.project.v0.1.json) | Project document (`.wvx.json`) |
 | [`wvx.capability.v0.1.json`](wvx.capability.v0.1.json) | Registry capability contract |
+| [`wvx.implementation.v0.1.json`](wvx.implementation.v0.1.json) | Registry implementation manifest (+ lifecycle / evidence) |
 | [`wvx.graph_patch.v0.1.json`](wvx.graph_patch.v0.1.json) | GraphPatch batch |
 
 ## Source of truth

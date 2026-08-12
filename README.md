@@ -69,7 +69,7 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | `wvx-validator` | Structural and type validation |
 | `wvx-runtime` | Dynamic playground execution (erased values) |
 | `wvx-compiler-rust` | Export a validated graph to a native Rust workspace |
-| `wvx-registry-client` | Read a local capability registry |
+| `wvx-registry-client` | Read a local capability registry (lifecycle + multi-fact evidence hits) |
 | `wvx-command-bus` | Shared semantic API for CLI, MCP, and HTTP |
 | `wvx-cli` | Command-line entry point |
 | `wvx-mcp` | Bounded MCP tools over the command bus ([`mcport`](https://crates.io/crates/mcport)) |

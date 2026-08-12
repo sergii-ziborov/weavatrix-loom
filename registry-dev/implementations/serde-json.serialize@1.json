@@ -1,14 +1,27 @@
 {
-  "id": "serde-json.serialize",
-  "version": "1",
-  "capability": { "id": "data.json.serialize", "version": "1" },
-  "source": {
-    "kind": "crates-io",
-    "package": "serde_json",
-    "package_version": "1"
-  },
-  "adapter": {
-    "crate_name": "wvx-adapter-serde-json-serialize",
-    "execution": "native-rust"
-  }
+    "id":  "serde-json.serialize",
+    "version":  "1",
+    "capability":  {
+                       "id":  "data.json.serialize",
+                       "version":  "1"
+                   },
+    "source":  {
+                   "kind":  "crates-io",
+                   "package":  "serde_json",
+                   "package_version":  "1"
+               },
+    "adapter":  {
+                    "crate_name":  "wvx-adapter-serde-json-serialize",
+                    "execution":  "native-rust"
+                },
+    "status":  "conformant",
+    "evidence":  {
+                     "build":  "pass",
+                     "conformance":  "pass",
+                     "benchmark":  "absent",
+                     "license":  "pass",
+                     "security":  "absent"
+                 },
+    "notes":  "JSON pilot; Gate A vectors pass. Not production admission."
 }
+

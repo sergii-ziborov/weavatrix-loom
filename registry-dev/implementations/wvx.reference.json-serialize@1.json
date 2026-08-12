@@ -1,14 +1,27 @@
 {
-  "id": "wvx.reference.json-serialize",
-  "version": "1",
-  "capability": { "id": "data.json.serialize", "version": "1" },
-  "source": {
-    "kind": "pilot-reference",
-    "package": "wvx-runtime-lite-json",
-    "package_version": "0.1.0"
-  },
-  "adapter": {
-    "crate_name": "wvx-adapter-reference-json-serialize",
-    "execution": "native-rust"
-  }
+    "id":  "wvx.reference.json-serialize",
+    "version":  "1",
+    "capability":  {
+                       "id":  "data.json.serialize",
+                       "version":  "1"
+                   },
+    "source":  {
+                   "kind":  "pilot-reference",
+                   "package":  "wvx-runtime-lite-json",
+                   "package_version":  "0.1.0"
+               },
+    "adapter":  {
+                    "crate_name":  "wvx-adapter-reference-json-serialize",
+                    "execution":  "native-rust"
+                },
+    "status":  "conformant",
+    "evidence":  {
+                     "build":  "pass",
+                     "conformance":  "pass",
+                     "benchmark":  "absent",
+                     "license":  "pass",
+                     "security":  "absent"
+                 },
+    "notes":  "JSON pilot; Gate A vectors pass. Not production admission."
 }
+

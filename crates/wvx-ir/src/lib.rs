@@ -82,6 +82,70 @@ impl Capability {
     }
 }
 
+/// Lifecycle label for an implementation (ADR-0008 — not a readiness %).
+///
+/// - `inventory_only` — Forge/scan only, no adapter contract yet  
+/// - `candidate` — adapter exists; evidence incomplete  
+/// - `conformant` — shared capability vectors pass  
+/// - `admitted` — policy + multi-fact admission (not claimed in pilot)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleStatus {
+    InventoryOnly,
+    #[default]
+    Candidate,
+    Conformant,
+    Admitted,
+}
+
+impl LifecycleStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::InventoryOnly => "inventory_only",
+            Self::Candidate => "candidate",
+            Self::Conformant => "conformant",
+            Self::Admitted => "admitted",
+        }
+    }
+}
+
+/// Single evidence axis fact (build / conformance / …). Never a global score.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AxisFact {
+    Pass,
+    Fail,
+    #[default]
+    Absent,
+    Unknown,
+}
+
+impl AxisFact {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::Absent => "absent",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Discrete multi-fact evidence bundle (ADR-0007 / 0008).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ImplementationEvidence {
+    #[serde(default)]
+    pub build: AxisFact,
+    #[serde(default)]
+    pub conformance: AxisFact,
+    #[serde(default)]
+    pub benchmark: AxisFact,
+    #[serde(default)]
+    pub license: AxisFact,
+    #[serde(default)]
+    pub security: AxisFact,
+}
+
 /// Concrete Rust implementation of a capability.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Implementation {
@@ -92,6 +156,15 @@ pub struct Implementation {
     pub source: ImplementationSource,
     #[serde(default)]
     pub adapter: Option<AdapterRef>,
+    /// Lifecycle chip for UI / policy (defaults to `candidate` if omitted).
+    #[serde(default)]
+    pub status: LifecycleStatus,
+    /// Per-axis facts; missing axes deserialize as `absent`.
+    #[serde(default)]
+    pub evidence: ImplementationEvidence,
+    /// Free-form note (e.g. "pilot only").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
 }
 
 impl Implementation {
@@ -109,6 +182,9 @@ pub struct ImplementationSource {
     pub package: String,
     #[serde(default)]
     pub package_version: String,
+    /// Optional extra provenance text for humans/tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

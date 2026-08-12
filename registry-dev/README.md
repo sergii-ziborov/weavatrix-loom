@@ -14,10 +14,23 @@ registry-dev/
 └── README.md
 ```
 
-## Status
+## Status & evidence labels (ADR-0008)
 
 All entries are **pilot** quality: enough for the JSON pipeline vertical slice
-and playground/export adapters. They are not a claim of production admission.
+and playground/export adapters. They are **not** a claim of production admission.
+
+Each implementation manifest may carry:
+
+| Field | Meaning |
+| --- | --- |
+| `status` | Lifecycle chip only: `inventory_only` · `candidate` · `conformant` · `admitted` |
+| `evidence` | Independent axes: `build`, `conformance`, `benchmark`, `license`, `security` → `pass` / `fail` / `absent` / `unknown` |
+
+There is **no** global readiness percentage. Pilot transform impls under Gate A
+vectors are labeled `conformant` with `conformance: pass`. I/O seed/sink is
+`candidate` (`conformance: absent`). Nothing is `admitted` in v0.1.
+
+Schema: [`schemas/wvx.implementation.v0.1.json`](../schemas/wvx.implementation.v0.1.json).
 
 ## Query
 

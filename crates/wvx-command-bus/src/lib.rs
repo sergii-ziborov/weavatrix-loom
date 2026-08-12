@@ -243,18 +243,13 @@ pub fn registry_implementations(
         registry
             .implementations_for_capability(cap)?
             .into_iter()
-            .map(|i| ImplementationHit {
-                full_id: i.full_id(),
-                capability: i.capability.as_key(),
-                source_kind: i.source.kind,
-                package: i.source.package,
-                adapter: i.adapter.map(|a| a.crate_name),
-            })
+            .map(wvx_registry_client::hit_from_implementation)
             .filter(|h| {
                 let q = query.trim().to_ascii_lowercase();
                 q.is_empty()
                     || h.full_id.to_ascii_lowercase().contains(&q)
                     || h.package.to_ascii_lowercase().contains(&q)
+                    || h.status.to_ascii_lowercase().contains(&q)
             })
             .collect()
     } else {

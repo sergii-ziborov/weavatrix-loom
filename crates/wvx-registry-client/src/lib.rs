@@ -48,6 +48,38 @@ pub struct ImplementationHit {
     pub source_kind: String,
     pub package: String,
     pub adapter: Option<String>,
+    /// Lifecycle label: inventory_only | candidate | conformant | admitted
+    #[serde(default)]
+    pub status: String,
+    /// Discrete evidence axes (build, conformance, …) → pass|fail|absent|unknown
+    #[serde(default)]
+    pub evidence: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+/// Map a full implementation manifest to a list/search hit (includes status + evidence).
+pub fn hit_from_implementation(i: Implementation) -> ImplementationHit {
+    use wvx_ir::AxisFact;
+    let mut evidence = BTreeMap::new();
+    let push = |m: &mut BTreeMap<String, String>, k: &str, v: AxisFact| {
+        m.insert(k.into(), v.as_str().into());
+    };
+    push(&mut evidence, "build", i.evidence.build);
+    push(&mut evidence, "conformance", i.evidence.conformance);
+    push(&mut evidence, "benchmark", i.evidence.benchmark);
+    push(&mut evidence, "license", i.evidence.license);
+    push(&mut evidence, "security", i.evidence.security);
+    ImplementationHit {
+        full_id: i.full_id(),
+        capability: i.capability.as_key(),
+        source_kind: i.source.kind,
+        package: i.source.package,
+        adapter: i.adapter.map(|a| a.crate_name),
+        status: i.status.as_str().into(),
+        evidence,
+        notes: i.notes,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,13 +281,7 @@ impl LocalRegistry {
                     || i.source.package.to_ascii_lowercase().contains(&q)
                     || i.source.kind.to_ascii_lowercase().contains(&q)
             })
-            .map(|i| ImplementationHit {
-                full_id: i.full_id(),
-                capability: i.capability.as_key(),
-                source_kind: i.source.kind,
-                package: i.source.package,
-                adapter: i.adapter.map(|a| a.crate_name),
-            })
+            .map(hit_from_implementation)
             .collect())
     }
 

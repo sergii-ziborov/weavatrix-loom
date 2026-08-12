@@ -1,14 +1,27 @@
 {
-  "id": "wvx.reference.io-output-bytes",
-  "version": "1",
-  "capability": { "id": "io.output.bytes", "version": "1" },
-  "source": {
-    "kind": "pilot-reference",
-    "package": "wvx-runtime",
-    "package_version": "0.1.0"
-  },
-  "adapter": {
-    "crate_name": "wvx-adapter-reference-io-output",
-    "execution": "native-rust"
-  }
+    "id":  "wvx.reference.io-output-bytes",
+    "version":  "1",
+    "capability":  {
+                       "id":  "io.output.bytes",
+                       "version":  "1"
+                   },
+    "source":  {
+                   "kind":  "pilot-reference",
+                   "package":  "wvx-runtime",
+                   "package_version":  "0.1.0"
+               },
+    "adapter":  {
+                    "crate_name":  "wvx-adapter-reference-io-output",
+                    "execution":  "native-rust"
+                },
+    "status":  "candidate",
+    "evidence":  {
+                     "build":  "pass",
+                     "conformance":  "absent",
+                     "benchmark":  "absent",
+                     "license":  "pass",
+                     "security":  "absent"
+                 },
+    "notes":  "Pilot seed/sink; no multi-impl conformance suite. Not production admission."
 }
+

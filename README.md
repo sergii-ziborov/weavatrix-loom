@@ -9,8 +9,9 @@ can have one or more Rust implementations that share a contract, tests, and
 measured characteristics. Loom turns a typed graph of those capabilities into a
 normal, readable Rust workspace.
 
-> **Status:** public **v0.1 pilot** (JSON transform vertical). Core libs, CLI, MCP,
-> HTTP server, conformance/golden (Gates A/D), Forge static inventory, and Cortex
+> **Status:** public **v0.1 pilot** (JSON transform vertical) with **Gate F SDK path**
+> and **Forge v2 pilot** (AST extract, ontology match, compileable adapters, Gate C
+> harness). Core libs, CLI, MCP, HTTP, conformance (Gates A/D/E/F pilot), and Cortex
 > intent→GraphPatch live in this repo. The visual UI is the sibling
 > **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**.
 
@@ -18,8 +19,9 @@ normal, readable Rust workspace.
 
 ![Loom Studio — JSON pilot pipeline](docs/images/studio-pilot.png)
 
-*Design canvas: library + typed graph, multi-impl swap with per-impl Run, run trace,
-and optional intent → GraphPatch. UI lives in [loom-studio](https://github.com/sergii-ziborov/loom-studio).*
+*Design canvas: library + typed graph (roomier auto-layout), multi-impl swap with
+per-impl Run, run trace, Forge (match / compile / Gate C), and optional intent →
+GraphPatch. UI lives in [loom-studio](https://github.com/sergii-ziborov/loom-studio).*
 
 ## Why
 
@@ -76,7 +78,7 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | `wvx-adapters` | Pilot JSON implementations (parse / serialize / path_set) |
 | `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) |
 | `wvx-adapter-external-demo` | External fixture (`upper_parse`) — not in pilot match tables |
-| `wvx-forge` | Static crate inventory + public API extract |
+| `wvx-forge` | Inventory, AST extract, ontology match, compileable adapters, Gate C pilot |
 | `wvx-conformance` | Capability vectors (pos/neg error codes) + golden (dynamic ≡ export) |
 | `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) |
 | `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) |

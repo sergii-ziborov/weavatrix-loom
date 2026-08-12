@@ -75,35 +75,35 @@
       "capability": { "id": "io.input.bytes", "version": "1" },
       "implementation": null,
       "config": {},
-      "ui": { "x": 40, "y": 120 }
+      "ui": { "x": 56, "y": 120 }
     },
     {
       "id": "parse",
       "capability": { "id": "data.json.parse", "version": "1" },
       "implementation": "serde-json.parse-owned@1",
       "config": {},
-      "ui": { "x": 280, "y": 120 }
+      "ui": { "x": 436, "y": 120 }
     },
     {
       "id": "path_set",
       "capability": { "id": "data.json.path_set", "version": "1" },
       "implementation": "wvx.reference.path-set@1",
       "config": { "path": "/tag", "value": "loom" },
-      "ui": { "x": 520, "y": 120 }
+      "ui": { "x": 816, "y": 120 }
     },
     {
       "id": "serialize",
       "capability": { "id": "data.json.serialize", "version": "1" },
       "implementation": "serde-json.serialize@1",
       "config": {},
-      "ui": { "x": 760, "y": 120 }
+      "ui": { "x": 1196, "y": 120 }
     },
     {
       "id": "output",
       "capability": { "id": "io.output.bytes", "version": "1" },
       "implementation": null,
       "config": {},
-      "ui": { "x": 1000, "y": 120 }
+      "ui": { "x": 1576, "y": 120 }
     }
   ],
   "bindings": [

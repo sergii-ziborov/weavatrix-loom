@@ -19,6 +19,7 @@ use wvx_project_graph::{
 use wvx_registry_client::{
     CapabilityHit, ImplementationHit, LocalRegistry, RegistryError, RegistrySummary,
 };
+use wvx_registry_client::AdmissionReport;
 use std::collections::BTreeMap;
 use wvx_runtime::{
     apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
@@ -256,6 +257,15 @@ pub fn registry_implementations(
         registry.search_implementations(query)?
     };
     Ok(BusResponse::ok(hits))
+}
+
+/// Audit declared lifecycle status vs multi-fact evidence (overclaim = fail).
+///
+/// Not full Gate E admission — automated consistency check only (ADR-0007/0008).
+pub fn registry_admission_audit(
+    registry: &LocalRegistry,
+) -> Result<BusResponse<AdmissionReport>, BusError> {
+    Ok(BusResponse::ok(registry.audit_admission()?))
 }
 
 /// Inspect one capability or implementation by key (`data.json.parse@1` or impl full id).

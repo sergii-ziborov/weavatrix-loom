@@ -9,7 +9,8 @@ use wvx_command_bus::{
     forge_extract, forge_inventory, graph_apply_patch, graph_propose_intent, graph_propose_patch,
     implementations_list,
     load_project_path, project_export_rust, project_export_to_dir, project_run, project_validate,
-    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
+    registry_admission_audit, registry_implementations, registry_inspect, registry_search,
+    registry_summary, BusError,
 };
 use wvx_project_graph::GraphPatch;
 use wvx_registry_client::LocalRegistry;
@@ -64,6 +65,7 @@ Usage:
   wvx registry search [query] [--path <dir>]
   wvx registry implementations [--capability key] [query] [--path <dir>]
   wvx registry inspect <key> [--path <dir>]
+  wvx registry check|audit [--path <dir>]   lifecycle vs evidence (overclaim fail)
   wvx forge inventory <crate-or-workspace-path>
   wvx forge extract <crate-path>
   wvx patch propose [project.wvx.json]   relative if project given; full pilot if omitted
@@ -384,7 +386,7 @@ fn cmd_patch(args: &[String]) -> ExitCode {
 
 fn cmd_registry(args: &[String]) -> ExitCode {
     if args.is_empty() {
-        eprintln!("usage: wvx registry <summary|search|implementations|inspect> ...");
+        eprintln!("usage: wvx registry <summary|search|implementations|inspect|check> ...");
         return ExitCode::FAILURE;
     }
     let sub = args[0].as_str();
@@ -428,6 +430,48 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 return ExitCode::FAILURE;
             };
             registry_inspect(&reg, key).map(|r| serde_json::to_string_pretty(&r).unwrap())
+        }
+        "check" | "audit" | "admission" => {
+            match registry_admission_audit(&reg) {
+                Ok(resp) => {
+                    let report = resp.data.as_ref();
+                    if let Some(r) = report {
+                        eprintln!(
+                            "admission audit: {} checked, {} overclaim, {} underclaim — {}",
+                            r.checked,
+                            r.overclaims,
+                            r.underclaims,
+                            if r.ok { "PASS" } else { "FAIL" }
+                        );
+                        for item in &r.items {
+                            if item.overclaim || item.underclaim || !item.findings.is_empty() {
+                                let mark = if item.overclaim {
+                                    "OVER"
+                                } else if item.underclaim {
+                                    "under"
+                                } else {
+                                    "info"
+                                };
+                                eprintln!(
+                                    "  [{mark}] {} declared={} justified={}",
+                                    item.full_id, item.declared, item.justified
+                                );
+                                for f in &item.findings {
+                                    eprintln!("         {}: {}", f.severity, f.message);
+                                }
+                            }
+                        }
+                    }
+                    let text = serde_json::to_string_pretty(&resp).unwrap();
+                    if resp.data.as_ref().map(|d| d.ok).unwrap_or(false) {
+                        Ok(text)
+                    } else {
+                        println!("{text}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+                Err(e) => Err(e),
+            }
         }
         other => {
             eprintln!("unknown registry subcommand: {other}");

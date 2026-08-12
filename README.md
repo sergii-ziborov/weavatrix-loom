@@ -145,9 +145,12 @@ cargo run -p wvx-cli -- registry summary
 cargo run -p wvx-cli -- registry search json
 cargo run -p wvx-cli -- registry implementations --capability data.json.parse@1
 cargo run -p wvx-cli -- registry inspect serde-json.parse-owned@1
+
+# Lifecycle vs multi-fact evidence (overclaim = fail; not full Gate E)
+cargo run -p wvx-cli -- registry check
 ```
 
-Override the path with `--path` or `WVX_REGISTRY`.
+Override the path with `--path` or `WVX_REGISTRY`. See [`docs/admission-pilot.md`](docs/admission-pilot.md).
 
 ## HTTP server
 
@@ -168,6 +171,7 @@ cargo run -p loom-server
 | GET | `/api/v1/registry/search?q=` | |
 | GET | `/api/v1/registry/implementations?capability=` | |
 | GET | `/api/v1/registry/inspect/{key}` | |
+| GET | `/api/v1/registry/admission` | lifecycle vs evidence audit (overclaim) |
 | GET | `/api/v1/pilot/implementations` | playground handler catalog |
 | POST | `/api/v1/forge/inventory` | body `{ "path": "<crate-or-workspace>" }` static scan |
 | POST | `/api/v1/forge/extract` | public API candidates from `src/` |

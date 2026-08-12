@@ -11,8 +11,8 @@ use serde::Deserialize;
 use wvx_command_bus::{
     forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch, implementations_list,
     project_export_rust_hydrated, project_run_hydrated, project_validate_hydrated,
-    graph_propose_intent, registry_implementations, registry_inspect, registry_search,
-    registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
+    graph_propose_intent, registry_admission_audit, registry_implementations, registry_inspect,
+    registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
 };
 use wvx_ir::Project;
 use wvx_project_graph::GraphPatch;
@@ -30,6 +30,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/registry/search", get(reg_search))
         .route("/api/v1/registry/implementations", get(reg_implementations))
         .route("/api/v1/registry/inspect/{key}", get(reg_inspect))
+        .route("/api/v1/registry/admission", get(reg_admission))
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
         .route("/api/v1/forge/extract", post(forge_extract_handler))
@@ -230,6 +231,15 @@ async fn reg_inspect(
             }
             Json(resp).into_response()
         }
+        Err(e) => bus_error(e),
+    }
+}
+
+/// Lifecycle vs evidence audit (overclaim detection). Not full Gate E.
+/// Always HTTP 200 with report body; `data.ok` is false on overclaims.
+async fn reg_admission(State(state): State<AppState>) -> Response {
+    match registry_admission_audit(state.registry.as_ref()) {
+        Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
 }

@@ -9,6 +9,13 @@
 //!   index/implementations.json
 //! ```
 
+pub mod admission;
+
+pub use admission::{
+    audit_implementations, check_implementation, justified_status, AdmissionReport,
+    ImplementationAdmission,
+};
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -283,6 +290,12 @@ impl LocalRegistry {
             })
             .map(hit_from_implementation)
             .collect())
+    }
+
+    /// Audit lifecycle labels vs evidence (overclaim detection). See [`admission`].
+    pub fn audit_admission(&self) -> Result<AdmissionReport, RegistryError> {
+        let impls = self.list_implementations()?;
+        Ok(audit_implementations(&impls))
     }
 
     /// Merge missing capability contracts from the registry into a project.

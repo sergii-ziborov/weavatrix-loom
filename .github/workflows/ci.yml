@@ -61,6 +61,9 @@ jobs:
           cargo run -p wvx-cli --quiet -- patch intent "use pretty serialize" \
             --project fixtures/pilot-json-pipeline.wvx.json
 
+      - name: Registry admission audit (overclaim check)
+        run: cargo run -p wvx-cli --quiet -- registry check
+
   docs-and-schemas:
     name: Schemas present
     runs-on: ubuntu-latest
@@ -72,6 +75,7 @@ jobs:
         run: |
           test -f schemas/wvx.project.v0.1.json
           test -f schemas/wvx.capability.v0.1.json
+          test -f schemas/wvx.implementation.v0.1.json
           test -f schemas/wvx.graph_patch.v0.1.json
           test -f docs/adr/README.md
           test -f docs/go-no-go-a-d-pilot-json.md

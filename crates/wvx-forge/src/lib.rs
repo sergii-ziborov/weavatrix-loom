@@ -4,16 +4,25 @@
 //! Cargo.toml / Cargo.lock metadata and source tree indicators.
 
 mod capability_match;
+mod compile_adapter;
 mod draft;
+mod economics;
 mod extract;
 
 pub use capability_match::{
     match_candidate, match_candidates, CapabilityMatch, CandidateMatchRow, MappingKind,
     MatchReport, OntologyCapability, OntologyPort,
 };
+pub use compile_adapter::{
+    compile_adapter_from_draft, compile_adapters_batch, CompileAdapterReport, CompileBatchReport,
+};
 pub use draft::{
     draft_adapters, draft_adapters_with_ontology, draft_from_extract, write_draft_files,
     AdapterDraft, DraftReport,
+};
+pub use economics::{
+    default_workspace_root, pilot_gate_c_expectations, pilot_ontology, run_gate_c_pilot,
+    GateCCaseResult, GateCReport,
 };
 pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 

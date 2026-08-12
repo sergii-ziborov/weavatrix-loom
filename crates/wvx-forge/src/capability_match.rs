@@ -120,13 +120,23 @@ pub fn match_candidate(
         let types_exact = cand_in == cap_in && cand_out == cap_out;
         let types_compatible = type_multisets_compatible(&cand_in, &cap_in)
             && type_multisets_compatible(&cand_out, &cap_out);
+        // path_set / config-augmented: fn takes (value, path, set_to) but capability
+        // ports are value→value; treat as compatible when family matches.
+        let config_augmented = family == Some("path_set")
+            && cap.id.contains("path_set")
+            && cand_out.iter().any(|t| t == "json.value")
+            && cand_in.iter().any(|t| t == "json.value");
 
         if types_exact {
             score += 100;
             rationale.push("port type multiset exact".into());
-        } else if types_compatible {
+        } else if types_compatible || config_augmented {
             score += 70;
-            rationale.push("port type multiset compatible".into());
+            if config_augmented && !types_compatible {
+                rationale.push("config-augmented path_set shape (value ports + config args)".into());
+            } else {
+                rationale.push("port type multiset compatible".into());
+            }
         } else {
             // weak partial: shared types
             let shared_in = shared_count(&cand_in, &cap_in);
@@ -168,7 +178,7 @@ pub fn match_candidate(
 
         let kind = if types_exact && score >= 100 {
             MappingKind::ExactShape
-        } else if types_compatible && score >= 70 {
+        } else if (types_compatible || config_augmented) && score >= 70 {
             MappingKind::CompatibleShape
         } else if score >= 40 {
             MappingKind::FamilyHint

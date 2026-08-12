@@ -1,9 +1,19 @@
 //! Stage 2: static public API extraction and candidate shapes (no code execution).
+//!
+//! FORGE-004: prefer **syn AST** for multiline functions, impl methods, and types.
+//! Falls back to line heuristics when a file fails to parse.
 
 use crate::ForgeError;
+use quote::ToTokens;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use syn::spanned::Spanned;
+use syn::visit::Visit;
+use syn::{
+    Fields, FnArg, Item, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, Pat, ReturnType,
+    Type, Visibility,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -21,10 +31,20 @@ pub struct ApiCandidate {
     pub name: String,
     pub path: String,
     pub line: usize,
-    /// Rough signature / declaration line (trimmed).
+    /// Full-ish signature / declaration (from AST when possible).
     pub signature: String,
-    /// Heuristic I/O shape for capability mapping (v0.1).
+    /// Heuristic I/O shape for capability mapping.
     pub shape: CandidateShape,
+    /// Extractor used: `ast` or `line`.
+    #[serde(default = "default_extractor")]
+    pub extractor: String,
+    /// Rust module path relative to crate root when known (e.g. `serde_json_parse_owned`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_path: Option<String>,
+}
+
+fn default_extractor() -> String {
+    "line".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -40,6 +60,11 @@ pub struct ExtractReport {
     pub package_name: String,
     pub candidates: Vec<ApiCandidate>,
     pub status: String,
+    /// How many source files used AST vs line fallback.
+    #[serde(default)]
+    pub files_ast: usize,
+    #[serde(default)]
+    pub files_line_fallback: usize,
 }
 
 /// Extract public API surface from a single package directory (src/).
@@ -59,19 +84,300 @@ pub fn extract_public_api(package_root: impl AsRef<Path>) -> Result<ExtractRepor
     collect_rs_files(&root.join("src"), &mut files, 0)?;
 
     let mut candidates = Vec::new();
+    let mut files_ast = 0usize;
+    let mut files_line_fallback = 0usize;
     for file in files {
         let text = fs::read_to_string(&file).map_err(|e| ForgeError::Io(file.clone(), e))?;
-        extract_from_source(&file, &text, &mut candidates);
+        let file_mod = module_path_for_file(root, &file);
+        match extract_from_ast(&file, &text, file_mod.as_deref()) {
+            Ok(mut list) => {
+                files_ast += 1;
+                candidates.append(&mut list);
+            }
+            Err(note) => {
+                files_line_fallback += 1;
+                let mut list = Vec::new();
+                extract_from_source_line(&file, &text, &mut list);
+                for c in &mut list {
+                    c.extractor = "line".into();
+                    c.module_path = file_mod.clone();
+                    c.shape.notes.push(format!("ast fallback: {note}"));
+                }
+                candidates.append(&mut list);
+            }
+        }
     }
 
     candidates.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
+
+    let status = if candidates.is_empty() {
+        "no_candidates".into()
+    } else if files_line_fallback == 0 {
+        "candidate_found_ast".into()
+    } else {
+        "candidate_found_mixed".into()
+    };
 
     Ok(ExtractReport {
         root: root.display().to_string(),
         package_name: name,
         candidates,
-        status: "candidate_found".into(),
+        status,
+        files_ast,
+        files_line_fallback,
     })
+}
+
+fn module_path_for_file(package_root: &Path, file: &Path) -> Option<String> {
+    let src = package_root.join("src");
+    let rel = file.strip_prefix(&src).ok()?;
+    let mut parts: Vec<String> = Vec::new();
+    for comp in rel.components() {
+        let s = comp.as_os_str().to_string_lossy();
+        if s.ends_with(".rs") {
+            let stem = s.trim_end_matches(".rs");
+            if stem == "lib" || stem == "mod" || stem == "main" {
+                continue;
+            }
+            parts.push(stem.to_string());
+        } else {
+            parts.push(s.to_string());
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("::"))
+    }
+}
+
+fn extract_from_ast(
+    path: &Path,
+    text: &str,
+    file_module: Option<&str>,
+) -> Result<Vec<ApiCandidate>, String> {
+    let file = syn::parse_file(text).map_err(|e| e.to_string())?;
+    let mut v = AstCollector {
+        path: path.display().to_string(),
+        file_module: file_module.map(str::to_string),
+        module_stack: Vec::new(),
+        out: Vec::new(),
+    };
+    v.visit_file(&file);
+    Ok(v.out)
+}
+
+struct AstCollector {
+    path: String,
+    file_module: Option<String>,
+    module_stack: Vec<String>,
+    out: Vec<ApiCandidate>,
+}
+
+impl AstCollector {
+    fn current_module(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if let Some(ref fm) = self.file_module {
+            parts.push(fm.clone());
+        }
+        parts.extend(self.module_stack.iter().cloned());
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("::"))
+        }
+    }
+
+    fn line_of<T: Spanned>(&self, node: &T) -> usize {
+        node.span().start().line
+    }
+
+    fn push_fn(&mut self, item: &ItemFn, inherent_self_ty: Option<&str>) {
+        if !is_public(&item.vis) {
+            return;
+        }
+        let name = item.sig.ident.to_string();
+        let signature = item.sig.to_token_stream().to_string().replace('\n', " ");
+        let mut shape = shape_from_syn_sig(&item.sig);
+        if let Some(ty) = inherent_self_ty {
+            shape.notes.push(format!("impl method on {ty}"));
+        }
+        if item.sig.asyncness.is_some() {
+            shape.notes.push("async".into());
+        }
+        self.out.push(ApiCandidate {
+            kind: CandidateKind::Function,
+            name,
+            path: self.path.clone(),
+            line: self.line_of(item),
+            signature: signature.chars().take(300).collect(),
+            shape,
+            extractor: "ast".into(),
+            module_path: self.current_module(),
+        });
+    }
+}
+
+impl<'ast> Visit<'ast> for AstCollector {
+    fn visit_item(&mut self, item: &'ast Item) {
+        match item {
+            Item::Fn(f) => self.push_fn(f, None),
+            Item::Struct(s) => self.push_struct(s),
+            Item::Enum(e) => self.push_enum(e),
+            Item::Trait(t) => self.push_trait(t),
+            Item::Impl(i) => self.visit_item_impl(i),
+            Item::Mod(m) => {
+                if let Some((_, items)) = &m.content {
+                    let name = m.ident.to_string();
+                    self.module_stack.push(name);
+                    for it in items {
+                        self.visit_item(it);
+                    }
+                    self.module_stack.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn visit_item_impl(&mut self, i: &'ast ItemImpl) {
+        // Skip trait impls for adapter candidates (inherent methods only).
+        if i.trait_.is_some() {
+            return;
+        }
+        let self_ty = type_to_string(&i.self_ty);
+        for item in &i.items {
+            if let syn::ImplItem::Fn(method) = item {
+                if !is_public(&method.vis) {
+                    continue;
+                }
+                // Reuse ItemFn-shaped push via temporary conversion of signature.
+                let name = method.sig.ident.to_string();
+                let signature = method.sig.to_token_stream().to_string().replace('\n', " ");
+                let mut shape = shape_from_syn_sig(&method.sig);
+                shape.notes.push(format!("impl method on {self_ty}"));
+                self.out.push(ApiCandidate {
+                    kind: CandidateKind::Function,
+                    name,
+                    path: self.path.clone(),
+                    line: self.line_of(method),
+                    signature: signature.chars().take(300).collect(),
+                    shape,
+                    extractor: "ast".into(),
+                    module_path: self.current_module(),
+                });
+            }
+        }
+    }
+}
+
+impl AstCollector {
+    fn push_struct(&mut self, s: &ItemStruct) {
+        if !is_public(&s.vis) {
+            return;
+        }
+        let name = s.ident.to_string();
+        let fields = match &s.fields {
+            Fields::Named(n) => format!("{{ {} fields }}", n.named.len()),
+            Fields::Unnamed(u) => format!("( {} fields )", u.unnamed.len()),
+            Fields::Unit => "unit".into(),
+        };
+        self.out.push(ApiCandidate {
+            kind: CandidateKind::Struct,
+            name,
+            path: self.path.clone(),
+            line: self.line_of(s),
+            signature: format!("pub struct {} {fields}", s.ident),
+            shape: CandidateShape {
+                notes: vec!["type definition".into()],
+                ..Default::default()
+            },
+            extractor: "ast".into(),
+            module_path: self.current_module(),
+        });
+    }
+
+    fn push_enum(&mut self, e: &ItemEnum) {
+        if !is_public(&e.vis) {
+            return;
+        }
+        self.out.push(ApiCandidate {
+            kind: CandidateKind::Enum,
+            name: e.ident.to_string(),
+            path: self.path.clone(),
+            line: self.line_of(e),
+            signature: format!("pub enum {} {{ {} variants }}", e.ident, e.variants.len()),
+            shape: CandidateShape {
+                notes: vec!["type definition".into()],
+                ..Default::default()
+            },
+            extractor: "ast".into(),
+            module_path: self.current_module(),
+        });
+    }
+
+    fn push_trait(&mut self, t: &ItemTrait) {
+        if !is_public(&t.vis) {
+            return;
+        }
+        self.out.push(ApiCandidate {
+            kind: CandidateKind::Trait,
+            name: t.ident.to_string(),
+            path: self.path.clone(),
+            line: self.line_of(t),
+            signature: format!("pub trait {}", t.ident),
+            shape: CandidateShape {
+                notes: vec!["trait definition".into()],
+                ..Default::default()
+            },
+            extractor: "ast".into(),
+            module_path: self.current_module(),
+        });
+    }
+}
+
+fn is_public(vis: &Visibility) -> bool {
+    matches!(vis, Visibility::Public(_))
+}
+
+fn shape_from_syn_sig(sig: &syn::Signature) -> CandidateShape {
+    let mut shape = CandidateShape::default();
+    for arg in &sig.inputs {
+        match arg {
+            FnArg::Receiver(_) => {
+                shape.notes.push("has receiver".into());
+            }
+            FnArg::Typed(pat_ty) => {
+                if is_self_pat(&pat_ty.pat) {
+                    continue;
+                }
+                shape.inputs.push(normalize_rust_type(&type_to_string(&pat_ty.ty)));
+            }
+        }
+    }
+    match &sig.output {
+        ReturnType::Default => shape.outputs.push("unit".into()),
+        ReturnType::Type(_, ty) => {
+            shape.outputs.push(normalize_rust_type(&type_to_string(ty)));
+        }
+    }
+    if shape.inputs.iter().any(|t| t == "bytes" || t == "string")
+        && shape
+            .outputs
+            .iter()
+            .any(|t| t == "json.value" || t == "bytes" || t == "string")
+    {
+        shape.notes.push("possible data transform".into());
+    }
+    shape
+}
+
+fn is_self_pat(pat: &Pat) -> bool {
+    matches!(pat, Pat::Ident(i) if i.ident == "self")
+}
+
+fn type_to_string(ty: &Type) -> String {
+    ty.to_token_stream().to_string().replace(' ', "")
 }
 
 fn read_package_name(root: &Path) -> Option<String> {
@@ -110,7 +416,9 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>, depth: u32) -> Result<()
     Ok(())
 }
 
-fn extract_from_source(path: &Path, text: &str, out: &mut Vec<ApiCandidate>) {
+// --- line fallback (pre-AST / unparseable files) --------------------------------
+
+fn extract_from_source_line(path: &Path, text: &str, out: &mut Vec<ApiCandidate>) {
     for (idx, line) in text.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.starts_with("//") || trimmed.starts_with("///") {
@@ -125,6 +433,8 @@ fn extract_from_source(path: &Path, text: &str, out: &mut Vec<ApiCandidate>) {
                 line: idx + 1,
                 signature: trimmed.chars().take(200).collect(),
                 shape,
+                extractor: "line".into(),
+                module_path: None,
             });
         } else if let Some(name) = match_pub_item(trimmed, "struct") {
             out.push(ApiCandidate {
@@ -137,6 +447,8 @@ fn extract_from_source(path: &Path, text: &str, out: &mut Vec<ApiCandidate>) {
                     notes: vec!["type definition".into()],
                     ..Default::default()
                 },
+                extractor: "line".into(),
+                module_path: None,
             });
         } else if let Some(name) = match_pub_item(trimmed, "enum") {
             out.push(ApiCandidate {
@@ -149,6 +461,8 @@ fn extract_from_source(path: &Path, text: &str, out: &mut Vec<ApiCandidate>) {
                     notes: vec!["type definition".into()],
                     ..Default::default()
                 },
+                extractor: "line".into(),
+                module_path: None,
             });
         } else if let Some(name) = match_pub_item(trimmed, "trait") {
             out.push(ApiCandidate {
@@ -161,13 +475,14 @@ fn extract_from_source(path: &Path, text: &str, out: &mut Vec<ApiCandidate>) {
                     notes: vec!["trait definition".into()],
                     ..Default::default()
                 },
+                extractor: "line".into(),
+                module_path: None,
             });
         }
     }
 }
 
 fn match_pub_fn(line: &str) -> Option<String> {
-    // pub fn name / pub async fn name / pub(crate) fn — skip crate-private
     let line = line.trim_start();
     if !line.starts_with("pub fn ")
         && !line.starts_with("pub async fn ")
@@ -175,10 +490,7 @@ fn match_pub_fn(line: &str) -> Option<String> {
     {
         return None;
     }
-    let after = line
-        .find("fn ")
-        .map(|i| &line[i + 3..])?
-        .trim_start();
+    let after = line.find("fn ").map(|i| &line[i + 3..])?.trim_start();
     let name: String = after
         .chars()
         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
@@ -210,7 +522,6 @@ fn match_pub_item(line: &str, kind: &str) -> Option<String> {
 
 fn shape_from_fn_sig(sig: &str) -> CandidateShape {
     let mut shape = CandidateShape::default();
-    // Very rough: look at return type after `->`
     if let Some(ret) = sig.split("->").nth(1) {
         let ret = ret.trim().trim_end_matches('{').trim();
         if !ret.is_empty() {
@@ -219,7 +530,6 @@ fn shape_from_fn_sig(sig: &str) -> CandidateShape {
     } else {
         shape.outputs.push("unit".into());
     }
-    // Parameters between first ( and matching ) — simplified first paren pair
     if let Some(start) = sig.find('(') {
         if let Some(end) = sig[start + 1..].find(')') {
             let params = &sig[start + 1..start + 1 + end];
@@ -236,36 +546,33 @@ fn shape_from_fn_sig(sig: &str) -> CandidateShape {
             }
         }
     }
-    if shape.inputs.iter().any(|t| t.contains("[u8]") || t.contains("Vec<u8>") || t.contains("&str") || t.contains("String"))
-        && shape.outputs.iter().any(|t| t.contains("Value") || t.contains("String") || t.contains("Vec"))
-    {
-        shape.notes.push("possible data transform".into());
-    }
     shape
 }
 
-fn normalize_rust_type(ty: &str) -> String {
+pub(crate) fn normalize_rust_type(ty: &str) -> String {
     let full = ty.trim().trim_start_matches("pub ").trim();
-    // Prefer full signature (generics intact) for Result / Value detection.
-    let lower = full.to_ascii_lowercase();
+    let compact = full.replace(' ', "");
+    let lower = compact.to_ascii_lowercase();
     if lower.contains("&[u8]") || lower.contains("vec<u8>") {
         return "bytes".into();
     }
     if lower.contains("serde_json::value")
         || lower.contains("json::value")
-        || lower.contains("value")
-            && (lower.contains("result") || lower.ends_with("value") || lower.contains("value,"))
+        || (lower.contains("value")
+            && (lower.contains("result") || lower.ends_with("value") || lower.contains("value,")))
     {
-        // Result<Value, _> / Value / Option<Value>
         if lower.contains("value") {
             return "json.value".into();
         }
     }
-    if full == "Value" || full.ends_with("::Value") {
+    if compact == "Value" || compact.ends_with("::Value") {
         return "json.value".into();
     }
+    if lower == "&str" || lower == "string" || lower == "&string" {
+        return "string".into();
+    }
 
-    let t = full.split('<').next().unwrap_or(full).trim();
+    let t = compact.split('<').next().unwrap_or(&compact).trim();
     match t {
         "&[u8]" | "Vec<u8>" | "&Vec<u8>" => "bytes".into(),
         "&str" | "String" | "&String" => "string".into(),
@@ -285,13 +592,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extracts_from_wvx_types() {
+    fn extracts_from_wvx_types_ast() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../wvx-types");
         let report = extract_public_api(&root).unwrap();
+        assert!(report.files_ast > 0 || report.files_line_fallback > 0);
         assert!(
-            report.candidates.iter().any(|c| c.name.contains("Type") || c.kind == CandidateKind::Enum || matches!(c.kind, CandidateKind::Struct)),
-            "expected type definitions, got {:?}",
-            report.candidates.iter().map(|c| &c.name).collect::<Vec<_>>()
+            report.candidates.iter().any(|c| {
+                c.name.contains("Type")
+                    || c.kind == CandidateKind::Enum
+                    || matches!(c.kind, CandidateKind::Struct)
+            }),
+            "expected type definitions"
         );
     }
 
@@ -299,11 +610,7 @@ mod tests {
     fn parse_fn_shape() {
         let shape = shape_from_fn_sig("pub fn parse(bytes: &[u8]) -> Result<Value, String> {");
         assert!(shape.inputs.iter().any(|i| i == "bytes"));
-        assert!(
-            shape.outputs.iter().any(|o| o == "json.value"),
-            "expected json.value from Result<Value,_>, got {:?}",
-            shape.outputs
-        );
+        assert!(shape.outputs.iter().any(|o| o == "json.value"));
     }
 
     #[test]
@@ -311,5 +618,36 @@ mod tests {
         let shape = shape_from_fn_sig("pub fn to_vec(v: &Value) -> Result<Vec<u8>, String> {");
         assert!(shape.inputs.iter().any(|i| i == "json.value"));
         assert!(shape.outputs.iter().any(|o| o == "bytes"));
+    }
+
+    #[test]
+    fn ast_multiline_function() {
+        let src = r#"
+            pub fn multi(
+                bytes: &[u8],
+                _hint: bool,
+            ) -> Result<serde_json::Value, String> {
+                todo!()
+            }
+        "#;
+        let list = extract_from_ast(Path::new("src/lib.rs"), src, None).unwrap();
+        let f = list.iter().find(|c| c.name == "multi").expect("multi");
+        assert_eq!(f.extractor, "ast");
+        assert!(f.shape.inputs.iter().any(|i| i == "bytes"));
+        assert!(f.shape.outputs.iter().any(|o| o == "json.value"));
+    }
+
+    #[test]
+    fn extracts_adapters_with_module_path() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../wvx-adapters");
+        let report = extract_public_api(&root).unwrap();
+        let parse = report
+            .candidates
+            .iter()
+            .find(|c| c.name == "parse" && c.module_path.as_deref() == Some("serde_json_parse_owned"))
+            .expect("serde_json_parse_owned::parse");
+        assert_eq!(parse.extractor, "ast");
+        assert!(parse.shape.inputs.iter().any(|i| i == "bytes"));
+        assert!(parse.shape.outputs.iter().any(|o| o == "json.value"));
     }
 }

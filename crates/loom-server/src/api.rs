@@ -9,8 +9,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
-    forge_draft, forge_extract, forge_inventory, forge_match, graph_apply_patch,
-    graph_propose_patch,
+    forge_compile, forge_draft, forge_extract, forge_gate_c, forge_inventory, forge_match,
+    graph_apply_patch, graph_propose_patch,
     implementations_list, project_export_rust_hydrated, project_run_hydrated,
     project_validate_hydrated, graph_propose_intent, registry_admission_audit,
     registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
@@ -39,6 +39,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/forge/extract", post(forge_extract_handler))
         .route("/api/v1/forge/match", post(forge_match_handler))
         .route("/api/v1/forge/draft", post(forge_draft_handler))
+        .route("/api/v1/forge/compile", post(forge_compile_handler))
+        .route("/api/v1/forge/gate-c", post(forge_gate_c_handler))
         .route("/api/v1/graph/propose_patch", post(propose_patch))
         .route("/api/v1/graph/propose_intent", post(propose_intent))
         .route("/api/v1/graph/validate_patch", post(validate_patch))
@@ -355,6 +357,69 @@ async fn forge_draft_handler(
         out.as_deref(),
         Some(state.registry.as_ref()),
     ) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ForgeCompileBody {
+    path: String,
+    #[serde(default)]
+    name: Option<String>,
+    out_dir: String,
+    #[serde(default)]
+    check: bool,
+}
+
+async fn forge_compile_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeCompileBody>,
+) -> Response {
+    let path = std::path::PathBuf::from(&body.path);
+    let out = std::path::PathBuf::from(&body.out_dir);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
+    }
+    if !state.security.path_allowed(&out) {
+        return path_denied(&out);
+    }
+    match forge_compile(
+        &path,
+        body.name.as_deref(),
+        &out,
+        body.check,
+        Some(state.registry.as_ref()),
+    ) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ForgeGateCBody {
+    #[serde(default)]
+    workspace: Option<String>,
+    /// Run cargo check on compileable adapters (default true).
+    #[serde(default = "default_true")]
+    check: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+async fn forge_gate_c_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeGateCBody>,
+) -> Response {
+    let ws = body.workspace.as_ref().map(std::path::PathBuf::from);
+    if let Some(ref p) = ws {
+        if !state.security.path_allowed(p) {
+            return path_denied(p);
+        }
+    }
+    match forge_gate_c(ws.as_deref(), Some(state.registry.as_ref()), body.check) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }

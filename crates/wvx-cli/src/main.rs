@@ -6,11 +6,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    forge_draft, forge_extract, forge_inventory, forge_match, graph_apply_patch,
-    graph_propose_intent, graph_propose_patch, implementations_list, load_project_path, pilot_bench,
-    project_export_rust, project_export_to_dir_with_registry, project_run, project_validate,
-    registry_admission_audit, registry_human_admit, registry_implementations, registry_inspect,
-    registry_search, registry_summary, BusError,
+    forge_compile, forge_draft, forge_extract, forge_gate_c, forge_inventory, forge_match,
+    graph_apply_patch, graph_propose_intent, graph_propose_patch, implementations_list,
+    load_project_path, pilot_bench, project_export_rust, project_export_to_dir_with_registry,
+    project_run, project_validate, registry_admission_audit, registry_human_admit,
+    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
 };
 use wvx_registry_client::AdmitRequest;
 use wvx_project_graph::GraphPatch;
@@ -244,8 +244,10 @@ fn args_without_path(args: &[String]) -> Vec<String> {
 fn cmd_forge(args: &[String]) -> ExitCode {
     if args.is_empty() || args[0] == "help" {
         eprintln!(
-            "usage: wvx forge <inventory|extract|match|draft> <path> [options]\n\
-             draft/match use $WVX_REGISTRY / registry-dev for capability ontology (FORGE-007)"
+            "usage: wvx forge <inventory|extract|match|draft|compile|gate-c> [path] [options]\n\
+             draft/match/compile use $WVX_REGISTRY for ontology (FORGE-007)\n\
+             compile: wvx forge compile <crate> -o <dir> [--name substr] [--check]\n\
+             gate-c:  wvx forge gate-c [--workspace <root>] [--check]"
         );
         return ExitCode::FAILURE;
     }
@@ -365,6 +367,114 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                     }
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                     ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "compile" => {
+            // wvx forge compile <path> -o <dir> [--name substr] [--check]
+            let Some(path) = args.get(1) else {
+                eprintln!("usage: wvx forge compile <crate-path> -o <dir> [--name <substr>] [--check]");
+                return ExitCode::FAILURE;
+            };
+            let mut name = None;
+            let mut out: Option<&str> = None;
+            let mut check = false;
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--name" || args[i] == "-n" {
+                    name = args.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                if args[i] == "-o" || args[i] == "--out" {
+                    out = args.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                if args[i] == "--check" {
+                    check = true;
+                    i += 1;
+                    continue;
+                }
+                i += 1;
+            }
+            let Some(out_dir) = out else {
+                eprintln!("forge compile requires -o <dir>");
+                return ExitCode::FAILURE;
+            };
+            let reg = LocalRegistry::open_default().ok();
+            match forge_compile(
+                path.as_ref(),
+                name,
+                std::path::Path::new(out_dir),
+                check,
+                reg.as_ref(),
+            ) {
+                Ok(resp) => {
+                    if let Some(r) = &resp.data {
+                        eprintln!(
+                            "forge compile: {} adapter(s) · compile_rate={:.2}",
+                            r.adapters.len(),
+                            r.compile_rate
+                        );
+                    }
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "gate-c" | "economics" => {
+            let mut workspace: Option<&str> = None;
+            let mut check = true;
+            let mut i = 1;
+            while i < args.len() {
+                if args[i] == "--workspace" || args[i] == "-w" {
+                    workspace = args.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                if args[i] == "--no-check" {
+                    check = false;
+                    i += 1;
+                    continue;
+                }
+                if args[i] == "--check" {
+                    check = true;
+                    i += 1;
+                    continue;
+                }
+                i += 1;
+            }
+            let reg = LocalRegistry::open_default().ok();
+            match forge_gate_c(
+                workspace.map(std::path::Path::new),
+                reg.as_ref(),
+                check,
+            ) {
+                Ok(resp) => {
+                    if let Some(r) = &resp.data {
+                        eprintln!(
+                            "Gate C pilot: go={} · extract_recall={:.2} · map_acc={:.2} · compile_rate={:.2}",
+                            r.pilot_go,
+                            r.extraction_recall,
+                            r.mapping_accuracy,
+                            r.compile_rate
+                        );
+                    }
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.data.as_ref().is_some_and(|d| d.pilot_go) {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
                 }
                 Err(e) => {
                     eprintln!("{e}");

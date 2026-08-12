@@ -10,9 +10,10 @@ use wvx_compiler_rust::{
 };
 use wvx_ir::SdkEmit;
 use wvx_forge::{
-    draft_adapters_with_ontology, extract_public_api, inventory_path, match_candidates,
-    write_draft_files, DraftReport, ExtractReport, ForgeError, InventoryReport, MatchReport,
-    OntologyCapability, OntologyPort,
+    compile_adapters_batch, default_workspace_root, draft_adapters_with_ontology,
+    extract_public_api, inventory_path, match_candidates, run_gate_c_pilot, write_draft_files,
+    CompileBatchReport, DraftReport, ExtractReport, ForgeError, GateCReport, InventoryReport,
+    MatchReport, OntologyCapability, OntologyPort,
 };
 use wvx_ir::Project;
 use wvx_project_graph::{
@@ -409,6 +410,46 @@ pub fn forge_match(
     let extract = extract_public_api(path)?;
     let ontology = ontology_from_registry(registry)?;
     let report = match_candidates(&extract.package_name, &extract.candidates, &ontology);
+    Ok(BusResponse::ok(report))
+}
+
+/// FORGE-008: generate compileable adapter crates (optional `cargo check`).
+pub fn forge_compile(
+    path: &Path,
+    name_filter: Option<&str>,
+    out_dir: &Path,
+    check: bool,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<CompileBatchReport>, BusError> {
+    let ontology = ontology_from_registry(registry)?;
+    let draft = draft_adapters_with_ontology(path, name_filter, &ontology)?;
+    let report = compile_adapters_batch(
+        path,
+        &draft.package_name,
+        &draft.drafts,
+        out_dir,
+        check,
+        true,
+    )?;
+    Ok(BusResponse::ok(report))
+}
+
+/// Gate C pilot economics harness (fixture metrics; not production admission).
+pub fn forge_gate_c(
+    workspace_root: Option<&Path>,
+    registry: Option<&LocalRegistry>,
+    run_compile: bool,
+) -> Result<BusResponse<GateCReport>, BusError> {
+    let root = workspace_root
+        .map(Path::to_path_buf)
+        .unwrap_or_else(default_workspace_root);
+    let ontology = ontology_from_registry(registry)?;
+    let ontology_ref = if ontology.is_empty() {
+        None
+    } else {
+        Some(ontology.as_slice())
+    };
+    let report = run_gate_c_pilot(&root, ontology_ref, run_compile)?;
     Ok(BusResponse::ok(report))
 }
 

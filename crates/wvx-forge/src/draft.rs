@@ -621,6 +621,8 @@ mod tests {
                 outputs: vec!["json.value".into()],
                 notes: vec!["possible data transform".into()],
             },
+            extractor: "line".into(),
+            module_path: None,
         };
         let d = draft_one("demo-json", "0.1.0", Some("MIT"), &c, &[]);
         assert_eq!(d.status, "inventory_only");
@@ -659,6 +661,8 @@ mod tests {
                 outputs: vec!["json.value".into()],
                 notes: vec![],
             },
+            extractor: "ast".into(),
+            module_path: None,
         };
         let d = draft_one("wvx-adapter-external-demo", "0.1.0", Some("MIT"), &c, &ontology);
         assert_eq!(d.mapping_kind, "exact_shape");

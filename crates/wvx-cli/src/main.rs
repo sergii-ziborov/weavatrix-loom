@@ -7,12 +7,12 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
     forge_draft, forge_extract, forge_inventory, graph_apply_patch, graph_propose_intent,
-    graph_propose_patch,
-    implementations_list,
-    load_project_path, project_export_rust, project_export_to_dir, project_run, project_validate,
-    registry_admission_audit, registry_implementations, registry_inspect, registry_search,
-    registry_summary, BusError,
+    graph_propose_patch, implementations_list, load_project_path, pilot_bench,
+    project_export_rust, project_export_to_dir, project_run, project_validate,
+    registry_admission_audit, registry_human_admit, registry_implementations, registry_inspect,
+    registry_search, registry_summary, BusError,
 };
+use wvx_registry_client::AdmitRequest;
 use wvx_project_graph::GraphPatch;
 use wvx_registry_client::LocalRegistry;
 use wvx_types::WvxValue;
@@ -34,6 +34,7 @@ fn main() -> ExitCode {
         "forge" => cmd_forge(&args),
         "patch" => cmd_patch(&args),
         "conformance" => cmd_conformance(&args),
+        "bench" => cmd_bench(&args),
         "registry-search" => {
             // Back-compat alias: registry search [query]
             let mut rest = vec!["search".into()];
@@ -67,6 +68,8 @@ Usage:
   wvx registry implementations [--capability key] [query] [--path <dir>]
   wvx registry inspect <key> [--path <dir>]
   wvx registry check|audit [--path <dir>]   lifecycle vs evidence (overclaim fail)
+  wvx registry admit <impl-id> --reviewer <name> --human-ack <text> --security-ack <text> \\
+      --reason <text> --bench-file <path> [--apply] [--path <dir>]
   wvx forge inventory <crate-or-workspace-path>
   wvx forge extract <crate-path>
   wvx forge draft <crate-path> [--name <substr>] [-o <dir>]   static adapter drafts
@@ -74,6 +77,7 @@ Usage:
   wvx patch intent <text> [--project <file>]   heuristic or LLM (XAI_API_KEY) → GraphPatch
   wvx patch apply <project.wvx.json> [--patch <patch.json>]
   wvx conformance [--golden]
+  wvx bench [--iterations N] [--warmup N] [-o file.json]   Gate E pilot microbench
   wvx version
 
 Run options:
@@ -92,10 +96,64 @@ Export options:
 
   wvx conformance               pilot vectors + negative parse/path_set error codes
   wvx conformance --golden      also dynamic≡static export combos (invokes cargo)
+  wvx bench                     Gate E pilot microbench (benchmark evidence axis)
+  wvx registry admit            Gate E human admit (fail-closed; --apply writes manifest)
 
 Registry defaults to ./registry-dev (or $WVX_REGISTRY).
 "
     );
+}
+
+fn cmd_bench(args: &[String]) -> ExitCode {
+    let mut iterations = 200u32;
+    let mut warmup = 20u32;
+    let mut out: Option<PathBuf> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--iterations" || args[i] == "-n" {
+            if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                iterations = v;
+            }
+            i += 2;
+            continue;
+        }
+        if args[i] == "--warmup" {
+            if let Some(v) = args.get(i + 1).and_then(|s| s.parse().ok()) {
+                warmup = v;
+            }
+            i += 2;
+            continue;
+        }
+        if args[i] == "-o" || args[i] == "--out" {
+            out = args.get(i + 1).map(PathBuf::from);
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    let resp = pilot_bench(iterations, warmup);
+    let text = serde_json::to_string_pretty(&resp).unwrap();
+    if let Some(path) = &out {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(path, &text) {
+            eprintln!("write {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        eprintln!("wrote {}", path.display());
+    }
+    println!("{text}");
+    if resp.data.as_ref().map(|d| d.ok).unwrap_or(false) {
+        eprintln!(
+            "bench: PASS ({} cases)",
+            resp.data.as_ref().map(|d| d.cases.len()).unwrap_or(0)
+        );
+        ExitCode::SUCCESS
+    } else {
+        eprintln!("bench: FAIL");
+        ExitCode::FAILURE
+    }
 }
 
 fn cmd_conformance(args: &[String]) -> ExitCode {
@@ -519,6 +577,124 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 }
                 Err(e) => Err(e),
             }
+        }
+        "admit" => {
+            // wvx registry admit <impl-id> --reviewer … --human-ack … --security-ack … --reason … --bench-file … [--apply]
+            let Some(impl_id) = rest.first().cloned() else {
+                eprintln!(
+                    "usage: wvx registry admit <impl-id> --reviewer <name> --human-ack <text> \\\n  --security-ack <text> --reason <text> --bench-file <path> [--apply]"
+                );
+                return ExitCode::FAILURE;
+            };
+            let mut reviewer = String::new();
+            let mut human_ack = String::new();
+            let mut security_ack = String::new();
+            let mut reason = String::new();
+            let mut bench_file: Option<PathBuf> = None;
+            let mut apply = false;
+            let mut i = 1;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--reviewer" => {
+                        reviewer = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--human-ack" => {
+                        human_ack = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--security-ack" => {
+                        security_ack = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--reason" => {
+                        reason = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--bench-file" => {
+                        bench_file = rest.get(i + 1).map(PathBuf::from);
+                        i += 2;
+                    }
+                    "--apply" => {
+                        apply = true;
+                        i += 1;
+                    }
+                    _ => i += 1,
+                }
+            }
+            let bench_fingerprint = match bench_file {
+                Some(p) => match fs::read_to_string(&p) {
+                    Ok(t) => {
+                        // Prefer provenance.input_fingerprint from a bench BusResponse
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) {
+                            v.pointer("/data/provenance/input_fingerprint")
+                                .and_then(|x| x.as_str())
+                                .map(|s| s.to_string())
+                                .or_else(|| {
+                                    v.pointer("/provenance/input_fingerprint")
+                                        .and_then(|x| x.as_str())
+                                        .map(|s| s.to_string())
+                                })
+                                .unwrap_or_else(|| {
+                                    format!("file:{}:len={}", p.display(), t.len())
+                                })
+                        } else {
+                            format!("file:{}:len={}", p.display(), t.len())
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("bench-file {}: {e}", p.display());
+                        return ExitCode::FAILURE;
+                    }
+                },
+                None => {
+                    eprintln!("--bench-file is required (run: wvx bench -o .lab/bench.json)");
+                    return ExitCode::FAILURE;
+                }
+            };
+            // Require bench report ok if it is a structured report
+            if let Some(p) = rest.iter().position(|a| a == "--bench-file") {
+                if let Some(bp) = rest.get(p + 1) {
+                    if let Ok(t) = fs::read_to_string(bp) {
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) {
+                            let ok = v
+                                .pointer("/data/ok")
+                                .or_else(|| v.get("ok"))
+                                .and_then(|x| x.as_bool())
+                                .unwrap_or(true);
+                            if !ok {
+                                eprintln!("bench-file reports ok=false — refuse admit");
+                                return ExitCode::FAILURE;
+                            }
+                        }
+                    }
+                }
+            }
+            let req = AdmitRequest {
+                implementation_id: impl_id,
+                reviewer,
+                human_ack,
+                security_ack,
+                reason,
+                bench_fingerprint,
+                apply,
+            };
+            return match registry_human_admit(&reg, req) {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.ok {
+                        eprintln!("admit: PASS");
+                        ExitCode::SUCCESS
+                    } else {
+                        eprintln!("admit: FAIL");
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            };
         }
         other => {
             eprintln!("unknown registry subcommand: {other}");

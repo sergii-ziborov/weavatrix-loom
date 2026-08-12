@@ -17,10 +17,11 @@ use wvx_project_graph::{
     apply_graph_patch, propose_json_pipeline_patch_relative, GraphPatch, PatchApplyResult,
     PatchError,
 };
+use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
-    CapabilityHit, ImplementationHit, LocalRegistry, RegistryError, RegistrySummary,
+    admit_implementation, CapabilityHit, ImplementationHit, LocalRegistry, RegistryError,
+    RegistrySummary, AdmitRequest, AdmitResult, AdmissionReport,
 };
-use wvx_registry_client::AdmissionReport;
 use std::collections::BTreeMap;
 use wvx_runtime::{
     apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
@@ -262,11 +263,38 @@ pub fn registry_implementations(
 
 /// Audit declared lifecycle status vs multi-fact evidence (overclaim = fail).
 ///
-/// Not full Gate E admission — automated consistency check only (ADR-0007/0008).
+/// Automated consistency check (ADR-0007/0008). Human admit is separate.
 pub fn registry_admission_audit(
     registry: &LocalRegistry,
 ) -> Result<BusResponse<AdmissionReport>, BusError> {
     Ok(BusResponse::ok(registry.audit_admission()?))
+}
+
+/// Pilot microbench for Gate E (`benchmark` evidence axis).
+pub fn pilot_bench(iterations: u32, warmup: u32) -> BusResponse<BenchReport> {
+    BusResponse::ok(run_pilot_bench(iterations, warmup))
+}
+
+/// Human Gate E admit (fail-closed). See `docs/go-no-go-e-pilot.md`.
+pub fn registry_human_admit(
+    registry: &LocalRegistry,
+    req: AdmitRequest,
+) -> Result<BusResponse<AdmitResult>, BusError> {
+    let Some(imp) = registry.find_implementation(&req.implementation_id)? else {
+        return Ok(BusResponse::err(vec![format!(
+            "implementation not found: {}",
+            req.implementation_id
+        )]));
+    };
+    let result = admit_implementation(registry.root(), imp, &req)?;
+    if result.ok {
+        Ok(BusResponse::ok(result))
+    } else {
+        let mut resp = BusResponse::ok(result.clone());
+        resp.ok = false;
+        resp.diagnostics = result.findings.clone();
+        Ok(resp)
+    }
 }
 
 /// Inspect one capability or implementation by key (`data.json.parse@1` or impl full id).

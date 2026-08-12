@@ -8,6 +8,12 @@
 //!
 //! Error codes for `data.json.parse@1` (capability contract):
 //! `invalid-syntax`, `invalid-unicode`, `depth-limit` (depth not enforced in pilot).
+//!
+//! Gate E pilot microbench: [`bench`].
+
+pub mod bench;
+
+pub use bench::{run_pilot_bench, BenchProvenance, BenchReport};
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

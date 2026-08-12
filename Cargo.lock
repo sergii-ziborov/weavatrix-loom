@@ -1644,6 +1644,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "wvx-compiler-rust",
+ "wvx-conformance",
  "wvx-cortex",
  "wvx-forge",
  "wvx-ir",

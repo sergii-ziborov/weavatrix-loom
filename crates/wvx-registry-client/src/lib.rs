@@ -10,10 +10,17 @@
 //! ```
 
 pub mod admission;
+pub mod admit;
+pub mod provenance;
 
 pub use admission::{
     audit_implementations, check_implementation, justified_status, AdmissionReport,
     ImplementationAdmission,
+};
+pub use admit::{admit_implementation, AdmitRequest, AdmitResult};
+pub use provenance::{
+    provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
+    ProvenanceRecord,
 };
 
 use serde::{Deserialize, Serialize};

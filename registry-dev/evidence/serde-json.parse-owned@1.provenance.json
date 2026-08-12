@@ -1,0 +1,35 @@
+{
+  "implementation_id": "serde-json.parse-owned@1",
+  "capability": "data.json.parse@1",
+  "recorded_at_unix": 1786532676,
+  "source_kind": "crates-io",
+  "package": "serde_json",
+  "package_version": "1",
+  "adapter": "wvx-adapter-serde-json-parse",
+  "status": "admitted",
+  "evidence": {
+    "benchmark": "pass",
+    "build": "pass",
+    "conformance": "pass",
+    "license": "pass",
+    "security": "pass"
+  },
+  "host": {
+    "os": "windows",
+    "arch": "x86_64",
+    "loom_version": "0.1.0",
+    "rustc": "unknown"
+  },
+  "review": {
+    "reviewer": "Sergii Ziborov",
+    "ack": "Reviewed pilot Gate E evidence (conformance + bench)",
+    "security_ack": "Pilot-only security posture accepted for lab admit",
+    "reason": "Gate E pilot lab demonstration",
+    "reviewed_at_unix": 1786532676
+  },
+  "bench_fingerprint": "defaulthash64:7c0d4a5a348ef25d:len=37",
+  "notes": [
+    "Gate E pilot human admission",
+    "Timings are host-dependent; bench pass = executions ok."
+  ]
+}

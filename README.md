@@ -223,9 +223,17 @@ cargo run -p wvx-cli -- conformance --golden
 cargo test -p wvx-conformance
 ```
 
-Go/No-Go evidence for Gates **A** (interchangeability) and **D** (dynamic≡static) is recorded in
-[`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md)
-(**A: Go pilot transforms** — 3 parse + 2 path_set + 3 serialize; **D: Go pilot** as of 2026-08-12).
+Go/No-Go evidence:
+
+| Gate | Doc | Pilot verdict |
+| --- | --- | --- |
+| **A** / **D** | [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md) | **Go** transform interchange + dynamic≡static |
+| **E** | [`docs/go-no-go-e-pilot.md`](docs/go-no-go-e-pilot.md) | **Go (pilot lab)** bench + provenance + human admit |
+
+```bash
+cargo run -p wvx-cli -- bench -o .lab/bench.json
+cargo run -p wvx-cli -- registry check
+```
 
 ### Intent → GraphPatch (Cortex)
 

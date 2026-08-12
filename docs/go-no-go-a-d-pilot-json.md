@@ -179,7 +179,7 @@ Registry: `registry-dev/`
 |------|--------|-----------------|
 | **B** Visual advantage | Open | No timed UX study vs raw crates |
 | **C** Forge economics | Open | Inventory/extract only; no auto adapter cost study |
-| **E** Registry trust | Open (partial tooling) | Lifecycle + evidence fields + **overclaim audit** (`wvx registry check`); still no reproducible benchmark/provenance human admission board |
+| **E** Registry trust | **Go (pilot lab)** — see [`go-no-go-e-pilot.md`](go-no-go-e-pilot.md) | Bench + provenance + human admit path; not a production public trust store |
 
 ---
 

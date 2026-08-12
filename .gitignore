@@ -34,3 +34,9 @@ ui/dist/
 .lab/
 *.db
 *.db-journal
+
+# Full product roadmaps (private only — never commit)
+**/weavatrix_loom_full_roadmap*.md
+**/roadmap*.private.md
+private/**
+!private/.gitkeep

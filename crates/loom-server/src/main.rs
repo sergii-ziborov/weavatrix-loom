@@ -2,22 +2,30 @@
 //!
 //! Binds loopback by default. Studio and other clients talk JSON; semantics stay
 //! in `wvx-command-bus` (not reimplemented here).
+//!
+//! SEC-001: session token + CORS allowlist + workspace path roots.
 
 mod api;
+mod security;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tower_http::cors::{Any, CorsLayer};
+use axum::http::{HeaderValue, Method};
+use axum::middleware;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 use wvx_registry_client::LocalRegistry;
+
+use crate::security::SecurityConfig;
 
 /// Shared process state.
 #[derive(Clone)]
 pub struct AppState {
     pub registry: Arc<LocalRegistry>,
+    pub security: Arc<SecurityConfig>,
 }
 
 #[tokio::main]
@@ -28,6 +36,7 @@ async fn main() {
         )
         .init();
 
+    let security = Arc::new(SecurityConfig::from_env());
     let registry = match open_registry() {
         Ok(r) => Arc::new(r),
         Err(e) => {
@@ -36,13 +45,21 @@ async fn main() {
         }
     };
 
-    let state = AppState { registry: registry.clone() };
-    let app = api::router(state).layer(
-        CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any),
-    ).layer(TraceLayer::new_for_http());
+    let state = AppState {
+        registry: registry.clone(),
+        security: security.clone(),
+    };
+
+    let token = Arc::new(security.session_token.clone());
+    let cors = build_cors(&security.cors_origins);
+
+    let app = api::router(state)
+        .layer(middleware::from_fn_with_state(
+            token,
+            security::require_token,
+        ))
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
 
     let addr: SocketAddr = std::env::var("WVX_HTTP_ADDR")
         .unwrap_or_else(|_| "127.0.0.1:43917".into())
@@ -57,6 +74,18 @@ async fn main() {
         registry = %registry.root().display(),
         "loom-server listening"
     );
+    tracing::info!(
+        "session token (set header X-WVX-Token): {}",
+        security.session_token
+    );
+    tracing::info!(
+        "workspace roots: {:?}",
+        security
+            .workspace_roots
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+    );
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {
         tracing::error!("bind {addr}: {e}");
@@ -70,6 +99,26 @@ async fn main() {
             tracing::error!("server error: {e}");
             std::process::exit(1);
         });
+}
+
+fn build_cors(origins: &[String]) -> CorsLayer {
+    let parsed: Vec<HeaderValue> = origins
+        .iter()
+        .filter_map(|o| o.parse::<HeaderValue>().ok())
+        .collect();
+    if parsed.is_empty() {
+        return CorsLayer::new()
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::OPTIONS,
+            ])
+            .allow_headers(tower_http::cors::Any);
+    }
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(parsed))
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(tower_http::cors::Any)
 }
 
 fn open_registry() -> Result<LocalRegistry, String> {

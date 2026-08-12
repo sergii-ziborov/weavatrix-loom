@@ -165,6 +165,29 @@ pub struct Implementation {
     /// Free-form note (e.g. "pilot only").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// Gate F SDK binding (emit template + crate dep). Absent = legacy pilot map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sdk: Option<SdkBinding>,
+}
+
+/// Manifest-driven adapter binding for core-independent extensibility (ADR-0011).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct SdkBinding {
+    /// Compiler emit for static export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emit: Option<SdkEmit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SdkEmit {
+    /// Cargo package name of the adapter crate.
+    pub crate_name: String,
+    /// Optional path dependency relative to export/workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crate_path: Option<String>,
+    /// Call template with `{port_id}` placeholders, e.g.
+    /// `wvx_adapter_external_demo::upper_parse({bytes}.as_slice())?`
+    pub template: String,
 }
 
 impl Implementation {
@@ -263,6 +286,9 @@ pub struct Project {
     pub name: String,
     #[serde(default)]
     pub entrypoint: Option<String>,
+    /// Monotonic revision for GraphPatch base checks (ADR-0004 / PATCH-001).
+    #[serde(default)]
+    pub revision: u64,
     #[serde(default)]
     pub instances: Vec<Instance>,
     #[serde(default)]
@@ -281,11 +307,17 @@ impl Project {
             id: id.into(),
             name: name.into(),
             entrypoint: None,
+            revision: 0,
             instances: Vec::new(),
             bindings: Vec::new(),
             capabilities: Vec::new(),
             metadata: BTreeMap::new(),
         }
+    }
+
+    /// Bump revision after a successful semantic mutation (GraphPatch apply).
+    pub fn bump_revision(&mut self) {
+        self.revision = self.revision.saturating_add(1);
     }
 
     pub fn instance(&self, id: &str) -> Option<&Instance> {

@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use wvx_command_bus::{
     forge_draft, forge_extract, forge_inventory, graph_apply_patch, graph_propose_intent,
     graph_propose_patch, implementations_list, load_project_path, pilot_bench,
-    project_export_rust, project_export_to_dir, project_run, project_validate,
+    project_export_rust, project_export_to_dir_with_registry, project_run, project_validate,
     registry_admission_audit, registry_human_admit, registry_implementations, registry_inspect,
     registry_search, registry_summary, BusError,
 };
@@ -942,7 +942,14 @@ fn cmd_export(args: &[String]) -> ExitCode {
 
     if let Some(dir) = out_dir {
         let run_input = if do_run { Some(input.as_slice()) } else { None };
-        match project_export_to_dir(&project, &dir, check, run_input) {
+        let reg = LocalRegistry::open_default().ok();
+        match project_export_to_dir_with_registry(
+            &project,
+            &dir,
+            check,
+            run_input,
+            reg.as_ref(),
+        ) {
             Ok(resp) => {
                 println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                 if let Some(data) = &resp.data {

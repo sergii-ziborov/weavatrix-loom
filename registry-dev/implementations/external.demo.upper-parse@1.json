@@ -1,0 +1,31 @@
+{
+  "id": "external.demo.upper-parse",
+  "version": "1",
+  "capability": { "id": "data.json.parse", "version": "1" },
+  "source": {
+    "kind": "gate-f-external",
+    "package": "wvx-adapter-external-demo",
+    "package_version": "0.1.0",
+    "notes": "Gate F fixture — not in pilot match tables"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapter-external-demo",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "build": "pass",
+    "conformance": "absent",
+    "benchmark": "absent",
+    "license": "pass",
+    "security": "absent"
+  },
+  "notes": "Gate F external SDK adapter (uppercases string leaves). Not identity-parse conformant; proves core-independent registration.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapter-external-demo",
+      "crate_path": "crates/wvx-adapter-external-demo",
+      "template": "wvx_adapter_external_demo::upper_parse({bytes}.as_slice())?"
+    }
+  }
+}

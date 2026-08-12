@@ -14,7 +14,10 @@ Short, irreversible (or costly-to-reverse) decisions for Weavatrix Loom v0.1+.
 | [ADR-0008](0008-no-global-readiness-percentage.md) | No global readiness % | Accepted |
 | [ADR-0009](0009-export-without-lock-in.md) | Export without platform lock-in | Accepted |
 | [ADR-0010](0010-ai-suggestions-are-not-evidence.md) | AI suggestions are not evidence | Accepted |
+| [ADR-0011](0011-gate-f-core-independent-extensibility.md) | Gate F — core-independent extensibility (v0.2) | Accepted |
 
 **Format truth:** Rust types in `wvx-ir` / `wvx-types` remain authoritative; JSON Schemas under [`schemas/`](../../schemas/) describe the wire shape for tooling and Studio.
 
-**Related:** [Go/No-Go A & D (JSON pilot)](../go-no-go-a-d-pilot-json.md)
+**Related:** [Go/No-Go A & D (JSON pilot)](../go-no-go-a-d-pilot-json.md) · [Gate E pilot](../go-no-go-e-pilot.md)
+
+**Private product roadmaps** live under `private/` / `plan/` (gitignored) — never committed.

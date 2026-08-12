@@ -24,6 +24,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/api/v1/protocol", get(protocol))
+        .route("/api/v1/auth/bootstrap", get(auth_bootstrap))
         .route("/api/v1/project/validate", post(validate_project))
         .route("/api/v1/project/run", post(run_project))
         .route("/api/v1/project/export-rust", post(export_rust))
@@ -41,6 +42,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/graph/validate_patch", post(validate_patch))
         .route("/api/v1/graph/apply_patch", post(apply_patch))
         .with_state(state)
+}
+
+/// Loopback-friendly bootstrap: returns the session token for Studio (SEC-001).
+async fn auth_bootstrap(State(state): State<AppState>) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "ok": true,
+        "token": state.security.session_token,
+        "header": "X-WVX-Token",
+        "note": "Prefer WVX_SESSION_TOKEN env for stable tokens across restarts"
+    }))
 }
 
 async fn health() -> impl IntoResponse {
@@ -256,20 +267,46 @@ struct ForgeInventoryBody {
     path: String,
 }
 
-async fn forge_inventory_handler(Json(body): Json<ForgeInventoryBody>) -> Response {
+async fn forge_inventory_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeInventoryBody>,
+) -> Response {
     let path = std::path::PathBuf::from(&body.path);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
+    }
     match forge_inventory(&path) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
 }
 
-async fn forge_extract_handler(Json(body): Json<ForgeInventoryBody>) -> Response {
+async fn forge_extract_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeInventoryBody>,
+) -> Response {
     let path = std::path::PathBuf::from(&body.path);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
+    }
     match forge_extract(&path) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
+}
+
+fn path_denied(path: &std::path::Path) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(serde_json::json!({
+            "ok": false,
+            "diagnostics": [
+                format!("path not under approved workspace roots: {}", path.display()),
+                "set WVX_WORKSPACE_ROOTS to semicolon-separated absolute roots"
+            ]
+        })),
+    )
+        .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -282,9 +319,20 @@ struct ForgeDraftBody {
     out_dir: Option<String>,
 }
 
-async fn forge_draft_handler(Json(body): Json<ForgeDraftBody>) -> Response {
+async fn forge_draft_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeDraftBody>,
+) -> Response {
     let path = std::path::PathBuf::from(&body.path);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
+    }
     let out = body.out_dir.as_ref().map(std::path::PathBuf::from);
+    if let Some(ref o) = out {
+        if !state.security.path_allowed(o) {
+            return path_denied(o);
+        }
+    }
     match forge_draft(
         &path,
         body.name.as_deref(),

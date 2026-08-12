@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use std::path::Path;
 use wvx_compiler_rust::{
-    compile_to_rust, export_to_directory, ExportReport, GeneratedWorkspace,
+    compile_to_rust_with_sdk, export_to_directory_with_sdk, ExportReport, GeneratedWorkspace,
 };
+use wvx_ir::SdkEmit;
 use wvx_forge::{
     draft_adapters, extract_public_api, inventory_path, write_draft_files, DraftReport,
     ExtractReport, ForgeError, InventoryReport,
@@ -152,7 +153,8 @@ pub fn project_export_rust_hydrated(
 ) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
     let mut project = project.clone();
     hydrate_project(&mut project, registry)?;
-    match compile_to_rust(&project) {
+    let sdk = sdk_emits_from_registry(registry);
+    match compile_to_rust_with_sdk(&project, &sdk) {
         Ok(ws) => Ok(BusResponse::ok(ws)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }
@@ -165,7 +167,21 @@ pub fn project_export_to_dir(
     check: bool,
     run_input: Option<&[u8]>,
 ) -> Result<BusResponse<ExportReport>, BusError> {
-    match export_to_directory(project, out_dir, check, run_input) {
+    project_export_to_dir_with_registry(project, out_dir, check, run_input, None)
+}
+
+/// Export with registry SDK emit map (Gate F).
+pub fn project_export_to_dir_with_registry(
+    project: &Project,
+    out_dir: &Path,
+    check: bool,
+    run_input: Option<&[u8]>,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<ExportReport>, BusError> {
+    let mut project = project.clone();
+    let _ = hydrate_project(&mut project, registry);
+    let sdk = sdk_emits_from_registry(registry);
+    match export_to_directory_with_sdk(&project, out_dir, check, run_input, &sdk) {
         Ok(report) => Ok(BusResponse::ok(report)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }
@@ -196,11 +212,32 @@ pub fn project_run_hydrated(
     let mut project = project.clone();
     hydrate_project(&mut project, registry)?;
     apply_implementation_overrides(&mut project, impl_overrides);
-    let handlers = HandlerRegistry::with_pilot();
+    let handlers = playground_handlers();
     let mut seed = WvxValueMap::new();
     seed.insert("bytes".into(), WvxValue::Bytes(input_bytes));
     let result = run_project(&project, &handlers, seed)?;
     Ok(BusResponse::ok(result))
+}
+
+/// Pilot + Gate F SDK plugins (host wires external demo register once).
+fn playground_handlers() -> HandlerRegistry {
+    wvx_adapter_external_demo::register();
+    wvx_component_sdk::registry_with_pilot_and_plugins()
+}
+
+fn sdk_emits_from_registry(registry: Option<&LocalRegistry>) -> BTreeMap<String, SdkEmit> {
+    let mut map = BTreeMap::new();
+    let Some(reg) = registry else {
+        return map;
+    };
+    if let Ok(impls) = reg.list_implementations() {
+        for imp in impls {
+            if let Some(sdk) = imp.sdk.as_ref().and_then(|s| s.emit.clone()) {
+                map.insert(imp.full_id(), sdk);
+            }
+        }
+    }
+    map
 }
 
 /// List pilot playground implementations (capability + implementation id).

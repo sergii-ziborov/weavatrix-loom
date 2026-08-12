@@ -255,6 +255,7 @@ fn heuristic_propose(
                 }],
                 rationale: format!("Heuristic: set path_set tag for intent `{intent}`"),
                 unresolved: vec![],
+                ..Default::default()
             });
         }
         // else fall through to pilot relative
@@ -288,6 +289,7 @@ fn select_impl_patch(
             }],
             rationale: format!("Heuristic: select `{impl_id}` for intent `{intent}`"),
             unresolved: vec![],
+            ..Default::default()
         },
         None => GraphPatch {
             ops: vec![],
@@ -297,6 +299,7 @@ fn select_impl_patch(
             unresolved: vec![format!(
                 "missing instance for {cap_id}; install pilot pipeline first"
             )],
+            ..Default::default()
         },
     }
 }

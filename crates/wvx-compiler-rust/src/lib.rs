@@ -15,7 +15,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 use thiserror::Error;
-use wvx_ir::Project;
+use wvx_ir::{Project, SdkEmit};
 use wvx_validator::validate_project;
 
 pub use adapters::{default_implementation, known_implementation_ids};
@@ -62,6 +62,14 @@ impl GeneratedWorkspace {
 
 /// Generate a Cargo package for the project (in memory).
 pub fn compile_to_rust(project: &Project) -> Result<GeneratedWorkspace, CompileError> {
+    compile_to_rust_with_sdk(project, &BTreeMap::new())
+}
+
+/// Like [`compile_to_rust`], with Gate F SDK emit map (`implementation_id` → emit).
+pub fn compile_to_rust_with_sdk(
+    project: &Project,
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+) -> Result<GeneratedWorkspace, CompileError> {
     let report = validate_project(project);
     if !report.is_ok() {
         let msg = report
@@ -73,7 +81,7 @@ pub fn compile_to_rust(project: &Project) -> Result<GeneratedWorkspace, CompileE
     }
 
     let order = order::topo_order(project).map_err(CompileError::Graph)?;
-    let resolved = resolve_implementations(project)?;
+    let resolved = resolve_implementations(project, sdk_emits)?;
     let needed_impls: BTreeSet<String> = resolved.values().cloned().collect();
 
     let pkg = sanitize_pkg_name(&project.id);
@@ -81,7 +89,7 @@ pub fn compile_to_rust(project: &Project) -> Result<GeneratedWorkspace, CompileE
 
     files.push(GeneratedFile {
         relative_path: "Cargo.toml".into(),
-        contents: emit::cargo_toml(&pkg, &needed_impls),
+        contents: emit::cargo_toml(&pkg, &needed_impls, sdk_emits),
     });
 
     files.push(GeneratedFile {
@@ -92,10 +100,19 @@ pub fn compile_to_rust(project: &Project) -> Result<GeneratedWorkspace, CompileE
     if adapters::needs_external_adapters(&needed_impls) {
         files.extend(vendor::vendor_adapters_files()?);
     }
+    // Vendor Gate F SDK crates referenced by emit descriptors.
+    for (impl_id, sdk) in sdk_emits {
+        if !needed_impls.contains(impl_id) {
+            continue;
+        }
+        if let Some(src) = sdk.crate_path.as_ref() {
+            files.extend(vendor::vendor_crate_files(src, &sdk.crate_name)?);
+        }
+    }
 
     files.push(GeneratedFile {
         relative_path: "src/generated_pipeline.rs".into(),
-        contents: emit::pipeline(project, &order, &resolved)?,
+        contents: emit::pipeline(project, &order, &resolved, sdk_emits)?,
     });
 
     files.push(GeneratedFile {
@@ -105,7 +122,7 @@ pub fn compile_to_rust(project: &Project) -> Result<GeneratedWorkspace, CompileE
 
     files.push(GeneratedFile {
         relative_path: "src/lib.rs".into(),
-        contents: "//! Generated Loom export.\n//!\n//! Uses external crate `wvx-adapters` (vendored under `vendor/`).\n\npub mod generated_pipeline;\n\npub use generated_pipeline::run_pipeline;\n".into(),
+        contents: "//! Generated Loom export.\n//!\n//! Uses vendored adapters under `vendor/`.\n\npub mod generated_pipeline;\n\npub use generated_pipeline::run_pipeline;\n".into(),
     });
 
     Ok(GeneratedWorkspace {
@@ -121,7 +138,18 @@ pub fn export_to_directory(
     check: bool,
     run_input: Option<&[u8]>,
 ) -> Result<ExportReport, CompileError> {
-    let ws = compile_to_rust(project)?;
+    export_to_directory_with_sdk(project, out_dir, check, run_input, &BTreeMap::new())
+}
+
+/// Export with Gate F SDK emit map.
+pub fn export_to_directory_with_sdk(
+    project: &Project,
+    out_dir: &Path,
+    check: bool,
+    run_input: Option<&[u8]>,
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+) -> Result<ExportReport, CompileError> {
+    let ws = compile_to_rust_with_sdk(project, sdk_emits)?;
     if out_dir.exists() {
         // Only remove if it looks like a previous export (has weavatrix.lock).
         if out_dir.join("weavatrix.lock").exists() {
@@ -196,7 +224,10 @@ pub struct ExportReport {
 }
 
 /// instance_id → implementation_id
-fn resolve_implementations(project: &Project) -> Result<BTreeMap<String, String>, CompileError> {
+fn resolve_implementations(
+    project: &Project,
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+) -> Result<BTreeMap<String, String>, CompileError> {
     let mut map = BTreeMap::new();
     for instance in &project.instances {
         let cap = instance.capability.as_key();
@@ -208,7 +239,8 @@ fn resolve_implementations(project: &Project) -> Result<BTreeMap<String, String>
             .ok_or_else(|| {
                 CompileError::UnsupportedImplementation("(none)".into(), cap.clone())
             })?;
-        if !adapters::supports(&impl_id, &cap) {
+        let sdk = sdk_emits.get(&impl_id);
+        if !adapters::supports(&impl_id, &cap, sdk) {
             // I/O may use synthetic impls
             if !adapters::is_passthrough_io(&cap) {
                 return Err(CompileError::UnsupportedImplementation(impl_id, cap));

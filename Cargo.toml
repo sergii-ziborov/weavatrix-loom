@@ -13,6 +13,8 @@ members = [
     "crates/wvx-mcp",
     "crates/wvx-forge",
     "crates/wvx-adapters",
+    "crates/wvx-component-sdk",
+    "crates/wvx-adapter-external-demo",
     "crates/wvx-conformance",
     "crates/wvx-cortex",
     "crates/loom-server",
@@ -43,6 +45,8 @@ wvx-registry-client = { path = "crates/wvx-registry-client", version = "0.1.0" }
 wvx-command-bus = { path = "crates/wvx-command-bus", version = "0.1.0" }
 wvx-forge = { path = "crates/wvx-forge", version = "0.1.0" }
 wvx-adapters = { path = "crates/wvx-adapters", version = "0.1.0" }
+wvx-component-sdk = { path = "crates/wvx-component-sdk", version = "0.1.0" }
+wvx-adapter-external-demo = { path = "crates/wvx-adapter-external-demo", version = "0.1.0" }
 wvx-conformance = { path = "crates/wvx-conformance", version = "0.1.0" }
 wvx-cortex = { path = "crates/wvx-cortex", version = "0.1.0" }
 

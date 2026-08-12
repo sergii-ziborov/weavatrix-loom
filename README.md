@@ -74,6 +74,8 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | `wvx-cli` | Command-line entry point |
 | `wvx-mcp` | Bounded MCP tools over the command bus ([`mcport`](https://crates.io/crates/mcport)) |
 | `wvx-adapters` | Pilot JSON implementations (parse / serialize / path_set) |
+| `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) |
+| `wvx-adapter-external-demo` | External fixture (`upper_parse`) — not in pilot match tables |
 | `wvx-forge` | Static crate inventory + public API extract |
 | `wvx-conformance` | Capability vectors (pos/neg error codes) + golden (dynamic ≡ export) |
 | `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) |
@@ -229,6 +231,7 @@ Go/No-Go evidence:
 | --- | --- | --- |
 | **A** / **D** | [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md) | **Go** transform interchange + dynamic≡static |
 | **E** | [`docs/go-no-go-e-pilot.md`](docs/go-no-go-e-pilot.md) | **Go (pilot lab)** bench + provenance + human admit |
+| **F** | [`docs/go-no-go-f-pilot.md`](docs/go-no-go-f-pilot.md) | **Go (pilot fixture)** SDK external adapter without pilot match arms |
 
 ```bash
 cargo run -p wvx-cli -- bench -o .lab/bench.json

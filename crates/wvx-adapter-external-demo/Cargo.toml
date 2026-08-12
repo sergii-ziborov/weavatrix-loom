@@ -1,0 +1,22 @@
+[package]
+name = "wvx-adapter-external-demo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Gate F external demo adapter — not listed in pilot match tables"
+publish.workspace = true
+
+[features]
+default = ["host"]
+host = ["dep:wvx-component-sdk"]
+
+[dependencies]
+serde_json = { workspace = true }
+wvx-component-sdk = { path = "../wvx-component-sdk", version = "0.1.0", optional = true }
+
+[lints]
+workspace = true

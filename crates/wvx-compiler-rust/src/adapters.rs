@@ -1,6 +1,8 @@
-//! Maps implementation ids to the external `wvx-adapters` crate.
+//! Maps implementation ids to the external `wvx-adapters` crate
+//! and Gate F SDK emit templates (`Implementation.sdk.emit`).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use wvx_ir::SdkEmit;
 
 /// Module name inside `wvx_adapters` for this implementation.
 pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
@@ -18,8 +20,16 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
     }
 }
 
-pub fn supports(implementation_id: &str, capability_key: &str) -> bool {
+pub fn supports(
+    implementation_id: &str,
+    capability_key: &str,
+    sdk_emit: Option<&SdkEmit>,
+) -> bool {
     if is_passthrough_io(capability_key) {
+        return true;
+    }
+    // Gate F: manifest-driven emit is enough for the compiler.
+    if sdk_emit.is_some() {
         return true;
     }
     match (implementation_id, capability_key) {
@@ -72,12 +82,20 @@ pub fn needs_external_adapters(impls: &BTreeSet<String>) -> bool {
     impls.iter().any(|id| crate_module(id).is_some())
 }
 
-/// Emit call expression using `wvx_adapters::<module>::…`.
+/// Emit call expression using `wvx_adapters::<module>::…` or SDK template (Gate F).
 pub fn emit_call(
     implementation_id: &str,
     input_exprs: &BTreeMapPorts,
     config_json: &serde_json::Value,
+    sdk_emit: Option<&SdkEmit>,
 ) -> Result<String, String> {
+    if let Some(sdk) = sdk_emit {
+        let mut map = BTreeMap::new();
+        for (k, v) in input_exprs {
+            map.insert(k.clone(), v.clone());
+        }
+        return render_sdk_template(&sdk.template, &map);
+    }
     match implementation_id {
         "serde-json.parse-owned@1" => {
             let bytes = input_exprs.get("bytes").ok_or("parse requires bytes")?;
@@ -134,8 +152,27 @@ pub fn emit_call(
                 "wvx_adapters::{module}::path_set({value}, {path_lit}, {val_lit})?"
             ))
         }
-        other => Err(format!("no code emitter for implementation `{other}`")),
+        other => Err(format!(
+            "no code emitter for implementation `{other}` (provide Implementation.sdk.emit for Gate F)"
+        )),
     }
+}
+
+fn render_sdk_template(
+    template: &str,
+    input_exprs: &BTreeMap<String, String>,
+) -> Result<String, String> {
+    let mut out = template.to_string();
+    for (port, expr) in input_exprs {
+        let needle = format!("{{{port}}}");
+        out = out.replace(&needle, expr);
+    }
+    if out.contains('{') && out.contains('}') {
+        return Err(format!(
+            "sdk emit template has unresolved placeholders: {out}"
+        ));
+    }
+    Ok(out)
 }
 
 type BTreeMapPorts = std::collections::BTreeMap<String, String>;

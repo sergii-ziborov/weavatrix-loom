@@ -4,13 +4,34 @@ use crate::adapters;
 use crate::CompileError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-use wvx_ir::{PortPath, Project};
+use wvx_ir::{PortPath, Project, SdkEmit};
 
-pub fn cargo_toml(package_name: &str, impls: &BTreeSet<String>) -> String {
+pub fn cargo_toml(
+    package_name: &str,
+    impls: &BTreeSet<String>,
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+) -> String {
     let mut deps = String::new();
     if adapters::needs_external_adapters(impls) {
         deps.push_str("wvx-adapters = { path = \"vendor/wvx-adapters\" }\n");
         deps.push_str("serde_json = \"1\"\n");
+    }
+    let mut seen_crates = BTreeSet::new();
+    for (impl_id, sdk) in sdk_emits {
+        if !impls.contains(impl_id) {
+            continue;
+        }
+        if !seen_crates.insert(sdk.crate_name.clone()) {
+            continue;
+        }
+        let vendor_path = format!("vendor/{}", sdk.crate_name);
+        deps.push_str(&format!(
+            "{} = {{ path = \"{vendor_path}\" }}\n",
+            sdk.crate_name
+        ));
+        if !deps.contains("serde_json") {
+            deps.push_str("serde_json = \"1\"\n");
+        }
     }
     format!(
         r#"[package]
@@ -76,6 +97,7 @@ pub fn pipeline(
     project: &Project,
     order: &[String],
     resolved: &BTreeMap<String, String>,
+    sdk_emits: &BTreeMap<String, SdkEmit>,
 ) -> Result<String, CompileError> {
     let mut out = String::new();
     writeln!(
@@ -175,7 +197,8 @@ pub fn pipeline(
                 .collect(),
         );
 
-        let call = adapters::emit_call(impl_id, &input_exprs, &config).map_err(|e| {
+        let sdk = sdk_emits.get(impl_id.as_str());
+        let call = adapters::emit_call(impl_id, &input_exprs, &config, sdk).map_err(|e| {
             CompileError::UnsupportedImplementation(impl_id.clone(), e)
         })?;
 

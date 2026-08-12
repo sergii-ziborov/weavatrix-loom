@@ -1615,6 +1615,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
+name = "wvx-adapter-external-demo"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "wvx-component-sdk",
+]
+
+[[package]]
 name = "wvx-adapters"
 version = "0.1.0"
 dependencies = [
@@ -1643,7 +1651,9 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "wvx-adapter-external-demo",
  "wvx-compiler-rust",
+ "wvx-component-sdk",
  "wvx-conformance",
  "wvx-cortex",
  "wvx-forge",
@@ -1665,6 +1675,16 @@ dependencies = [
  "wvx-ir",
  "wvx-types",
  "wvx-validator",
+]
+
+[[package]]
+name = "wvx-component-sdk"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "wvx-runtime",
+ "wvx-types",
 ]
 
 [[package]]

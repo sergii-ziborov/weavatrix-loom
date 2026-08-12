@@ -40,13 +40,20 @@ pub enum GraphOp {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GraphPatch {
+    #[serde(default)]
     pub ops: Vec<GraphOp>,
     #[serde(default)]
     pub rationale: String,
     #[serde(default)]
     pub unresolved: Vec<String>,
+    /// When set, apply/validate require `project.revision == base_revision` (PATCH-001).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_revision: Option<u64>,
+    /// Optional client/server patch id for tracing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +61,9 @@ pub struct PatchApplyResult {
     pub project: Project,
     pub validation: ValidationReport,
     pub applied_ops: usize,
+    /// Project revision after apply (bumped on success).
+    #[serde(default)]
+    pub revision: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -62,13 +72,26 @@ pub enum PatchError {
     Graph(#[from] GraphError),
     #[error("patch op {index}: {message}")]
     Op { index: usize, message: String },
+    #[error("revision mismatch: patch base_revision={expected}, project.revision={actual}")]
+    RevisionMismatch { expected: u64, actual: u64 },
 }
 
 /// Apply ops in order to a clone; returns project + validation.
+///
+/// When `patch.base_revision` is `Some(r)`, requires `project.revision == r`.
+/// On success, `project.revision` is incremented.
 pub fn apply_graph_patch(
     project: &Project,
     patch: &GraphPatch,
 ) -> Result<PatchApplyResult, PatchError> {
+    if let Some(expected) = patch.base_revision {
+        if project.revision != expected {
+            return Err(PatchError::RevisionMismatch {
+                expected,
+                actual: project.revision,
+            });
+        }
+    }
     let mut p = project.clone();
     for (index, op) in patch.ops.iter().enumerate() {
         apply_one(&mut p, op).map_err(|e| PatchError::Op {
@@ -76,11 +99,14 @@ pub fn apply_graph_patch(
             message: e.to_string(),
         })?;
     }
+    p.bump_revision();
     let validation = validate_project(&p);
+    let revision = p.revision;
     Ok(PatchApplyResult {
         project: p,
         validation,
         applied_ops: patch.ops.len(),
+        revision,
     })
 }
 
@@ -359,6 +385,7 @@ pub fn propose_json_pipeline_patch_relative(
                 "Choose parse implementation (serde-json vs reference)".into(),
                 "Choose serialize implementation (compact vs pretty)".into(),
             ],
+            ..Default::default()
         };
     }
 
@@ -388,6 +415,7 @@ pub fn propose_json_pipeline_patch_relative(
         ops,
         rationale,
         unresolved,
+        ..Default::default()
     }
 }
 

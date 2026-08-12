@@ -1,27 +1,33 @@
 {
-    "id":  "serde-json.parse-owned",
-    "version":  "1",
-    "capability":  {
-                       "id":  "data.json.parse",
-                       "version":  "1"
-                   },
-    "source":  {
-                   "kind":  "crates-io",
-                   "package":  "serde_json",
-                   "package_version":  "1"
-               },
-    "adapter":  {
-                    "crate_name":  "wvx-adapter-serde-json-parse",
-                    "execution":  "native-rust"
-                },
-    "status":  "conformant",
-    "evidence":  {
-                     "build":  "pass",
-                     "conformance":  "pass",
-                     "benchmark":  "absent",
-                     "license":  "pass",
-                     "security":  "absent"
-                 },
-    "notes":  "JSON pilot; Gate A vectors pass. Not production admission."
+  "id": "serde-json.parse-owned",
+  "version": "1",
+  "capability": {
+    "id": "data.json.parse",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crates-io",
+    "package": "serde_json",
+    "package_version": "1"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "conformant",
+  "evidence": {
+    "build": "pass",
+    "conformance": "pass",
+    "benchmark": "absent",
+    "license": "pass",
+    "security": "absent"
+  },
+  "notes": "JSON pilot; Gate A vectors pass. SDK plugin + emit. Not production admission.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::serde_json_parse_owned::parse({bytes}.as_slice())?"
+    }
+  }
 }
-

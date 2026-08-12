@@ -18,6 +18,8 @@ wvx-ir = { workspace = true }
 wvx-types = { workspace = true }
 wvx-runtime = { workspace = true }
 wvx-compiler-rust = { workspace = true }
+wvx-component-sdk = { workspace = true }
+wvx-adapters = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,28 +1,27 @@
 {
-    "id":  "serde-json.pointer-set",
-    "version":  "1",
-    "capability":  {
-                       "id":  "data.json.path_set",
-                       "version":  "1"
-                   },
-    "source":  {
-                   "kind":  "crate",
-                   "package":  "serde_json",
-                   "package_version":  "1",
-                   "notes":  "JSON Pointer walk + pointer_mut assignment (independent of reference map-insert)"
-               },
-    "adapter":  {
-                    "crate_name":  "wvx-adapter-serde-json-pointer-set",
-                    "execution":  "native-rust"
-                },
-    "status":  "conformant",
-    "evidence":  {
-                     "build":  "pass",
-                     "conformance":  "pass",
-                     "benchmark":  "absent",
-                     "license":  "pass",
-                     "security":  "absent"
-                 },
-    "notes":  "JSON pilot; Gate A vectors pass. Not production admission."
+  "id": "serde-json.pointer-set",
+  "version": "1",
+  "capability": {
+    "id": "data.json.path_set",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crate",
+    "package": "serde_json",
+    "package_version": "1",
+    "notes": "JSON Pointer walk + pointer_mut assignment (independent of reference map-insert)"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "conformant",
+  "evidence": {
+    "build": "pass",
+    "conformance": "pass",
+    "benchmark": "absent",
+    "license": "pass",
+    "security": "absent"
+  },
+  "notes": "JSON pilot; Gate A vectors pass. Runtime via SDK path_set_handler. Static export inlines config.path/value (compiler specializer). Not production admission."
 }
-

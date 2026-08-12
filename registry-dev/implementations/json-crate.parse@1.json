@@ -1,27 +1,33 @@
 {
-    "id":  "json-crate.parse",
-    "version":  "1",
-    "capability":  {
-                       "id":  "data.json.parse",
-                       "version":  "1"
-                   },
-    "source":  {
-                   "kind":  "crates-io",
-                   "package":  "json",
-                   "package_version":  "0.12"
-               },
-    "adapter":  {
-                    "crate_name":  "wvx-adapter-json-crate-parse",
-                    "execution":  "native-rust"
-                },
-    "status":  "conformant",
-    "evidence":  {
-                     "build":  "pass",
-                     "conformance":  "pass",
-                     "benchmark":  "absent",
-                     "license":  "pass",
-                     "security":  "absent"
-                 },
-    "notes":  "JSON pilot; Gate A vectors pass. Not production admission."
+  "id": "json-crate.parse",
+  "version": "1",
+  "capability": {
+    "id": "data.json.parse",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crates-io",
+    "package": "json",
+    "package_version": "0.12"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "conformant",
+  "evidence": {
+    "build": "pass",
+    "conformance": "pass",
+    "benchmark": "absent",
+    "license": "pass",
+    "security": "absent"
+  },
+  "notes": "JSON pilot; Gate A vectors pass. SDK plugin + emit. Not production admission.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::json_crate_parse::parse({bytes}.as_slice())?"
+    }
+  }
 }
-

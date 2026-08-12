@@ -326,6 +326,7 @@ mod tests {
                 security: AxisFact::Absent,
             },
             notes: Some("test".into()),
+            sdk: None,
         }
     }
 

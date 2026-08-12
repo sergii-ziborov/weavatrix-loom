@@ -18,7 +18,10 @@ use thiserror::Error;
 use wvx_ir::{Project, SdkEmit};
 use wvx_validator::validate_project;
 
-pub use adapters::{default_implementation, known_implementation_ids};
+pub use adapters::{
+    built_in_sdk_emit as adapters_built_in_sdk_emit, default_implementation,
+    known_implementation_ids,
+};
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -97,16 +100,22 @@ pub fn compile_to_rust_with_sdk(
         contents: emit::lockfile(project, &resolved),
     });
 
+    let mut vendored_crates = BTreeSet::new();
     if adapters::needs_external_adapters(&needed_impls) {
         files.extend(vendor::vendor_adapters_files()?);
+        vendored_crates.insert("wvx-adapters".to_string());
     }
-    // Vendor Gate F SDK crates referenced by emit descriptors.
+    // Vendor Gate F SDK crates referenced by emit descriptors (skip already vendored).
     for (impl_id, sdk) in sdk_emits {
         if !needed_impls.contains(impl_id) {
             continue;
         }
+        if vendored_crates.contains(&sdk.crate_name) {
+            continue;
+        }
         if let Some(src) = sdk.crate_path.as_ref() {
             files.extend(vendor::vendor_crate_files(src, &sdk.crate_name)?);
+            vendored_crates.insert(sdk.crate_name.clone());
         }
     }
 

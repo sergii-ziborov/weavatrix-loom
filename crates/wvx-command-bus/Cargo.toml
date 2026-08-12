@@ -25,6 +25,7 @@ wvx-validator = { workspace = true }
 wvx-cortex = { workspace = true }
 wvx-conformance = { workspace = true }
 wvx-component-sdk = { workspace = true }
+wvx-adapters = { workspace = true }
 wvx-adapter-external-demo = { workspace = true }
 
 [lints]

@@ -50,7 +50,8 @@ pub struct BenchProvenance {
 pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
     let iterations = iterations.max(1);
     let warmup = warmup.min(iterations.saturating_mul(2));
-    let reg = HandlerRegistry::with_pilot();
+    wvx_adapters::register_pilot_plugins();
+    let reg = wvx_component_sdk::registry_with_pilot_and_plugins();
     let mut cases = Vec::new();
 
     let parse_input = br#"{"hello":"world","n":1,"tag":"bench"}"#;

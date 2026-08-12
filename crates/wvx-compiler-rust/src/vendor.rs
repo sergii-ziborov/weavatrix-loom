@@ -38,6 +38,10 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<GeneratedFile>) -> Result<(), Com
         if name == "target" || name.starts_with('.') {
             continue;
         }
+        // Host-only registration is not needed in static export packages.
+        if name == "register.rs" {
+            continue;
+        }
         if path.is_dir() {
             walk(root, &path, out)?;
             continue;
@@ -46,7 +50,11 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<GeneratedFile>) -> Result<(), Com
             .strip_prefix(root)
             .map_err(|e| CompileError::Io(e.to_string()))?;
         let rel_str = rel.to_string_lossy().replace('\\', "/");
-        let contents = fs::read_to_string(&path).map_err(|e| CompileError::Io(e.to_string()))?;
+        let mut contents =
+            fs::read_to_string(&path).map_err(|e| CompileError::Io(e.to_string()))?;
+        if rel_str == "src/lib.rs" {
+            contents = strip_host_registration_from_lib(&contents);
+        }
         out.push(GeneratedFile {
             relative_path: format!("vendor/wvx-adapters/{rel_str}"),
             contents,
@@ -55,13 +63,39 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<GeneratedFile>) -> Result<(), Com
     Ok(())
 }
 
+/// Drop host/SDK registration surface from vendored adapters lib.
+fn strip_host_registration_from_lib(src: &str) -> String {
+    let mut out = String::new();
+    let mut skip = false;
+    for line in src.lines() {
+        let t = line.trim();
+        if t.starts_with("#[cfg(feature = \"host\")]") {
+            skip = true;
+            continue;
+        }
+        if skip {
+            // Skip the next item (mod register; / pub use register::...).
+            skip = false;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 fn standalone_adapters_cargo_toml() -> String {
+    // Export-only: pure transform modules, no host/SDK registration feature.
     r#"[package]
 name = "wvx-adapters"
 version = "0.1.0"
 edition = "2021"
 publish = false
 description = "Vendored Loom pilot adapters"
+
+[features]
+# Declared so vendored `#[cfg(feature = "host")]` is valid; never enabled on export.
+host = []
 
 [dependencies]
 serde_json = "1"

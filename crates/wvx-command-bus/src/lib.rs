@@ -219,21 +219,27 @@ pub fn project_run_hydrated(
     Ok(BusResponse::ok(result))
 }
 
-/// Pilot + Gate F SDK plugins (host wires external demo register once).
+/// I/O (with_pilot) + all SDK plugins: pilot adapters + external Gate F demo.
 fn playground_handlers() -> HandlerRegistry {
+    wvx_adapters::register_pilot_plugins();
     wvx_adapter_external_demo::register();
     wvx_component_sdk::registry_with_pilot_and_plugins()
 }
 
 fn sdk_emits_from_registry(registry: Option<&LocalRegistry>) -> BTreeMap<String, SdkEmit> {
     let mut map = BTreeMap::new();
-    let Some(reg) = registry else {
-        return map;
-    };
-    if let Ok(impls) = reg.list_implementations() {
-        for imp in impls {
-            if let Some(sdk) = imp.sdk.as_ref().and_then(|s| s.emit.clone()) {
-                map.insert(imp.full_id(), sdk);
+    // Built-in pilot templates always available for export without registry.
+    for id in wvx_compiler_rust::known_implementation_ids() {
+        if let Some(sdk) = wvx_compiler_rust::adapters_built_in_sdk_emit(id) {
+            map.insert(id.to_string(), sdk);
+        }
+    }
+    if let Some(reg) = registry {
+        if let Ok(impls) = reg.list_implementations() {
+            for imp in impls {
+                if let Some(sdk) = imp.sdk.as_ref().and_then(|s| s.emit.clone()) {
+                    map.insert(imp.full_id(), sdk);
+                }
             }
         }
     }

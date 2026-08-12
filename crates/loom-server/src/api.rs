@@ -428,8 +428,13 @@ mod tests {
 
     fn test_app() -> Router {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
-        let registry = Arc::new(LocalRegistry::open(root).unwrap());
-        router(AppState { registry })
+        let registry = Arc::new(LocalRegistry::open(&root).unwrap());
+        let security = Arc::new(crate::security::SecurityConfig {
+            session_token: "test-token".into(),
+            cors_origins: vec!["http://localhost:5173".into()],
+            workspace_roots: vec![root],
+        });
+        router(AppState { registry, security })
     }
 
     use std::sync::Arc;

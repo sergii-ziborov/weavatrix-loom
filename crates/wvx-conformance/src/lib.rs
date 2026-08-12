@@ -232,9 +232,15 @@ fn path_set_negative_vectors() -> Vec<(
     ]
 }
 
+/// Full playground registry: I/O + SDK pilot transform plugins.
+fn pilot_sdk_registry() -> HandlerRegistry {
+    wvx_adapters::register_pilot_plugins();
+    wvx_component_sdk::registry_with_pilot_and_plugins()
+}
+
 /// Run capability-level conformance for pilot JSON handlers.
 pub fn run_pilot_conformance() -> ConformanceReport {
-    let reg = HandlerRegistry::with_pilot();
+    let reg = pilot_sdk_registry();
     let mut cases = Vec::new();
 
     // --- parse (positive) ---
@@ -613,7 +619,7 @@ pub fn run_dynamic_pilot_ex(
     }
     apply_implementation_overrides(&mut project, &overrides);
 
-    let handlers = HandlerRegistry::with_pilot();
+    let handlers = pilot_sdk_registry();
     let mut seed = WvxValueMap::new();
     seed.insert("bytes".into(), WvxValue::Bytes(input.to_vec()));
     let result = run_project(&project, &handlers, seed)
@@ -738,11 +744,16 @@ pub fn golden_dynamic_static_ex(
 }
 
 fn unique_temp_dir(prefix: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let tid = format!("{:?}", std::thread::current().id()).replace(['(', ')'], "");
+    // Unique per process even when tests run in parallel on the same clock tick.
+    std::env::temp_dir().join(format!("{prefix}-{nanos}-{seq}-{tid}"))
 }
 
 /// Run all default golden combos for the pilot (compact serialize paths).
@@ -877,5 +888,52 @@ mod tests {
                 r.parse_impl, r.serialize_impl, r.detail
             );
         }
+    }
+
+    #[test]
+    fn sdk_swap_parse_implementation() {
+        let input = br#"{"hello":"world"}"#;
+        let (a, parse_a, _) = run_dynamic_pilot(None, None, input).expect("default");
+        assert_eq!(parse_a, "serde-json.parse-owned@1");
+        assert_eq!(a["hello"], "world");
+        assert_eq!(a["tag"], "loom");
+
+        let (b, parse_b, _) =
+            run_dynamic_pilot(Some("wvx.reference.json-parse@1"), None, input).expect("swap");
+        assert_eq!(parse_b, "wvx.reference.json-parse@1");
+        assert_eq!(b["hello"], "world");
+        assert_eq!(b["tag"], "loom");
+    }
+
+    #[test]
+    fn sdk_pretty_serialize_differs_from_compact() {
+        let input = br#"{"hello":"world"}"#;
+        let handlers = pilot_sdk_registry();
+        let mut project = pilot_project().unwrap();
+        let mut seed = WvxValueMap::new();
+        seed.insert("bytes".into(), WvxValue::Bytes(input.to_vec()));
+
+        let compact = run_project(&project, &handlers, seed.clone()).unwrap();
+        let mut overrides = BTreeMap::new();
+        overrides.insert(
+            "serialize".into(),
+            "wvx.reference.json-serialize-pretty@1".into(),
+        );
+        apply_implementation_overrides(&mut project, &overrides);
+        let pretty = run_project(&project, &handlers, seed).unwrap();
+
+        let c = match compact.outputs.get("serialize.bytes") {
+            Some(WvxValue::Bytes(b)) => b.clone(),
+            _ => panic!("compact bytes"),
+        };
+        let p = match pretty.outputs.get("serialize.bytes") {
+            Some(WvxValue::Bytes(b)) => b.clone(),
+            _ => panic!("pretty bytes"),
+        };
+        assert_ne!(c, p);
+        assert!(p.contains(&b'\n'));
+        let vc: serde_json::Value = serde_json::from_slice(&c).unwrap();
+        let vp: serde_json::Value = serde_json::from_slice(&p).unwrap();
+        assert_eq!(vc, vp);
     }
 }

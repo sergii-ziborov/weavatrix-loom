@@ -27,10 +27,10 @@ Core pilot match tables are unchanged
 
 ### Rules
 
-1. **No new pilot `match` arms** required for a new external adapter.  
+1. **No new pilot `match` arms** required for a new adapter (external **or** pilot transform).  
 2. Adapters conform to **`wvx-component-sdk`** (manifest + runtime register + emit descriptor).  
-3. **Host may wire** plugin registration once (e.g. call `register()` from an optional host list / env); core `with_pilot()` tables stay pilot-only.  
-4. Compiler uses **manifest-driven emit** (`sdk.emit`) when present; falls back to legacy pilot map only for v0.1 IDs.  
+3. **Host wires** plugin registration once (`wvx_adapters::register_pilot_plugins` + external `register()`); `with_pilot()` keeps **I/O only**.  
+4. Compiler prefers **manifest / built-in SDK emit** (`sdk.emit`); path_set still special-cases config inlining.  
 5. AI suggestions and Forge drafts remain non-evidence (ADR-0010 / 0007).
 
 ### Non-goals (later gates)

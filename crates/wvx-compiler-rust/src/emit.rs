@@ -12,11 +12,12 @@ pub fn cargo_toml(
     sdk_emits: &BTreeMap<String, SdkEmit>,
 ) -> String {
     let mut deps = String::new();
+    let mut seen_crates = BTreeSet::new();
     if adapters::needs_external_adapters(impls) {
+        seen_crates.insert("wvx-adapters".to_string());
         deps.push_str("wvx-adapters = { path = \"vendor/wvx-adapters\" }\n");
         deps.push_str("serde_json = \"1\"\n");
     }
-    let mut seen_crates = BTreeSet::new();
     for (impl_id, sdk) in sdk_emits {
         if !impls.contains(impl_id) {
             continue;

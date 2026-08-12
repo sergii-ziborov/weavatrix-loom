@@ -115,6 +115,92 @@ impl ErasedComponent for BytesToJson {
     }
 }
 
+/// Helper: wrap `fn(&Value) -> Result<Vec<u8>, String>` as serialize-style handler.
+pub fn json_to_bytes_handler(
+    implementation_id: impl Into<String>,
+    capability_key: impl Into<String>,
+    f: fn(&serde_json::Value) -> Result<Vec<u8>, String>,
+) -> Box<dyn ErasedComponent> {
+    Box::new(JsonToBytes {
+        implementation_id: implementation_id.into(),
+        capability_key: capability_key.into(),
+        f,
+    })
+}
+
+struct JsonToBytes {
+    implementation_id: String,
+    capability_key: String,
+    f: fn(&serde_json::Value) -> Result<Vec<u8>, String>,
+}
+
+impl ErasedComponent for JsonToBytes {
+    fn implementation_id(&self) -> &str {
+        &self.implementation_id
+    }
+    fn capability_key(&self) -> &str {
+        &self.capability_key
+    }
+    fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let value = match inputs.get("value") {
+            Some(WvxValue::Json(v)) => v,
+            Some(_) => return Err("data.json.serialize: port `value` must be json.value".into()),
+            None => return Err("data.json.serialize: missing port `value`".into()),
+        };
+        let bytes = (self.f)(value)?;
+        let mut out = WvxValueMap::new();
+        out.insert("bytes".into(), WvxValue::Bytes(bytes));
+        Ok(out)
+    }
+}
+
+/// Helper: wrap `fn(Value, &str, Value) -> Result<Value, String>` as path_set handler.
+pub fn path_set_handler(
+    implementation_id: impl Into<String>,
+    capability_key: impl Into<String>,
+    f: fn(serde_json::Value, &str, serde_json::Value) -> Result<serde_json::Value, String>,
+) -> Box<dyn ErasedComponent> {
+    Box::new(PathSetFn {
+        implementation_id: implementation_id.into(),
+        capability_key: capability_key.into(),
+        f,
+    })
+}
+
+struct PathSetFn {
+    implementation_id: String,
+    capability_key: String,
+    f: fn(serde_json::Value, &str, serde_json::Value) -> Result<serde_json::Value, String>,
+}
+
+impl ErasedComponent for PathSetFn {
+    fn implementation_id(&self) -> &str {
+        &self.implementation_id
+    }
+    fn capability_key(&self) -> &str {
+        &self.capability_key
+    }
+    fn execute(&self, inputs: &WvxValueMap, config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let value = match inputs.get("value") {
+            Some(WvxValue::Json(v)) => v.clone(),
+            Some(_) => return Err("data.json.path_set: port `value` must be json.value".into()),
+            None => return Err("data.json.path_set: missing port `value`".into()),
+        };
+        let path = config
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "data.json.path_set: config.path (string) is required".to_string())?;
+        let set_to = config
+            .get("value")
+            .cloned()
+            .ok_or_else(|| "data.json.path_set: config.value is required".to_string())?;
+        let out_v = (self.f)(value, path, set_to)?;
+        let mut out = WvxValueMap::new();
+        out.insert("value".into(), WvxValue::Json(out_v));
+        Ok(out)
+    }
+}
+
 /// Wire descriptor mirrored from registry `Implementation.sdk` (for tooling).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkEmitSpec {

@@ -20,7 +20,7 @@
     "license": "pass",
     "security": "absent"
   },
-  "notes": "Gate F external SDK adapter (uppercases string leaves). Not identity-parse conformant; proves core-independent registration.",
+  "notes": "Gate F external SDK adapter (uppercases string leaves). Not identity-parse conformant; proves core-independent registration. Pilot transforms also use the same SDK ABI.",
   "sdk": {
     "emit": {
       "crate_name": "wvx-adapter-external-demo",

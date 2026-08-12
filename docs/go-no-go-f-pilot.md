@@ -1,25 +1,28 @@
 # Go / No-Go notes — Gate F (Core-independent extensibility)
 
 **Date:** 2026-08-12  
-**Scope:** External SDK adapter not listed in pilot match tables  
+**Scope:** External SDK adapter + full pilot transform migration onto SDK  
 **ADR:** [0011-gate-f-core-independent-extensibility.md](adr/0011-gate-f-core-independent-extensibility.md)
 
 | Gate | Title | Pilot verdict |
 |------|--------|---------------|
-| **F** | Core-independent extensibility | **Go (pilot fixture)** |
+| **F** | Core-independent extensibility | **Go (pilot + SDK migration)** |
 
 ## Criterion
 
 Unknown external implementation + SDK adapter + Registry manifest → Studio/CLI can run and export **without** new arms in `with_pilot()` / legacy compiler match tables.
+
+Additionally (v0.2 ABI close-out): **all pilot transforms** register via the same SDK path; `with_pilot()` retains **I/O only**.
 
 ## Fixture
 
 | Piece | Location |
 |-------|----------|
 | SDK ABI | `crates/wvx-component-sdk` |
+| Pilot transforms | `wvx_adapters::register_pilot_plugins()` (feature `host`) |
 | External adapter | `crates/wvx-adapter-external-demo` (`upper_parse`) |
-| Registry manifest | `registry-dev/implementations/external.demo.upper-parse@1.json` with `sdk.emit` |
-| Host wire | `wvx_adapter_external_demo::register()` + `install_plugins` in command-bus host |
+| Registry manifests | `registry-dev/implementations/*` with `sdk.emit` (parse/serialize) |
+| Host wire | command-bus `playground_handlers()` → pilot plugins + external `register()` + `install_plugins` |
 
 ## Evidence
 
@@ -32,14 +35,18 @@ cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json \
 # Static export uses sdk.emit template + vendored crate
 cargo run -p wvx-cli -- export-rust fixtures/pilot-json-pipeline.wvx.json \
   --impl parse=external.demo.upper-parse@1 -o /tmp/loom-gate-f --check --run
+
+# Pilot transforms also via SDK (default pipeline)
+cargo test -p wvx-conformance --lib
 ```
 
 ## Residual
 
-- Host still **calls** `register()` once (acceptable per ADR-0011); no pilot match arm for the external id.
+- Host still **calls** `register()` / `register_pilot_plugins()` once (acceptable per ADR-0011).
+- `path_set` static emit still special-cases config inlining (runtime uses SDK `path_set_handler`).
 - Full dynamic `.dll` discovery and multi-domain packs remain future work.
 - External demo is intentionally **not** identity-parse conformant (candidate status).
 
 ## Verdict
 
-**Go (pilot fixture)** — registry-driven SDK path works for one external parse adapter without core pilot tables knowing its ID.
+**Go** — external fixture + pilot transforms on SDK ABI; core runtime no longer owns transform match tables.

@@ -204,6 +204,7 @@ mod tests {
             status: LifecycleStatus::Candidate,
             evidence: ImplementationEvidence::default(),
             notes: None,
+            sdk: None,
         }
     }
 

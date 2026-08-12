@@ -175,6 +175,7 @@ cargo run -p loom-server
 | GET | `/api/v1/pilot/implementations` | playground handler catalog |
 | POST | `/api/v1/forge/inventory` | body `{ "path": "<crate-or-workspace>" }` static scan |
 | POST | `/api/v1/forge/extract` | public API candidates from `src/` |
+| POST | `/api/v1/forge/draft` | body `{ "path", "name"?, "out_dir"? }` adapter drafts (`inventory_only`) |
 | POST | `/api/v1/graph/propose_patch` | body `{ project? }` — relative pilot GraphPatch |
 | POST | `/api/v1/graph/propose_intent` | body `{ project, intent }` — heuristic or LLM (ops only) |
 | POST | `/api/v1/graph/apply_patch` | body `{ project, patch }` |
@@ -183,9 +184,11 @@ cargo run -p loom-server
 
 ```bash
 cargo run -p wvx-cli -- forge inventory .
+cargo run -p wvx-cli -- forge extract crates/wvx-adapters
+cargo run -p wvx-cli -- forge draft crates/wvx-adapters --name parse -o /tmp/loom-drafts
 ```
 
-Reads `Cargo.toml` / tree indicators only — no `build.rs`, no network.
+Reads `Cargo.toml` / `src/` only — no `build.rs`, no network. Drafts are **not** admitted.
 
 CORS is open for local Studio development. Bind stays loopback by default.
 

@@ -6,7 +6,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    forge_extract, forge_inventory, graph_apply_patch, graph_propose_intent, graph_propose_patch,
+    forge_draft, forge_extract, forge_inventory, graph_apply_patch, graph_propose_intent,
+    graph_propose_patch,
     implementations_list,
     load_project_path, project_export_rust, project_export_to_dir, project_run, project_validate,
     registry_admission_audit, registry_implementations, registry_inspect, registry_search,
@@ -68,6 +69,7 @@ Usage:
   wvx registry check|audit [--path <dir>]   lifecycle vs evidence (overclaim fail)
   wvx forge inventory <crate-or-workspace-path>
   wvx forge extract <crate-path>
+  wvx forge draft <crate-path> [--name <substr>] [-o <dir>]   static adapter drafts
   wvx patch propose [project.wvx.json]   relative if project given; full pilot if omitted
   wvx patch intent <text> [--project <file>]   heuristic or LLM (XAI_API_KEY) → GraphPatch
   wvx patch apply <project.wvx.json> [--patch <patch.json>]
@@ -183,7 +185,7 @@ fn args_without_path(args: &[String]) -> Vec<String> {
 
 fn cmd_forge(args: &[String]) -> ExitCode {
     if args.is_empty() || args[0] == "help" {
-        eprintln!("usage: wvx forge <inventory|extract> <path>");
+        eprintln!("usage: wvx forge <inventory|extract|draft> <path> [options]");
         return ExitCode::FAILURE;
     }
     match args[0].as_str() {
@@ -210,6 +212,51 @@ fn cmd_forge(args: &[String]) -> ExitCode {
             };
             match forge_extract(path.as_ref()) {
                 Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "draft" => {
+            // wvx forge draft <path> [--name substr] [-o dir]
+            let Some(path) = args.get(1) else {
+                eprintln!("usage: wvx forge draft <crate-path> [--name <substr>] [-o <dir>]");
+                return ExitCode::FAILURE;
+            };
+            let mut name = None;
+            let mut out = None;
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--name" || args[i] == "-n" {
+                    name = args.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                if args[i] == "-o" || args[i] == "--out" {
+                    out = args.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                i += 1;
+            }
+            match forge_draft(
+                path.as_ref(),
+                name,
+                out.map(std::path::Path::new),
+            ) {
+                Ok(resp) => {
+                    if let Some(r) = &resp.data {
+                        eprintln!(
+                            "forge draft: {} · {} draft(s) · {}",
+                            r.status,
+                            r.drafts.len(),
+                            r.package_name
+                        );
+                    }
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                     ExitCode::SUCCESS
                 }

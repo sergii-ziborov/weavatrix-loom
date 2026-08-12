@@ -9,10 +9,11 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
-    forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch, implementations_list,
-    project_export_rust_hydrated, project_run_hydrated, project_validate_hydrated,
-    graph_propose_intent, registry_admission_audit, registry_implementations, registry_inspect,
-    registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
+    forge_draft, forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch,
+    implementations_list, project_export_rust_hydrated, project_run_hydrated,
+    project_validate_hydrated, graph_propose_intent, registry_admission_audit,
+    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
+    BusResponse, PROTOCOL_VERSION,
 };
 use wvx_ir::Project;
 use wvx_project_graph::GraphPatch;
@@ -34,6 +35,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
         .route("/api/v1/forge/extract", post(forge_extract_handler))
+        .route("/api/v1/forge/draft", post(forge_draft_handler))
         .route("/api/v1/graph/propose_patch", post(propose_patch))
         .route("/api/v1/graph/propose_intent", post(propose_intent))
         .route("/api/v1/graph/validate_patch", post(validate_patch))
@@ -265,6 +267,29 @@ async fn forge_inventory_handler(Json(body): Json<ForgeInventoryBody>) -> Respon
 async fn forge_extract_handler(Json(body): Json<ForgeInventoryBody>) -> Response {
     let path = std::path::PathBuf::from(&body.path);
     match forge_extract(&path) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ForgeDraftBody {
+    path: String,
+    #[serde(default)]
+    name: Option<String>,
+    /// Optional server-local directory to write draft packages.
+    #[serde(default)]
+    out_dir: Option<String>,
+}
+
+async fn forge_draft_handler(Json(body): Json<ForgeDraftBody>) -> Response {
+    let path = std::path::PathBuf::from(&body.path);
+    let out = body.out_dir.as_ref().map(std::path::PathBuf::from);
+    match forge_draft(
+        &path,
+        body.name.as_deref(),
+        out.as_deref(),
+    ) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }

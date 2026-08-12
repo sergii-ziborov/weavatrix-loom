@@ -3,8 +3,12 @@
 //! Does **not** run build.rs, proc macros, tests, or network. Only reads
 //! Cargo.toml / Cargo.lock metadata and source tree indicators.
 
+mod draft;
 mod extract;
 
+pub use draft::{
+    draft_adapters, draft_from_extract, write_draft_files, AdapterDraft, DraftReport,
+};
 pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 
 use serde::{Deserialize, Serialize};

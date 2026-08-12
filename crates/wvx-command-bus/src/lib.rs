@@ -9,7 +9,8 @@ use wvx_compiler_rust::{
     compile_to_rust, export_to_directory, ExportReport, GeneratedWorkspace,
 };
 use wvx_forge::{
-    extract_public_api, inventory_path, ExtractReport, ForgeError, InventoryReport,
+    draft_adapters, extract_public_api, inventory_path, write_draft_files, DraftReport,
+    ExtractReport, ForgeError, InventoryReport,
 };
 use wvx_ir::Project;
 use wvx_project_graph::{
@@ -301,6 +302,27 @@ pub fn forge_inventory(path: &Path) -> Result<BusResponse<InventoryReport>, BusE
 /// Public API extract + candidate shapes (Forge stage 2 — static only).
 pub fn forge_extract(path: &Path) -> Result<BusResponse<ExtractReport>, BusError> {
     let report = extract_public_api(path)?;
+    Ok(BusResponse::ok(report))
+}
+
+/// Adapter drafts from extract (Forge stage 3 — static only, `inventory_only`).
+///
+/// Optional `name_filter` substring on function names. Optional `out_dir` writes
+/// capability.json / implementation.json / adapter_stub.rs per draft.
+pub fn forge_draft(
+    path: &Path,
+    name_filter: Option<&str>,
+    out_dir: Option<&Path>,
+) -> Result<BusResponse<DraftReport>, BusError> {
+    let mut report = draft_adapters(path, name_filter)?;
+    if let Some(dir) = out_dir {
+        match write_draft_files(&report, dir) {
+            Ok(n) => report
+                .notes
+                .push(format!("Wrote {n} draft package(s) under {}", dir.display())),
+            Err(e) => return Err(BusError::Forge(e.to_string())),
+        }
+    }
     Ok(BusResponse::ok(report))
 }
 

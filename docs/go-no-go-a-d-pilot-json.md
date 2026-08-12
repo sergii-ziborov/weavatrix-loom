@@ -1,13 +1,13 @@
 # Go / No-Go notes — Gates A & D (JSON pilot)
 
-**Date:** 2026-08-12 (updated: second path_set + expanded vectors)  
+**Date:** 2026-08-12 (updated: negative conformance / error codes)  
 **Scope:** Pilot A only (`Input → JSON Parse → Path Set → Serialize → Output`)  
 **Harness:** `wvx-conformance` + `wvx-cli conformance [--golden]`  
 **Verdict summary**
 
 | Gate | Title | Pilot verdict | Confidence |
 |------|--------|---------------|------------|
-| **A** | Interchangeability | **Go (pilot transforms)** | High for **3** parse + **2** path_set + **3** serialize backends |
+| **A** | Interchangeability | **Go (pilot transforms)** | High for **3** parse + **2** path_set + **3** serialize; shared **error-code** negatives |
 | **D** | Runtime equivalence | **Go (pilot)** | High for compact combos including `json-crate.parse@1` and `serde-json.pointer-set@1` |
 
 These notes do **not** close Gates B, C, or E. They only record evidence for the v0.1 transform pilot.
@@ -29,18 +29,28 @@ These notes do **not** close Gates B, C, or E. They only record evidence for the
 | `data.json.path_set@1` | `wvx.reference.path-set@1`, **`serde-json.pointer-set@1`** (JSON Pointer walk) | Shared path_set vectors (5 × **2** impls) |
 | `io.input.bytes@1` / `io.output.bytes@1` | reference only | Seed / sink |
 
-**Conformance run (2026-08-12, post second path_set + vector expansion):**
+**Conformance run (2026-08-12, post negative error-code suite):**
 
 ```text
 cargo run -p wvx-cli -- conformance
-→ conformance: 46 cases, 0 failed · PASS
+→ conformance: 99 cases, 0 failed · PASS
 ```
 
 Breakdown:
 
-- 33 parse cases (**3** impls × 11 vectors: object, nested, array, number, string, bool, null, empty object/array, unicode, deep object)
+- 33 parse **positive** (**3** impls × 11 vectors: object, nested, array, number, string, bool, null, empty object/array, unicode, deep object)
+- 45 parse **negative** (**3** impls × 15 vectors): must fail with code family  
+  `invalid-syntax` or `invalid-unicode` (prefix before `:`; message text may differ)
 - 3 serialize round-trips (2 compact + 1 pretty; pretty checked for semantic re-parse)
-- 10 path_set cases (**2** impls × 5 vectors: set tag, overwrite, number, object, path without leading `/`)
+- 10 path_set **positive** (**2** impls × 5 vectors)
+- 8 path_set **negative** (**2** impls × 4 vectors): nested path, empty path, non-object root
+
+Parse negative samples: empty, whitespace-only, truncated `{` / `[1,`, unclosed string,
+trailing value, `undefined`, trailing comma, single quotes, `+1`, bare key, control char
+in string, invalid UTF-8 buffer, invalid UTF-8 inside a string.
+
+**Error contract:** adapters emit `{code}: {detail}`. Capability codes for parse are
+`invalid-syntax`, `invalid-unicode`, `depth-limit` (`depth-limit` not enforced in pilot).
 
 **Graph swap (no binding change):**
 
@@ -79,6 +89,8 @@ I/O remains single-reference (seed/sink only; not swap-critical for the transfor
 1. Pretty vs compact serialize intentionally differ as **bytes** but agree as **JSON values** — UI/trace must show which impl ran.
 2. Boundary normalization maps `json` crate values into `serde_json::Value`; exotic number edge cases should keep expanding the vector set.
 3. No automated property tests against a large JSON corpus yet.
+4. Negative suite matches **error code families**, not identical diagnostic strings or byte offsets.
+5. `depth-limit` is declared on the capability but not enforced by pilot parsers yet.
 
 ---
 
@@ -175,7 +187,7 @@ Registry: `registry-dev/`
 
 1. Treat **A (pilot transforms Go)** + **D (pilot Go)** as closed for the JSON pilot story; product is still broader than this gate pair.
 2. Next evidence upgrades:
-   - Invalid-input / error-code vectors (negative conformance).
    - Lightweight per-impl timing compare in Studio (not full Gate E).
+   - Optional `depth-limit` enforcement + negative vector.
    - CI: `.github/workflows/ci.yml` already runs `wvx conformance` + `cargo test -p wvx-conformance` on every PR.
 3. Do not expand registry beyond pure transforms until Gate D remains green when new adapters land.

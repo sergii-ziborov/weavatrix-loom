@@ -86,7 +86,7 @@ Export options:
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
 
-  wvx conformance               pilot capability vectors (parse/serialize/path_set)
+  wvx conformance               pilot vectors + negative parse/path_set error codes
   wvx conformance --golden      also dynamic≡static export combos (invokes cargo)
 
 Registry defaults to ./registry-dev (or $WVX_REGISTRY).

@@ -2,8 +2,12 @@
 //!
 //! Not a full evidence/admission pipeline — focused on Transform MVP:
 //! every registered pilot implementation of a capability must agree on
-//! shared vectors (semantic equality for JSON), and playground output
-//! must match the exported static pipeline on the pilot fixture.
+//! shared vectors (semantic equality for JSON), reject shared negative
+//! inputs with the same error *code family*, and playground output must
+//! match the exported static pipeline on the pilot fixture.
+//!
+//! Error codes for `data.json.parse@1` (capability contract):
+//! `invalid-syntax`, `invalid-unicode`, `depth-limit` (depth not enforced in pilot).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -153,16 +157,98 @@ fn serialize_impls_compact() -> &'static [&'static str] {
     ]
 }
 
+/// Extract the capability error code family from an adapter error string.
+///
+/// Adapters should emit `{code}: {detail}` using codes from the capability
+/// contract (`invalid-syntax`, `invalid-unicode`, …).
+pub fn error_code_family(err: &str) -> &str {
+    err.split_once(':')
+        .map(|(code, _)| code.trim())
+        .unwrap_or(err.trim())
+}
+
+/// Negative parse vectors: every impl must **fail** with the expected code family.
+/// Messages may differ; only the prefix before `:` is contract.
+fn parse_negative_vectors() -> Vec<(&'static str, Vec<u8>, &'static str)> {
+    vec![
+        ("neg_empty", b"".to_vec(), "invalid-syntax"),
+        ("neg_whitespace_only", b"   \t\n".to_vec(), "invalid-syntax"),
+        ("neg_truncated_object", b"{".to_vec(), "invalid-syntax"),
+        ("neg_truncated_array", b"[1,".to_vec(), "invalid-syntax"),
+        ("neg_unclosed_string", b"\"hi".to_vec(), "invalid-syntax"),
+        ("neg_trailing_value", b"{}{}".to_vec(), "invalid-syntax"),
+        ("neg_trailing_after_true", b"true false".to_vec(), "invalid-syntax"),
+        ("neg_bad_token", b"undefined".to_vec(), "invalid-syntax"),
+        ("neg_trailing_comma", br#"{"a":1,}"#.to_vec(), "invalid-syntax"),
+        ("neg_single_quotes", br#"{'a':1}"#.to_vec(), "invalid-syntax"),
+        ("neg_plus_number", b"+1".to_vec(), "invalid-syntax"),
+        ("neg_bare_key", br#"{a:1}"#.to_vec(), "invalid-syntax"),
+        ("neg_control_in_string", b"\"\x01\"".to_vec(), "invalid-syntax"),
+        // Whole buffer is not valid UTF-8.
+        ("neg_invalid_utf8", vec![0xff, 0xfe], "invalid-unicode"),
+        // Valid structure framing but invalid UTF-8 inside a string.
+        ("neg_invalid_utf8_in_string", vec![b'"', 0xff, b'"'], "invalid-unicode"),
+    ]
+}
+
+/// path_set negatives: reject with any error (pilot uses free-form messages).
+fn path_set_negative_vectors() -> Vec<(
+    &'static str,
+    serde_json::Value,
+    &'static str,
+    serde_json::Value,
+)> {
+    vec![
+        (
+            "neg_nested_path",
+            serde_json::json!({"a": {"b": 1}}),
+            "/a/b",
+            serde_json::json!(2),
+        ),
+        (
+            "neg_empty_path",
+            serde_json::json!({}),
+            "",
+            serde_json::json!(1),
+        ),
+        (
+            "neg_root_array",
+            serde_json::json!([1, 2]),
+            "/0",
+            serde_json::json!(9),
+        ),
+        (
+            "neg_root_string",
+            serde_json::json!("hi"),
+            "/x",
+            serde_json::json!(1),
+        ),
+    ]
+}
+
 /// Run capability-level conformance for pilot JSON handlers.
 pub fn run_pilot_conformance() -> ConformanceReport {
     let reg = HandlerRegistry::with_pilot();
     let mut cases = Vec::new();
 
-    // --- parse ---
+    // --- parse (positive) ---
     for impl_id in parse_impls() {
         for (name, bytes, expected) in parse_vectors() {
             let result = conform_parse(&reg, impl_id, name, bytes.as_slice(), &expected);
             cases.push(result);
+        }
+    }
+
+    // --- parse (negative: must fail with expected error code family) ---
+    for impl_id in parse_impls() {
+        for (name, bytes, expected_code) in parse_negative_vectors() {
+            cases.push(conform_parse_negative(
+                &reg,
+                impl_id,
+                name,
+                bytes.as_slice(),
+                expected_code,
+            ));
         }
     }
 
@@ -185,6 +271,15 @@ pub fn run_pilot_conformance() -> ConformanceReport {
         for (name, input, path, set_value, expected) in path_set_vectors() {
             cases.push(conform_path_set(
                 &reg, impl_id, name, input, path, set_value, expected,
+            ));
+        }
+    }
+
+    // --- path_set (negative: must fail) ---
+    for impl_id in path_set_impls() {
+        for (name, input, path, set_value) in path_set_negative_vectors() {
+            cases.push(conform_path_set_negative(
+                &reg, impl_id, name, input, path, set_value,
             ));
         }
     }
@@ -246,6 +341,64 @@ fn conform_parse(
             ok: false,
             detail: Some(e),
         },
+    }
+}
+
+/// Negative parse: must return Err whose code family matches `expected_code`.
+fn conform_parse_negative(
+    reg: &HandlerRegistry,
+    impl_id: &str,
+    case: &str,
+    bytes: &[u8],
+    expected_code: &str,
+) -> ConformanceCaseResult {
+    let cap = "data.json.parse@1";
+    let handler = match reg.resolve(cap, Some(impl_id)) {
+        Ok(h) => h,
+        Err(e) => {
+            return ConformanceCaseResult {
+                capability: cap.into(),
+                implementation: impl_id.into(),
+                case: case.into(),
+                ok: false,
+                detail: Some(e.to_string()),
+            };
+        }
+    };
+    let mut inputs = WvxValueMap::new();
+    inputs.insert("bytes".into(), WvxValue::Bytes(bytes.to_vec()));
+    match handler.execute(&inputs, &BTreeMap::new()) {
+        Ok(out) => ConformanceCaseResult {
+            capability: cap.into(),
+            implementation: impl_id.into(),
+            case: case.into(),
+            ok: false,
+            detail: Some(format!(
+                "expected error `{expected_code}`, but parse succeeded: {out:?}"
+            )),
+        },
+        Err(e) => {
+            let got = error_code_family(&e);
+            if got == expected_code {
+                ConformanceCaseResult {
+                    capability: cap.into(),
+                    implementation: impl_id.into(),
+                    case: case.into(),
+                    ok: true,
+                    detail: Some(e), // keep message for diagnostics / CLI
+                }
+            } else {
+                ConformanceCaseResult {
+                    capability: cap.into(),
+                    implementation: impl_id.into(),
+                    case: case.into(),
+                    ok: false,
+                    detail: Some(format!(
+                        "expected error code `{expected_code}`, got `{got}` (full: {e})"
+                    )),
+                }
+            }
+        }
     }
 }
 
@@ -369,6 +522,51 @@ fn conform_path_set(
             implementation: impl_id.into(),
             case: case.into(),
             ok: false,
+            detail: Some(e),
+        },
+    }
+}
+
+/// Negative path_set: must fail (any error). Pilot does not yet standardize codes here.
+fn conform_path_set_negative(
+    reg: &HandlerRegistry,
+    impl_id: &str,
+    case: &str,
+    input: serde_json::Value,
+    path: &str,
+    set_value: serde_json::Value,
+) -> ConformanceCaseResult {
+    let cap = "data.json.path_set@1";
+    let handler = match reg.resolve(cap, Some(impl_id)) {
+        Ok(h) => h,
+        Err(e) => {
+            return ConformanceCaseResult {
+                capability: cap.into(),
+                implementation: impl_id.into(),
+                case: case.into(),
+                ok: false,
+                detail: Some(e.to_string()),
+            };
+        }
+    };
+    let mut inputs = WvxValueMap::new();
+    inputs.insert("value".into(), WvxValue::Json(input));
+    let mut config = BTreeMap::new();
+    config.insert("path".into(), serde_json::Value::String(path.into()));
+    config.insert("value".into(), set_value);
+    match handler.execute(&inputs, &config) {
+        Ok(out) => ConformanceCaseResult {
+            capability: cap.into(),
+            implementation: impl_id.into(),
+            case: case.into(),
+            ok: false,
+            detail: Some(format!("expected error, but path_set succeeded: {out:?}")),
+        },
+        Err(e) => ConformanceCaseResult {
+            capability: cap.into(),
+            implementation: impl_id.into(),
+            case: case.into(),
+            ok: true,
             detail: Some(e),
         },
     }
@@ -595,6 +793,32 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n")
         );
+    }
+
+    #[test]
+    fn error_code_family_splits_prefix() {
+        assert_eq!(error_code_family("invalid-syntax: EOF"), "invalid-syntax");
+        assert_eq!(
+            error_code_family("invalid-unicode: bad utf-8"),
+            "invalid-unicode"
+        );
+    }
+
+    #[test]
+    fn negative_parse_cases_present() {
+        let report = run_pilot_conformance();
+        let neg: Vec<_> = report
+            .cases
+            .iter()
+            .filter(|c| c.case.starts_with("neg_"))
+            .collect();
+        // 15 parse neg × 3 impls + 4 path_set neg × 2 impls = 45 + 8 = 53
+        assert!(
+            neg.len() >= 45,
+            "expected ≥45 negative cases, got {}",
+            neg.len()
+        );
+        assert!(neg.iter().all(|c| c.ok), "negative suite failures");
     }
 
     #[test]

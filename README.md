@@ -75,7 +75,7 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | `wvx-mcp` | Bounded MCP tools over the command bus ([`mcport`](https://crates.io/crates/mcport)) |
 | `wvx-adapters` | Pilot JSON implementations (parse / serialize / path_set) |
 | `wvx-forge` | Static crate inventory + public API extract |
-| `wvx-conformance` | Capability vectors + golden (dynamic ≡ export) |
+| `wvx-conformance` | Capability vectors (pos/neg error codes) + golden (dynamic ≡ export) |
 | `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) |
 | `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) |
 
@@ -206,7 +206,7 @@ npm run dev
 ## Conformance & golden (pilot)
 
 ```bash
-# Capability vectors: all pilot parse/serialize/path_set impls
+# Capability vectors (positive + negative error codes) for pilot parse/serialize/path_set
 cargo run -p wvx-cli -- conformance
 
 # Plus dynamic playground ≡ static export (invokes cargo for each combo)

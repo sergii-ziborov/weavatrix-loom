@@ -10,8 +10,9 @@ use wvx_compiler_rust::{
 };
 use wvx_ir::SdkEmit;
 use wvx_forge::{
-    draft_adapters, extract_public_api, inventory_path, write_draft_files, DraftReport,
-    ExtractReport, ForgeError, InventoryReport,
+    draft_adapters_with_ontology, extract_public_api, inventory_path, match_candidates,
+    write_draft_files, DraftReport, ExtractReport, ForgeError, InventoryReport, MatchReport,
+    OntologyCapability, OntologyPort,
 };
 use wvx_ir::Project;
 use wvx_project_graph::{
@@ -380,12 +381,15 @@ pub fn forge_extract(path: &Path) -> Result<BusResponse<ExtractReport>, BusError
 ///
 /// Optional `name_filter` substring on function names. Optional `out_dir` writes
 /// capability.json / implementation.json / adapter_stub.rs per draft.
+/// When `registry` is set, FORGE-007 maps candidates onto existing capabilities.
 pub fn forge_draft(
     path: &Path,
     name_filter: Option<&str>,
     out_dir: Option<&Path>,
+    registry: Option<&LocalRegistry>,
 ) -> Result<BusResponse<DraftReport>, BusError> {
-    let mut report = draft_adapters(path, name_filter)?;
+    let ontology = ontology_from_registry(registry)?;
+    let mut report = draft_adapters_with_ontology(path, name_filter, &ontology)?;
     if let Some(dir) = out_dir {
         match write_draft_files(&report, dir) {
             Ok(n) => report
@@ -395,6 +399,50 @@ pub fn forge_draft(
         }
     }
     Ok(BusResponse::ok(report))
+}
+
+/// FORGE-007: match public `fn` candidates to registry capability ontology (static).
+pub fn forge_match(
+    path: &Path,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<MatchReport>, BusError> {
+    let extract = extract_public_api(path)?;
+    let ontology = ontology_from_registry(registry)?;
+    let report = match_candidates(&extract.package_name, &extract.candidates, &ontology);
+    Ok(BusResponse::ok(report))
+}
+
+fn ontology_from_registry(
+    registry: Option<&LocalRegistry>,
+) -> Result<Vec<OntologyCapability>, BusError> {
+    let Some(reg) = registry else {
+        return Ok(Vec::new());
+    };
+    let caps = reg.list_capabilities()?;
+    Ok(caps
+        .into_iter()
+        .map(|c| OntologyCapability {
+            id: c.id,
+            version: c.version,
+            kind: c.kind,
+            inputs: c
+                .inputs
+                .into_iter()
+                .map(|p| OntologyPort {
+                    id: p.id,
+                    ty: p.ty.to_string(),
+                })
+                .collect(),
+            outputs: c
+                .outputs
+                .into_iter()
+                .map(|p| OntologyPort {
+                    id: p.id,
+                    ty: p.ty.to_string(),
+                })
+                .collect(),
+        })
+        .collect())
 }
 
 /// Propose a GraphPatch (rule-based pilot: JSON pipeline).

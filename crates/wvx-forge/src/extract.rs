@@ -245,13 +245,27 @@ fn shape_from_fn_sig(sig: &str) -> CandidateShape {
 }
 
 fn normalize_rust_type(ty: &str) -> String {
-    let t = ty
-        .trim()
-        .trim_start_matches("pub ")
-        .split('<')
-        .next()
-        .unwrap_or(ty)
-        .trim();
+    let full = ty.trim().trim_start_matches("pub ").trim();
+    // Prefer full signature (generics intact) for Result / Value detection.
+    let lower = full.to_ascii_lowercase();
+    if lower.contains("&[u8]") || lower.contains("vec<u8>") {
+        return "bytes".into();
+    }
+    if lower.contains("serde_json::value")
+        || lower.contains("json::value")
+        || lower.contains("value")
+            && (lower.contains("result") || lower.ends_with("value") || lower.contains("value,"))
+    {
+        // Result<Value, _> / Value / Option<Value>
+        if lower.contains("value") {
+            return "json.value".into();
+        }
+    }
+    if full == "Value" || full.ends_with("::Value") {
+        return "json.value".into();
+    }
+
+    let t = full.split('<').next().unwrap_or(full).trim();
     match t {
         "&[u8]" | "Vec<u8>" | "&Vec<u8>" => "bytes".into(),
         "&str" | "String" | "&String" => "string".into(),
@@ -260,6 +274,7 @@ fn normalize_rust_type(ty: &str) -> String {
         "u64" | "u32" | "usize" => "u64".into(),
         "f64" | "f32" => "f64".into(),
         "()" => "unit".into(),
+        "Value" => "json.value".into(),
         other if other.contains("Value") => "json.value".into(),
         other => other.to_string(),
     }
@@ -284,6 +299,17 @@ mod tests {
     fn parse_fn_shape() {
         let shape = shape_from_fn_sig("pub fn parse(bytes: &[u8]) -> Result<Value, String> {");
         assert!(shape.inputs.iter().any(|i| i == "bytes"));
-        assert!(shape.outputs.iter().any(|o| o == "json.value" || o.contains("Result")));
+        assert!(
+            shape.outputs.iter().any(|o| o == "json.value"),
+            "expected json.value from Result<Value,_>, got {:?}",
+            shape.outputs
+        );
+    }
+
+    #[test]
+    fn serialize_fn_shape() {
+        let shape = shape_from_fn_sig("pub fn to_vec(v: &Value) -> Result<Vec<u8>, String> {");
+        assert!(shape.inputs.iter().any(|i| i == "json.value"));
+        assert!(shape.outputs.iter().any(|o| o == "bytes"));
     }
 }

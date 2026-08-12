@@ -1638,6 +1638,7 @@ dependencies = [
  "serde_json",
  "wvx-command-bus",
  "wvx-conformance",
+ "wvx-forge",
  "wvx-ir",
  "wvx-project-graph",
  "wvx-registry-client",

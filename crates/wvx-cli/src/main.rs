@@ -6,8 +6,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
-    forge_draft, forge_extract, forge_inventory, graph_apply_patch, graph_propose_intent,
-    graph_propose_patch, implementations_list, load_project_path, pilot_bench,
+    forge_draft, forge_extract, forge_inventory, forge_match, graph_apply_patch,
+    graph_propose_intent, graph_propose_patch, implementations_list, load_project_path, pilot_bench,
     project_export_rust, project_export_to_dir_with_registry, project_run, project_validate,
     registry_admission_audit, registry_human_admit, registry_implementations, registry_inspect,
     registry_search, registry_summary, BusError,
@@ -243,7 +243,10 @@ fn args_without_path(args: &[String]) -> Vec<String> {
 
 fn cmd_forge(args: &[String]) -> ExitCode {
     if args.is_empty() || args[0] == "help" {
-        eprintln!("usage: wvx forge <inventory|extract|draft> <path> [options]");
+        eprintln!(
+            "usage: wvx forge <inventory|extract|match|draft> <path> [options]\n\
+             draft/match use $WVX_REGISTRY / registry-dev for capability ontology (FORGE-007)"
+        );
         return ExitCode::FAILURE;
     }
     match args[0].as_str() {
@@ -279,6 +282,40 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                 }
             }
         }
+        "match" => {
+            // wvx forge match <path>
+            let Some(path) = args.get(1) else {
+                eprintln!("usage: wvx forge match <crate-path>");
+                return ExitCode::FAILURE;
+            };
+            let reg = LocalRegistry::open_default().ok();
+            match forge_match(path.as_ref(), reg.as_ref()) {
+                Ok(resp) => {
+                    if let Some(r) = &resp.data {
+                        let reused = r
+                            .matches
+                            .iter()
+                            .filter(|m| {
+                                m.mapping.kind == wvx_forge::MappingKind::ExactShape
+                                    || m.mapping.kind == wvx_forge::MappingKind::CompatibleShape
+                            })
+                            .count();
+                        eprintln!(
+                            "forge match: {} candidate(s) · ontology={} · reuses={}",
+                            r.matches.len(),
+                            r.ontology_size,
+                            reused
+                        );
+                    }
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         "draft" => {
             // wvx forge draft <path> [--name substr] [-o dir]
             let Some(path) = args.get(1) else {
@@ -301,18 +338,29 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                 }
                 i += 1;
             }
+            let reg = LocalRegistry::open_default().ok();
             match forge_draft(
                 path.as_ref(),
                 name,
                 out.map(std::path::Path::new),
+                reg.as_ref(),
             ) {
                 Ok(resp) => {
                     if let Some(r) = &resp.data {
+                        let reused = r
+                            .drafts
+                            .iter()
+                            .filter(|d| {
+                                d.mapping_kind == "exact_shape"
+                                    || d.mapping_kind == "compatible_shape"
+                            })
+                            .count();
                         eprintln!(
-                            "forge draft: {} · {} draft(s) · {}",
+                            "forge draft: {} · {} draft(s) · {} · ontology_reuse={}",
                             r.status,
                             r.drafts.len(),
-                            r.package_name
+                            r.package_name,
+                            reused
                         );
                     }
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());

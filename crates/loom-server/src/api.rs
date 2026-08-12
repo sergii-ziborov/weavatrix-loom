@@ -9,7 +9,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
-    forge_draft, forge_extract, forge_inventory, graph_apply_patch, graph_propose_patch,
+    forge_draft, forge_extract, forge_inventory, forge_match, graph_apply_patch,
+    graph_propose_patch,
     implementations_list, project_export_rust_hydrated, project_run_hydrated,
     project_validate_hydrated, graph_propose_intent, registry_admission_audit,
     registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
@@ -36,6 +37,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
         .route("/api/v1/forge/extract", post(forge_extract_handler))
+        .route("/api/v1/forge/match", post(forge_match_handler))
         .route("/api/v1/forge/draft", post(forge_draft_handler))
         .route("/api/v1/graph/propose_patch", post(propose_patch))
         .route("/api/v1/graph/propose_intent", post(propose_intent))
@@ -295,6 +297,20 @@ async fn forge_extract_handler(
     }
 }
 
+async fn forge_match_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeInventoryBody>,
+) -> Response {
+    let path = std::path::PathBuf::from(&body.path);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
+    }
+    match forge_match(&path, Some(state.registry.as_ref())) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
 fn path_denied(path: &std::path::Path) -> Response {
     (
         StatusCode::FORBIDDEN,
@@ -337,6 +353,7 @@ async fn forge_draft_handler(
         &path,
         body.name.as_deref(),
         out.as_deref(),
+        Some(state.registry.as_ref()),
     ) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),

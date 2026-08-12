@@ -1,8 +1,12 @@
 //! Stage 3: static **adapter draft** from extract candidates.
 //!
 //! Produces capability + implementation manifest sketches and a Rust stub.
+//! Prefer **existing ontology** matches (FORGE-007) over inventing new capabilities.
 //! Never executes code, never writes admission — status is always `inventory_only`.
 
+use crate::capability_match::{
+    match_candidate, CapabilityMatch, MappingKind, OntologyCapability,
+};
 use crate::extract::{extract_public_api, ApiCandidate, CandidateKind, ExtractReport};
 use crate::ForgeError;
 use serde::{Deserialize, Serialize};
@@ -27,6 +31,13 @@ pub struct AdapterDraft {
     /// Suggested Rust adapter stub (not compiled).
     pub adapter_stub_rs: String,
     pub notes: Vec<String>,
+    /// FORGE-007 mapping kind (`exact_shape` / `compatible_shape` / `family_hint` / `new_proposal`).
+    #[serde(default)]
+    pub mapping_kind: String,
+    #[serde(default)]
+    pub mapping_score: u32,
+    #[serde(default)]
+    pub mapping_rationale: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,13 +52,24 @@ pub struct DraftReport {
 }
 
 /// Draft adapters for all public **functions** under a package (optional name filter).
+///
+/// Without ontology, every function invents a new capability id (`new_proposal`).
 pub fn draft_adapters(
     package_root: impl AsRef<Path>,
     name_filter: Option<&str>,
 ) -> Result<DraftReport, ForgeError> {
+    draft_adapters_with_ontology(package_root, name_filter, &[])
+}
+
+/// Like [`draft_adapters`], but maps candidates onto `ontology` when shape matches (FORGE-007).
+pub fn draft_adapters_with_ontology(
+    package_root: impl AsRef<Path>,
+    name_filter: Option<&str>,
+    ontology: &[OntologyCapability],
+) -> Result<DraftReport, ForgeError> {
     let root = package_root.as_ref();
     let extract = extract_public_api(root)?;
-    draft_from_extract(&extract, name_filter, root)
+    draft_from_extract_with_ontology(&extract, name_filter, root, ontology)
 }
 
 /// Build drafts from an existing extract report.
@@ -55,6 +77,16 @@ pub fn draft_from_extract(
     extract: &ExtractReport,
     name_filter: Option<&str>,
     package_root: &Path,
+) -> Result<DraftReport, ForgeError> {
+    draft_from_extract_with_ontology(extract, name_filter, package_root, &[])
+}
+
+/// Build drafts with capability ontology matching.
+pub fn draft_from_extract_with_ontology(
+    extract: &ExtractReport,
+    name_filter: Option<&str>,
+    package_root: &Path,
+    ontology: &[OntologyCapability],
 ) -> Result<DraftReport, ForgeError> {
     let version = read_package_version(package_root).unwrap_or_else(|| "0.0.0".into());
     let license = read_package_license(package_root);
@@ -75,17 +107,40 @@ pub fn draft_from_extract(
             &version,
             license.as_deref(),
             c,
+            ontology,
         ));
     }
 
     drafts.sort_by(|a, b| a.implementation_id.cmp(&b.implementation_id));
 
+    let reused = drafts
+        .iter()
+        .filter(|d| d.mapping_kind == MappingKind::ExactShape.as_str()
+            || d.mapping_kind == MappingKind::CompatibleShape.as_str())
+        .count();
+    let proposed = drafts
+        .iter()
+        .filter(|d| d.mapping_kind == MappingKind::NewProposal.as_str())
+        .count();
+
     let mut notes = vec![
         "Static draft only — not admitted, not wired into playground/export.".into(),
         "Review shapes, then promote via registry + conformance before use.".into(),
+        format!(
+            "FORGE-007 mapping: ontology_size={} reuses_existing={} new_proposal={}",
+            ontology.len(),
+            reused,
+            proposed
+        ),
     ];
     if drafts.is_empty() {
         notes.push("No public `fn` candidates matched (structs/traits are skipped).".into());
+    }
+    if ontology.is_empty() {
+        notes.push(
+            "No ontology provided — all drafts are new_proposal (pass registry capabilities to match)."
+                .into(),
+        );
     }
 
     Ok(DraftReport {
@@ -139,11 +194,11 @@ fn draft_one(
     package_version: &str,
     license: Option<&str>,
     c: &ApiCandidate,
+    ontology: &[OntologyCapability],
 ) -> AdapterDraft {
     let pkg_slug = slugify(package_name);
     let fn_slug = slugify(&c.name);
     let mod_slug = path_module_slug(&c.path);
-    let cap_id = format!("{pkg_slug}.{fn_slug}");
     // Disambiguate same fn name in different modules.
     let impl_id = if mod_slug.is_empty() || mod_slug == "lib" || mod_slug == "mod" {
         format!("forge.{pkg_slug}.{fn_slug}@1")
@@ -151,40 +206,123 @@ fn draft_one(
         format!("forge.{pkg_slug}.{mod_slug}.{fn_slug}@1")
     };
 
+    let mapping: CapabilityMatch =
+        match_candidate(&c.name, &c.signature, &c.shape, ontology);
+
     let inputs = ports_from_types(&c.shape.inputs, "in");
     let outputs = ports_from_types(&c.shape.outputs, "out");
+
+    // Reuse ontology contract when exact/compatible; family_hint still proposes new id
+    // (weak signal — human must confirm before binding to existing capability).
+    let (cap_id, cap_version, capability_key, reuse) = if mapping.kind.reuses_existing() {
+        (
+            mapping.capability_id.clone(),
+            mapping.capability_version.clone(),
+            mapping.capability_key.clone(),
+            true,
+        )
+    } else {
+        let invented = format!("{pkg_slug}.{fn_slug}");
+        (invented.clone(), "1".into(), format!("{invented}@1"), false)
+    };
 
     let mut notes = c.shape.notes.clone();
     notes.push("Generated by Loom Forge draft (static).".into());
     notes.push(format!("Upstream signature: {}", c.signature));
+    notes.push(format!(
+        "mapping: {} score={} → {}",
+        mapping.kind.as_str(),
+        mapping.score,
+        capability_key
+    ));
+    for r in &mapping.rationale {
+        notes.push(format!("match: {r}"));
+    }
+    if mapping.kind == MappingKind::FamilyHint {
+        notes.push(
+            "family_hint only — draft invents new capability; review before binding to ontology."
+                .into(),
+        );
+    }
+    if mapping.kind == MappingKind::NewProposal {
+        notes.push("new capability proposal — human review required before public registry.".into());
+    }
     if outputs.iter().any(|p| p.ty.contains("Result") || p.ty == "unit") {
         notes.push("Return type may need manual Result unwrap / mapping.".into());
     }
 
-    let capability = serde_json::json!({
-        "id": cap_id,
-        "version": "1",
-        "kind": if inputs.is_empty() && outputs.is_empty() { "unknown" } else { "transform" },
-        "inputs": inputs.iter().map(|p| serde_json::json!({
-            "id": p.id,
-            "type": p.ty,
-            "required": true
-        })).collect::<Vec<_>>(),
-        "outputs": outputs.iter().map(|p| serde_json::json!({
-            "id": p.id,
-            "type": p.ty,
-            "required": true
-        })).collect::<Vec<_>>(),
-        "errors": ["invalid-input", "upstream-error"],
-        "effects": []
-    });
+    let capability = if reuse {
+        // Reference existing contract; ports from candidate shape for adapter sketch.
+        let existing = ontology.iter().find(|o| o.id == cap_id && o.version == cap_version);
+        if let Some(ex) = existing {
+            serde_json::json!({
+                "id": ex.id,
+                "version": ex.version,
+                "kind": ex.kind,
+                "inputs": ex.inputs.iter().map(|p| serde_json::json!({
+                    "id": p.id,
+                    "type": p.ty,
+                    "required": true
+                })).collect::<Vec<_>>(),
+                "outputs": ex.outputs.iter().map(|p| serde_json::json!({
+                    "id": p.id,
+                    "type": p.ty,
+                    "required": true
+                })).collect::<Vec<_>>(),
+                "errors": [],
+                "effects": [],
+                "_forge": {
+                    "mapping": mapping.kind.as_str(),
+                    "score": mapping.score,
+                    "note": "Existing ontology capability — do not invent a parallel contract."
+                }
+            })
+        } else {
+            serde_json::json!({
+                "id": cap_id,
+                "version": cap_version,
+                "kind": "transform",
+                "inputs": inputs.iter().map(|p| serde_json::json!({
+                    "id": p.id, "type": p.ty, "required": true
+                })).collect::<Vec<_>>(),
+                "outputs": outputs.iter().map(|p| serde_json::json!({
+                    "id": p.id, "type": p.ty, "required": true
+                })).collect::<Vec<_>>(),
+                "errors": [],
+                "effects": []
+            })
+        }
+    } else {
+        serde_json::json!({
+            "id": cap_id,
+            "version": cap_version,
+            "kind": if inputs.is_empty() && outputs.is_empty() { "unknown" } else { "transform" },
+            "inputs": inputs.iter().map(|p| serde_json::json!({
+                "id": p.id,
+                "type": p.ty,
+                "required": true
+            })).collect::<Vec<_>>(),
+            "outputs": outputs.iter().map(|p| serde_json::json!({
+                "id": p.id,
+                "type": p.ty,
+                "required": true
+            })).collect::<Vec<_>>(),
+            "errors": ["invalid-input", "upstream-error"],
+            "effects": [],
+            "_forge": {
+                "mapping": mapping.kind.as_str(),
+                "score": mapping.score,
+                "note": "Proposed new capability — human review required."
+            }
+        })
+    };
 
     let license_fact = if license.is_some() { "pass" } else { "absent" };
     let impl_base_id = impl_id.trim_end_matches("@1");
     let implementation = serde_json::json!({
         "id": impl_base_id,
         "version": "1",
-        "capability": { "id": cap_id, "version": "1" },
+        "capability": { "id": cap_id, "version": cap_version },
         "source": {
             "kind": "forge-draft",
             "package": package_name,
@@ -203,7 +341,11 @@ fn draft_one(
             "license": license_fact,
             "security": "absent"
         },
-        "notes": "Forge static draft — not admitted. Run conformance before promoting."
+        "notes": format!(
+            "Forge static draft — not admitted. mapping={} score={}. Run conformance before promoting.",
+            mapping.kind.as_str(),
+            mapping.score
+        )
     });
 
     let adapter_stub_rs = render_stub(package_name, &c.name, &inputs, &outputs, &c.signature);
@@ -221,12 +363,15 @@ fn draft_one(
         source_line: c.line,
         signature: c.signature.clone(),
         status: "inventory_only".into(),
-        capability_id: format!("{cap_id}@1"),
+        capability_id: capability_key,
         implementation_id: impl_id,
         capability_json: pretty(&capability),
         implementation_json: pretty(&implementation),
         adapter_stub_rs,
         notes,
+        mapping_kind: mapping.kind.as_str().into(),
+        mapping_score: mapping.score,
+        mapping_rationale: mapping.rationale,
     }
 }
 
@@ -477,11 +622,49 @@ mod tests {
                 notes: vec!["possible data transform".into()],
             },
         };
-        let d = draft_one("demo-json", "0.1.0", Some("MIT"), &c);
+        let d = draft_one("demo-json", "0.1.0", Some("MIT"), &c, &[]);
         assert_eq!(d.status, "inventory_only");
+        assert_eq!(d.mapping_kind, "new_proposal");
         assert!(d.capability_json.contains("demo_json.parse") || d.capability_id.contains("parse"));
         assert!(d.implementation_json.contains("inventory_only"));
         assert!(d.adapter_stub_rs.contains("pub fn parse"));
         assert!(d.adapter_stub_rs.contains("NOT admitted"));
+    }
+
+    #[test]
+    fn draft_reuses_existing_parse_capability() {
+        use crate::capability_match::{OntologyCapability, OntologyPort};
+        use crate::extract::{ApiCandidate, CandidateKind, CandidateShape};
+        let ontology = vec![OntologyCapability {
+            id: "data.json.parse".into(),
+            version: "1".into(),
+            kind: "transform".into(),
+            inputs: vec![OntologyPort {
+                id: "bytes".into(),
+                ty: "bytes".into(),
+            }],
+            outputs: vec![OntologyPort {
+                id: "value".into(),
+                ty: "json_value".into(),
+            }],
+        }];
+        let c = ApiCandidate {
+            kind: CandidateKind::Function,
+            name: "upper_parse".into(),
+            path: "src/lib.rs".into(),
+            line: 12,
+            signature: "pub fn upper_parse(bytes: &[u8]) -> Result<Value, String> {".into(),
+            shape: CandidateShape {
+                inputs: vec!["bytes".into()],
+                outputs: vec!["json.value".into()],
+                notes: vec![],
+            },
+        };
+        let d = draft_one("wvx-adapter-external-demo", "0.1.0", Some("MIT"), &c, &ontology);
+        assert_eq!(d.mapping_kind, "exact_shape");
+        assert_eq!(d.capability_id, "data.json.parse@1");
+        assert!(d.capability_json.contains("data.json.parse"));
+        assert!(!d.capability_json.contains("wvx_adapter_external_demo.upper_parse"));
+        assert!(d.implementation_json.contains("data.json.parse"));
     }
 }

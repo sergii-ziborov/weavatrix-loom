@@ -18,6 +18,7 @@ path = "src/main.rs"
 serde_json = { workspace = true }
 wvx-command-bus = { workspace = true }
 wvx-conformance = { workspace = true }
+wvx-forge = { workspace = true }
 wvx-registry-client = { workspace = true }
 wvx-project-graph = { workspace = true }
 wvx-runtime = { workspace = true }

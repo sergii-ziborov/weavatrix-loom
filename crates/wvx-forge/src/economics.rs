@@ -48,6 +48,13 @@ pub struct GateCReport {
     pub false_semantic_mappings: usize,
     pub pilot_go: bool,
     pub notes: Vec<String>,
+    /// Estimated human minutes for review on this fixture set (pilot heuristic).
+    /// Full Gate C requires measured human-minutes on **external** crates.
+    #[serde(default)]
+    pub human_minutes_estimate: f64,
+    /// True only when run against external packages (not monorepo fixtures).
+    #[serde(default)]
+    pub external_crates: bool,
 }
 
 /// Default pilot fixture expectations (JSON vertical + Gate F external).
@@ -321,6 +328,9 @@ pub fn run_gate_c_pilot(
 
     let _ = std::fs::remove_dir_all(&compile_root);
 
+    // Pilot heuristic: ~3 min review per case (extract+map+compile glance). Not measured.
+    let human_minutes_estimate = (cases.len() as f64) * 3.0;
+
     Ok(GateCReport {
         cases,
         extraction_recall,
@@ -334,7 +344,12 @@ pub fn run_gate_c_pilot(
             format!(
                 "thresholds: extraction_recall≥0.8 mapping_accuracy≥0.8 compile_rate≥0.5 false_map=0"
             ),
+            format!(
+                "human_minutes_estimate={human_minutes_estimate} (heuristic on monorepo fixtures; full Gate C needs external crates + measured human minutes)"
+            ),
         ],
+        human_minutes_estimate,
+        external_crates: false,
     })
 }
 

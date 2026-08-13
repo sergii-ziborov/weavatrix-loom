@@ -1,10 +1,22 @@
 {
+  "data.compress.gunzip@1": [
+    "flate2.gunzip@1",
+    "flate2.gunzip-chunked@1",
+    "flate2.gunzip-take@1"
+  ],
+  "data.compress.gzip@1": [
+    "flate2.gzip@1",
+    "flate2.gzip-chunked@1",
+    "flate2.gzip-oneshot@1"
+  ],
   "data.hash.blake3@1": [
     "blake3.blake3@1"
   ],
   "data.hash.sha256@1": [
     "sha2.sha256@1",
-    "sha2.sha256-streaming@1"
+    "sha2.sha256-streaming@1",
+    "sha2.sha256-chunked@1",
+    "sha2.sha256-update-all@1"
   ],
   "data.json.parse@1": [
     "serde-json.parse-owned@1",

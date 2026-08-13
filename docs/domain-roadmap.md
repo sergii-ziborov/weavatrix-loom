@@ -40,7 +40,7 @@ bytes → digest
 
 | Capability | Contract | Implementations (pilot) |
 |------------|----------|-------------------------|
-| `data.hash.sha256@1` | bytes → digest (32 B) | `sha2.sha256@1` one-shot · `sha2.sha256-streaming@1` (equal digests, different path) |
+| `data.hash.sha256@1` | bytes → digest (32 B) | **4 multi-impl:** one-shot · streaming · chunked · update-all (`sha2.*`) |
 | `data.hash.blake3@1` | bytes → digest (32 B) | `blake3.blake3@1` |
 
 **Why hashing first**
@@ -51,15 +51,19 @@ bytes → digest
 
 Fixture: `fixtures/pilot-hash-pipeline.wvx.json`.
 
-### Domain 3 — Compression (next)
+### Domain 3 — Compression (pilot)
 
 ```text
-bytes → compressed-bytes
+bytes → gzip-bytes → bytes   (round-trip)
 ```
 
-Example: gzip. Forces: compression level, streaming, deterministic output, dictionary,
-memory/CPU tradeoffs. If Loom survives compression **without semantic collapse**,
-that is strong evidence.
+| Capability | Multi-impl (3 each) |
+|------------|---------------------|
+| `data.compress.gzip@1` | flate2 write_all · chunked · oneshot-read |
+| `data.compress.gunzip@1` | flate2 read_to_end · chunked · take |
+
+Fixture: `fixtures/pilot-compress-pipeline.wvx.json`.  
+Compressed **byte equality** is not required across gzip impls; **gunzip equality** is.
 
 ### Domain 4 — Binary codecs
 

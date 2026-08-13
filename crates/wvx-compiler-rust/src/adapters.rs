@@ -23,7 +23,15 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
         "wvx.reference.text-ascii-lower@1" => Some("reference_text_ascii_lower"),
         "sha2.sha256@1" => Some("sha2_sha256"),
         "sha2.sha256-streaming@1" => Some("sha2_sha256_streaming"),
+        "sha2.sha256-chunked@1" => Some("sha2_sha256_chunked"),
+        "sha2.sha256-update-all@1" => Some("sha2_sha256_update_all"),
         "blake3.blake3@1" => Some("blake3_hash"),
+        "flate2.gzip@1" => Some("flate2_gzip"),
+        "flate2.gzip-chunked@1" => Some("flate2_gzip_chunked"),
+        "flate2.gzip-oneshot@1" => Some("flate2_gzip_oneshot"),
+        "flate2.gunzip@1" => Some("flate2_gunzip"),
+        "flate2.gunzip-chunked@1" => Some("flate2_gunzip_chunked"),
+        "flate2.gunzip-take@1" => Some("flate2_gunzip_take"),
         "wvx.reference.io-input-bytes@1" | "wvx.reference.io-output-bytes@1" => None,
         _ => None,
     }
@@ -61,6 +69,8 @@ pub fn default_implementation(capability_key: &str) -> Option<&'static str> {
         "data.text.lowercase@1" => Some("wvx.reference.text-lowercase@1"),
         "data.hash.sha256@1" => Some("sha2.sha256@1"),
         "data.hash.blake3@1" => Some("blake3.blake3@1"),
+        "data.compress.gzip@1" => Some("flate2.gzip@1"),
+        "data.compress.gunzip@1" => Some("flate2.gunzip@1"),
         _ => None,
     }
 }
@@ -82,7 +92,15 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
         "wvx.reference.text-ascii-lower@1",
         "sha2.sha256@1",
         "sha2.sha256-streaming@1",
+        "sha2.sha256-chunked@1",
+        "sha2.sha256-update-all@1",
         "blake3.blake3@1",
+        "flate2.gzip@1",
+        "flate2.gzip-chunked@1",
+        "flate2.gzip-oneshot@1",
+        "flate2.gunzip@1",
+        "flate2.gunzip-chunked@1",
+        "flate2.gunzip-take@1",
         "wvx.reference.io-input-bytes@1",
         "wvx.reference.io-output-bytes@1",
     ]
@@ -164,6 +182,46 @@ pub fn built_in_sdk_emit(implementation_id: &str) -> Option<SdkEmit> {
             "wvx-adapters",
             Some("crates/wvx-adapters"),
             "wvx_adapters::blake3_hash::digest({bytes}.as_slice())?",
+        ),
+        "sha2.sha256-chunked@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::sha2_sha256_chunked::digest({bytes}.as_slice())?",
+        ),
+        "sha2.sha256-update-all@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::sha2_sha256_update_all::digest({bytes}.as_slice())?",
+        ),
+        "flate2.gzip@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::flate2_gzip::compress({bytes}.as_slice())?",
+        ),
+        "flate2.gzip-chunked@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::flate2_gzip_chunked::compress({bytes}.as_slice())?",
+        ),
+        "flate2.gzip-oneshot@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::flate2_gzip_oneshot::compress({bytes}.as_slice())?",
+        ),
+        "flate2.gunzip@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::flate2_gunzip::decompress({bytes}.as_slice())?",
+        ),
+        "flate2.gunzip-chunked@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::flate2_gunzip_chunked::decompress({bytes}.as_slice())?",
+        ),
+        "flate2.gunzip-take@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::flate2_gunzip_take::decompress({bytes}.as_slice())?",
         ),
         // path_set still needs config inlining — special template with {value} only;
         // config path/value are filled by emit_call_path_set.

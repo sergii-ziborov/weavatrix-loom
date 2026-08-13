@@ -39,7 +39,8 @@ pub use economics::{
 pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 pub use facts::{
     extract_from_facts, facts_from_extract, load_facts_file, parse_facts_json, validate_facts,
-    write_facts_file, WeavatrixFactEntity, WeavatrixFactsBundle, FACTS_SCHEMA_VERSION,
+    write_facts_file, BootstrapAstFactsProvider, FileFactsProvider, JsonFactsProvider,
+    WeavatrixFactEntity, WeavatrixFactsBundle, WeavatrixFactsProvider, FACTS_SCHEMA_VERSION,
 };
 
 use serde::{Deserialize, Serialize};

@@ -25,6 +25,8 @@ json = "0.12"
 # Domain 2 — hashing (bytes → digest); multi-impl + second algorithm.
 sha2 = "0.10"
 blake3 = "1.5"
+# Domain 3 — compression (gzip).
+flate2 = { version = "1", default-features = true }
 wvx-component-sdk = { workspace = true, optional = true }
 
 [lints]

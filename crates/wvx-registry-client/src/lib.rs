@@ -12,6 +12,8 @@
 pub mod admission;
 pub mod admit;
 pub mod provenance;
+pub mod resolve;
+pub mod requalify;
 
 pub use admission::{
     audit_implementations, check_implementation, justified_status, AdmissionReport,
@@ -22,6 +24,8 @@ pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
     ProvenanceRecord,
 };
+pub use resolve::resolve_implementation;
+pub use requalify::{requalify_implementation, RequalifyReport};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

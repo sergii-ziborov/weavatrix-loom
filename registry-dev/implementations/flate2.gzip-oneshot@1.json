@@ -1,0 +1,17 @@
+{
+  "id": "flate2.gzip-oneshot",
+  "version": "1",
+  "capability": { "id": "data.compress.gzip", "version": "1" },
+  "source": { "kind": "crates-io", "package": "flate2", "package_version": "1" },
+  "adapter": { "crate_name": "wvx-adapters", "execution": "native-rust" },
+  "status": "conformant",
+  "evidence": { "build": "pass", "conformance": "pass", "benchmark": "absent", "license": "pass", "security": "absent" },
+  "notes": "Domain 3 multi-impl: read::GzEncoder oneshot.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::flate2_gzip_oneshot::compress({bytes}.as_slice())?"
+    }
+  }
+}

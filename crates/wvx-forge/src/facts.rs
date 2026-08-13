@@ -20,6 +20,50 @@ use std::path::Path;
 /// Schema id for the facts interchange document.
 pub const FACTS_SCHEMA_VERSION: &str = "wvx.facts.v0.1";
 
+/// Provider of Weavatrix code facts for Forge (ADR-0012).
+///
+/// Prefer this over growing product-level AST/index inside Loom. Bootstrap AST
+/// extract implements the same trait only as a **fallback**.
+pub trait WeavatrixFactsProvider {
+    fn load_facts(&self) -> Result<WeavatrixFactsBundle, ForgeError>;
+}
+
+/// Load facts from a JSON file on disk.
+pub struct FileFactsProvider {
+    pub path: std::path::PathBuf,
+}
+
+impl WeavatrixFactsProvider for FileFactsProvider {
+    fn load_facts(&self) -> Result<WeavatrixFactsBundle, ForgeError> {
+        load_facts_file(&self.path)
+    }
+}
+
+/// In-memory / HTTP body facts.
+pub struct JsonFactsProvider {
+    pub json: String,
+}
+
+impl WeavatrixFactsProvider for JsonFactsProvider {
+    fn load_facts(&self) -> Result<WeavatrixFactsBundle, ForgeError> {
+        parse_facts_json(&self.json).map_err(|e| ForgeError::Parse(std::path::PathBuf::from("<json>"), e))
+    }
+}
+
+/// **Bootstrap only:** run local AST extract and export as facts.
+///
+/// Not the product path — deep code intelligence belongs to Weavatrix.
+pub struct BootstrapAstFactsProvider {
+    pub package_root: std::path::PathBuf,
+}
+
+impl WeavatrixFactsProvider for BootstrapAstFactsProvider {
+    fn load_facts(&self) -> Result<WeavatrixFactsBundle, ForgeError> {
+        let extract = crate::extract::extract_public_api(&self.package_root)?;
+        Ok(facts_from_extract(&extract, "bootstrap-ast"))
+    }
+}
+
 /// Bundle of code facts produced by Weavatrix (or exported from bootstrap extract).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeavatrixFactsBundle {

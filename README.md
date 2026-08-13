@@ -469,10 +469,12 @@ Input Bytes → SHA-256 digest → Output Bytes
 | --- | --- | --- |
 | `data.json.*` | parse · path_set · serialize | serde-json / reference / json-crate |
 | `data.text.*` | uppercase · lowercase | Unicode vs ASCII-only |
-| `data.hash.*` | sha256 · blake3 | sha2 one-shot / streaming · blake3 |
+| `data.hash.*` | sha256 · blake3 | **4×** SHA-256 multi-impl + blake3 |
+| `data.compress.*` | gzip · gunzip | **3×** each (flate2 path variants) |
 | `io.*` | input.bytes · output.bytes | reference I/O |
 
-Fixtures: `pilot-json-pipeline`, `pilot-text-pipeline`, `pilot-hash-pipeline`.  
+Fixtures: `pilot-json`, `pilot-text`, `pilot-hash`, `pilot-compress`.  
+Resolver: `wvx registry resolve <cap>` · Requal: `wvx registry requalify <impl>`.  
 Roadmap: [docs/domain-roadmap.md](docs/domain-roadmap.md).
 
 Goals:

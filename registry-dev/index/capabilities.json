@@ -1,4 +1,6 @@
 [
+  "data.compress.gunzip@1",
+  "data.compress.gzip@1",
   "data.hash.blake3@1",
   "data.hash.sha256@1",
   "data.json.parse@1",

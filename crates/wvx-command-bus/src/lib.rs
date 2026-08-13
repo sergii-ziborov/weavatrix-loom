@@ -27,9 +27,11 @@ use wvx_project_graph::{
 };
 use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
-    admit_implementation, CapabilityHit, ImplementationHit, InstallCandidateResult, LocalRegistry,
-    RegistryError, RegistrySummary, AdmitRequest, AdmitResult, AdmissionReport,
+    admit_implementation, requalify_implementation, resolve_implementation, CapabilityHit,
+    ImplementationHit, InstallCandidateResult, LocalRegistry, RegistryError, RegistrySummary,
+    RequalifyReport, AdmitRequest, AdmitResult, AdmissionReport,
 };
+use wvx_ir::{ResolveDecision, ResolverPolicy, TargetProfile};
 use std::collections::BTreeMap;
 use wvx_runtime::{
     apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
@@ -325,6 +327,32 @@ pub fn registry_admission_audit(
 /// Pilot microbench for Gate E (`benchmark` evidence axis).
 pub fn pilot_bench(iterations: u32, warmup: u32) -> BusResponse<BenchReport> {
     BusResponse::ok(run_pilot_bench(iterations, warmup))
+}
+
+/// Explainable resolve: pick an implementation for a capability under profile+policy.
+pub fn registry_resolve(
+    registry: &LocalRegistry,
+    capability_key: &str,
+    profile: Option<TargetProfile>,
+    policy: Option<ResolverPolicy>,
+) -> Result<BusResponse<ResolveDecision>, BusError> {
+    let impls = registry.list_implementations()?;
+    let profile = profile.unwrap_or_else(|| TargetProfile {
+        id: "default".into(),
+        prefer_pure_rust: true,
+        ..Default::default()
+    });
+    let policy = policy.unwrap_or_default();
+    let decision = resolve_implementation(capability_key, &impls, &profile, &policy);
+    Ok(BusResponse::ok(decision))
+}
+
+/// Continuous requalification after version / evidence change (no auto-admit).
+pub fn registry_requalify(
+    registry: &LocalRegistry,
+    full_id: &str,
+) -> Result<BusResponse<RequalifyReport>, BusError> {
+    Ok(BusResponse::ok(requalify_implementation(registry, full_id)?))
 }
 
 /// Human Gate E admit (fail-closed). See `docs/go-no-go-e-pilot.md`.

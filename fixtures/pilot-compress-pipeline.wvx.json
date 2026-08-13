@@ -1,0 +1,89 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "pilot-compress-pipeline",
+  "name": "Compression pilot (Domain 3)",
+  "entrypoint": "input",
+  "metadata": { "pilot": "true", "family": "data.compress", "domain": "3" },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.compress.gzip",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.compress.gunzip",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "errors": ["invalid-gzip"],
+      "effects": []
+    },
+    {
+      "id": "io.output.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "outputs": [],
+      "errors": [],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 40, "y": 120 }
+    },
+    {
+      "id": "gzip",
+      "capability": { "id": "data.compress.gzip", "version": "1" },
+      "implementation": "flate2.gzip@1",
+      "config": {},
+      "ui": { "x": 240, "y": 120 }
+    },
+    {
+      "id": "gunzip",
+      "capability": { "id": "data.compress.gunzip", "version": "1" },
+      "implementation": "flate2.gunzip@1",
+      "config": {},
+      "ui": { "x": 440, "y": 120 }
+    },
+    {
+      "id": "output",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 640, "y": 120 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "gzip", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "gzip", "port": "bytes" },
+      "to": { "instance": "gunzip", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "gunzip", "port": "bytes" },
+      "to": { "instance": "output", "port": "bytes" }
+    }
+  ]
+}

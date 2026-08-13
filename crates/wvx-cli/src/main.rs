@@ -11,7 +11,8 @@ use wvx_command_bus::{
     graph_apply_patch, graph_propose_intent, graph_propose_patch, implementations_list,
     load_project_path, pilot_bench, project_export_rust, project_export_to_dir_with_registry,
     project_run, project_validate, registry_admission_audit, registry_human_admit,
-    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
+    registry_implementations, registry_inspect, registry_requalify, registry_resolve,
+    registry_search, registry_summary, BusError,
 };
 use wvx_forge::load_facts_file;
 use wvx_registry_client::AdmitRequest;
@@ -824,6 +825,50 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 return ExitCode::FAILURE;
             };
             registry_inspect(&reg, key).map(|r| serde_json::to_string_pretty(&r).unwrap())
+        }
+        "resolve" => {
+            let Some(cap) = rest.first() else {
+                eprintln!("usage: wvx registry resolve <capability-key>");
+                return ExitCode::FAILURE;
+            };
+            match registry_resolve(&reg, cap, None, None) {
+                Ok(resp) => {
+                    if let Some(d) = &resp.data {
+                        eprintln!(
+                            "resolve {}: chosen={}",
+                            d.capability_key,
+                            d.chosen.as_deref().unwrap_or("(none)")
+                        );
+                        for line in &d.explanation {
+                            eprintln!("  {line}");
+                        }
+                    }
+                    Ok(serde_json::to_string_pretty(&resp).unwrap())
+                }
+                Err(e) => Err(e),
+            }
+        }
+        "requalify" | "requal" => {
+            let Some(id) = rest.first() else {
+                eprintln!("usage: wvx registry requalify <impl-id>");
+                return ExitCode::FAILURE;
+            };
+            match registry_requalify(&reg, id) {
+                Ok(resp) => {
+                    if let Some(r) = &resp.data {
+                        eprintln!(
+                            "requalify {}: ok={} overclaim={} declared={} justified={}",
+                            r.implementation_id,
+                            r.ok,
+                            r.overclaim,
+                            r.previous_status,
+                            r.justified_status
+                        );
+                    }
+                    Ok(serde_json::to_string_pretty(&resp).unwrap())
+                }
+                Err(e) => Err(e),
+            }
         }
         "check" | "audit" | "admission" => {
             match registry_admission_audit(&reg) {

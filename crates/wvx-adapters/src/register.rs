@@ -13,11 +13,12 @@ use wvx_component_sdk::{
 };
 
 use crate::{
-    blake3_hash, json_crate_parse, reference_json_parse, reference_json_serialize,
-    reference_json_serialize_pretty, reference_path_set, reference_text_ascii_lower,
-    reference_text_ascii_upper, reference_text_lowercase, reference_text_uppercase,
-    serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize, sha2_sha256,
-    sha2_sha256_streaming,
+    blake3_hash, flate2_gunzip, flate2_gunzip_chunked, flate2_gunzip_take, flate2_gzip,
+    flate2_gzip_chunked, flate2_gzip_oneshot, json_crate_parse, reference_json_parse,
+    reference_json_serialize, reference_json_serialize_pretty, reference_path_set,
+    reference_text_ascii_lower, reference_text_ascii_upper, reference_text_lowercase,
+    reference_text_uppercase, serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize,
+    sha2_sha256, sha2_sha256_chunked, sha2_sha256_streaming, sha2_sha256_update_all,
 };
 
 /// Register all pilot transform implementations into the SDK plugin table.
@@ -161,6 +162,62 @@ pub fn register_pilot_plugins() {
                 "data.hash.blake3@1",
                 "digest",
                 blake3_hash::digest,
+            )
+        });
+        register_plugin("sha2.sha256-chunked@1", "data.hash.sha256@1", || {
+            bytes_to_named_bytes_handler(
+                "sha2.sha256-chunked@1",
+                "data.hash.sha256@1",
+                "digest",
+                sha2_sha256_chunked::digest,
+            )
+        });
+        register_plugin("sha2.sha256-update-all@1", "data.hash.sha256@1", || {
+            bytes_to_named_bytes_handler(
+                "sha2.sha256-update-all@1",
+                "data.hash.sha256@1",
+                "digest",
+                sha2_sha256_update_all::digest,
+            )
+        });
+
+        // Domain 3 — compression (gzip / gunzip); multi-impl paths
+        register_plugin("flate2.gzip@1", "data.compress.gzip@1", || {
+            bytes_to_bytes_handler("flate2.gzip@1", "data.compress.gzip@1", flate2_gzip::compress)
+        });
+        register_plugin("flate2.gzip-chunked@1", "data.compress.gzip@1", || {
+            bytes_to_bytes_handler(
+                "flate2.gzip-chunked@1",
+                "data.compress.gzip@1",
+                flate2_gzip_chunked::compress,
+            )
+        });
+        register_plugin("flate2.gzip-oneshot@1", "data.compress.gzip@1", || {
+            bytes_to_bytes_handler(
+                "flate2.gzip-oneshot@1",
+                "data.compress.gzip@1",
+                flate2_gzip_oneshot::compress,
+            )
+        });
+        register_plugin("flate2.gunzip@1", "data.compress.gunzip@1", || {
+            bytes_to_bytes_handler(
+                "flate2.gunzip@1",
+                "data.compress.gunzip@1",
+                flate2_gunzip::decompress,
+            )
+        });
+        register_plugin("flate2.gunzip-chunked@1", "data.compress.gunzip@1", || {
+            bytes_to_bytes_handler(
+                "flate2.gunzip-chunked@1",
+                "data.compress.gunzip@1",
+                flate2_gunzip_chunked::decompress,
+            )
+        });
+        register_plugin("flate2.gunzip-take@1", "data.compress.gunzip@1", || {
+            bytes_to_bytes_handler(
+                "flate2.gunzip-take@1",
+                "data.compress.gunzip@1",
+                flate2_gunzip_take::decompress,
             )
         });
     });

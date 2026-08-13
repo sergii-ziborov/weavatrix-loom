@@ -146,6 +146,112 @@ pub struct ImplementationEvidence {
     pub security: AxisFact,
 }
 
+/// Typed microbench snapshot attached to an implementation (Gate E / requal).
+///
+/// Never a readiness %. Timings are host-dependent; use `ok` + fingerprint for policy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BenchmarkRecord {
+    pub implementation_id: String,
+    pub capability_key: String,
+    pub iterations: u32,
+    pub warmup: u32,
+    /// Execution success for the pilot bench harness.
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_ns: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_fingerprint: Option<String>,
+    /// Unix seconds when recorded.
+    pub recorded_at_unix: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+/// Typed evidence package for resolve / human review / requalification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvidenceRecord {
+    pub implementation_id: String,
+    pub capability_key: String,
+    pub lifecycle: LifecycleStatus,
+    pub axes: ImplementationEvidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bench: Option<BenchmarkRecord>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+/// Target deployment / product constraints for the **resolver** (not a readiness %).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TargetProfile {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
+    /// Prefer pure-Rust crates when ranking.
+    #[serde(default)]
+    pub prefer_pure_rust: bool,
+    /// Soft preference against unsafe/FFI adapters (notes-based pilot heuristic).
+    #[serde(default)]
+    pub prefer_no_unsafe: bool,
+}
+
+/// Policy knobs for explainable implementation selection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolverPolicy {
+    pub id: String,
+    /// Reject when evidence.conformance is Fail (Absent/Unknown still allowed unless required).
+    #[serde(default = "default_true")]
+    pub require_conformance_pass: bool,
+    #[serde(default)]
+    pub require_build_pass: bool,
+    /// If false, `candidate` / `inventory_only` are rejected.
+    #[serde(default = "default_true")]
+    pub allow_candidate: bool,
+    /// Prefer these full ids when multiple remain (first match wins).
+    #[serde(default)]
+    pub prefer_impl_ids: Vec<String>,
+}
+
+impl Default for ResolverPolicy {
+    fn default() -> Self {
+        Self {
+            id: "default".into(),
+            require_conformance_pass: true,
+            require_build_pass: false,
+            allow_candidate: true,
+            prefer_impl_ids: Vec::new(),
+        }
+    }
+}
+
+/// Explainable resolver decision for one capability.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResolveDecision {
+    pub capability_key: String,
+    pub policy_id: String,
+    pub profile_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen: Option<String>,
+    /// Ordered candidates that were considered (after filters).
+    #[serde(default)]
+    pub ranked: Vec<String>,
+    /// Human-readable explanation lines (why chosen / why rejected).
+    #[serde(default)]
+    pub explanation: Vec<String>,
+    /// (impl_id, reason) for hard rejects.
+    #[serde(default)]
+    pub rejected: Vec<ResolveRejection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolveRejection {
+    pub implementation_id: String,
+    pub reason: String,
+}
+
 /// Concrete Rust implementation of a capability.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Implementation {

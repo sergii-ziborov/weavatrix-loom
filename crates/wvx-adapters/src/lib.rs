@@ -8,6 +8,10 @@ pub mod reference_json_parse;
 pub mod reference_json_serialize;
 pub mod reference_json_serialize_pretty;
 pub mod reference_path_set;
+pub mod reference_text_ascii_lower;
+pub mod reference_text_ascii_upper;
+pub mod reference_text_lowercase;
+pub mod reference_text_uppercase;
 #[cfg(feature = "host")]
 pub mod register;
 pub mod serde_json_parse_owned;
@@ -30,4 +34,9 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ),
     ("wvx.reference.path-set@1", "reference_path_set"),
     ("serde-json.pointer-set@1", "serde_json_pointer_set"),
+    // data.text.* family (second pilot vertical)
+    ("wvx.reference.text-uppercase@1", "reference_text_uppercase"),
+    ("wvx.reference.text-ascii-upper@1", "reference_text_ascii_upper"),
+    ("wvx.reference.text-lowercase@1", "reference_text_lowercase"),
+    ("wvx.reference.text-ascii-lower@1", "reference_text_ascii_lower"),
 ];

@@ -427,25 +427,40 @@ Studio: toolbar **intent** + **Propose intent** → Accept/Reject (ghost banner)
 
 See also [ecosystem-distribution.md](docs/ecosystem-distribution.md).
 
-## Pilot scope (`0.1`)
+## Pilot scope (`0.1` / beta)
 
-The first vertical slice is a pure data-transform pipeline:
+Two pure data-transform verticals in `registry-dev`:
+
+**JSON family**
 
 ```text
 Input Bytes → JSON Parse → JSON Path Set → JSON Serialize → Output Bytes
 ```
 
-Goals for this series:
+**Text family** (second capability family)
+
+```text
+Input Bytes → Text Uppercase → Text Lowercase → Output Bytes
+```
+
+| Family | Capabilities | Multi-impl examples |
+| --- | --- | --- |
+| `data.json.*` | parse · path_set · serialize | serde-json / reference / json-crate |
+| `data.text.*` | uppercase · lowercase | Unicode vs ASCII-only adapters |
+| `io.*` | input.bytes · output.bytes | reference I/O |
+
+Fixtures: `fixtures/pilot-json-pipeline.wvx.json`, `fixtures/pilot-text-pipeline.wvx.json`.
+
+Goals:
 
 - typed ports and validated bindings
-- more than one implementation for JSON parse / serialize
+- more than one implementation per capability (swap without rewiring)
 - playground run with a trace
-- export to a `cargo`-buildable workspace whose results match the playground
+- export to a `cargo`-buildable workspace
 - CLI and HTTP over one command bus (optional agent MCP adapter; no free-form AI file edits)
 
-Out of scope for `0.1`: multi-language implementations, required WASM, databases
-and queues, distributed transactions, autonomous production swaps, and a full
-UI builder.
+Out of scope for beta: multi-language implementations, required WASM, databases
+and queues, distributed transactions, autonomous production swaps, hosted registry.
 
 ## Design principles
 

@@ -1,0 +1,33 @@
+{
+  "id": "wvx.reference.text-lowercase",
+  "version": "1",
+  "capability": {
+    "id": "data.text.lowercase",
+    "version": "1"
+  },
+  "source": {
+    "kind": "pilot-reference",
+    "package": "wvx-adapters",
+    "package_version": "0.1"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "conformant",
+  "evidence": {
+    "build": "pass",
+    "conformance": "pass",
+    "benchmark": "absent",
+    "license": "pass",
+    "security": "absent"
+  },
+  "notes": "Unicode UTF-8 lowercase (str::to_lowercase). data.text pilot family.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::reference_text_lowercase::transform({bytes}.as_slice())?"
+    }
+  }
+}

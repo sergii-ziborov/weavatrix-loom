@@ -74,7 +74,7 @@ Product focus after Library/Forge beta surfaces:
 | # | Work | Why |
 |---|------|-----|
 | **P0** | **Library catalog UX** (families, kind filter, Implementations tab) | Registry is the product surface — must scale past 5 pilot caps |
-| **P1** | **Second capability family** (beyond JSON transform) | Proves Registry is not a one-off vertical |
+| **P1** | **Second capability family** (`data.text.*` — done in beta) | Proves Registry is not a one-off vertical |
 | **P1** | **Weavatrix facts → Forge** | Replace bootstrap Cargo/AST as product story (ADR-0012) |
 | **P2** | **crates.io library crates** | Path deps first; flip `publish` only after README + API freeze |
 | **P2** | **Capability `description` / tags** in IR + registry | Human browse without opening every detail page |
@@ -85,8 +85,27 @@ Product focus after Library/Forge beta surfaces:
 
 ### Library expansion (beta+)
 
-- Group by **family** (`data.json.*`, `io.*`)
+- Group by **family** (`data.json.*`, `data.text.*`, `io.*`)
 - Filter by **kind** · sort by name / impl count
 - Tab: **Capabilities | Implementations** (lifecycle + evidence browse)
 - Richer cards: port type flow `bytes → json_value`
 - Detail: copy key, status histogram, Forge CTA
+
+### Second capability family: `data.text.*`
+
+| Capability | Ports | Implementations (multi-impl swap) |
+|------------|-------|-------------------------------------|
+| `data.text.uppercase@1` | bytes → bytes | Unicode upper · ASCII-only upper |
+| `data.text.lowercase@1` | bytes → bytes | Unicode lower · ASCII-only lower |
+
+Fixture: [`fixtures/pilot-text-pipeline.wvx.json`](../fixtures/pilot-text-pipeline.wvx.json)
+
+```powershell
+cargo run -p wvx-cli -- validate fixtures/pilot-text-pipeline.wvx.json
+# --input is a file path (or - for stdin)
+Set-Content $env:TEMP\t.txt 'Hello Loom' -NoNewline
+cargo run -p wvx-cli -- run fixtures/pilot-text-pipeline.wvx.json --input $env:TEMP\t.txt
+cargo run -p wvx-cli -- export-rust fixtures/pilot-text-pipeline.wvx.json -o $env:TEMP\loom-text --check
+```
+
+Studio: Library shows family **data.text**; drag onto canvas like JSON caps.

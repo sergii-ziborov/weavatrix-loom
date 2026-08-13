@@ -1,0 +1,104 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "pilot-text-pipeline",
+  "name": "Text pilot pipeline",
+  "entrypoint": "input",
+  "metadata": {
+    "pilot": "true",
+    "family": "data.text"
+  },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.text.uppercase",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": ["invalid-unicode"],
+      "effects": []
+    },
+    {
+      "id": "data.text.lowercase",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": ["invalid-unicode"],
+      "effects": []
+    },
+    {
+      "id": "io.output.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [],
+      "errors": [],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 56, "y": 140 }
+    },
+    {
+      "id": "upper",
+      "capability": { "id": "data.text.uppercase", "version": "1" },
+      "implementation": "wvx.reference.text-uppercase@1",
+      "config": {},
+      "ui": { "x": 280, "y": 140 }
+    },
+    {
+      "id": "lower",
+      "capability": { "id": "data.text.lowercase", "version": "1" },
+      "implementation": "wvx.reference.text-lowercase@1",
+      "config": {},
+      "ui": { "x": 520, "y": 140 }
+    },
+    {
+      "id": "output",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 760, "y": 140 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "upper", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "upper", "port": "bytes" },
+      "to": { "instance": "lower", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "lower", "port": "bytes" },
+      "to": { "instance": "output", "port": "bytes" }
+    }
+  ]
+}

@@ -17,6 +17,10 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
         "wvx.reference.json-serialize-pretty@1" => Some("reference_json_serialize_pretty"),
         "wvx.reference.path-set@1" => Some("reference_path_set"),
         "serde-json.pointer-set@1" => Some("serde_json_pointer_set"),
+        "wvx.reference.text-uppercase@1" => Some("reference_text_uppercase"),
+        "wvx.reference.text-ascii-upper@1" => Some("reference_text_ascii_upper"),
+        "wvx.reference.text-lowercase@1" => Some("reference_text_lowercase"),
+        "wvx.reference.text-ascii-lower@1" => Some("reference_text_ascii_lower"),
         "wvx.reference.io-input-bytes@1" | "wvx.reference.io-output-bytes@1" => None,
         _ => None,
     }
@@ -50,6 +54,8 @@ pub fn default_implementation(capability_key: &str) -> Option<&'static str> {
         "data.json.parse@1" => Some("serde-json.parse-owned@1"),
         "data.json.serialize@1" => Some("serde-json.serialize@1"),
         "data.json.path_set@1" => Some("wvx.reference.path-set@1"),
+        "data.text.uppercase@1" => Some("wvx.reference.text-uppercase@1"),
+        "data.text.lowercase@1" => Some("wvx.reference.text-lowercase@1"),
         _ => None,
     }
 }
@@ -65,6 +71,10 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
         "wvx.reference.json-serialize-pretty@1",
         "wvx.reference.path-set@1",
         "serde-json.pointer-set@1",
+        "wvx.reference.text-uppercase@1",
+        "wvx.reference.text-ascii-upper@1",
+        "wvx.reference.text-lowercase@1",
+        "wvx.reference.text-ascii-lower@1",
         "wvx.reference.io-input-bytes@1",
         "wvx.reference.io-output-bytes@1",
     ]
@@ -111,6 +121,26 @@ pub fn built_in_sdk_emit(implementation_id: &str) -> Option<SdkEmit> {
             "wvx-adapters",
             Some("crates/wvx-adapters"),
             "wvx_adapters::reference_json_serialize_pretty::serialize(&{value})?",
+        ),
+        "wvx.reference.text-uppercase@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_text_uppercase::transform({bytes}.as_slice())?",
+        ),
+        "wvx.reference.text-ascii-upper@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_text_ascii_upper::transform({bytes}.as_slice())?",
+        ),
+        "wvx.reference.text-lowercase@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_text_lowercase::transform({bytes}.as_slice())?",
+        ),
+        "wvx.reference.text-ascii-lower@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_text_ascii_lower::transform({bytes}.as_slice())?",
         ),
         // path_set still needs config inlining — special template with {value} only;
         // config path/value are filled by emit_call_path_set.

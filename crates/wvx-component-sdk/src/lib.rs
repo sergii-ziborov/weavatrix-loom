@@ -154,6 +154,47 @@ impl ErasedComponent for JsonToBytes {
     }
 }
 
+/// Helper: wrap `fn(&[u8]) -> Result<Vec<u8>, String>` as bytes→bytes transform handler.
+///
+/// Used by the **data.text.*** pilot family (second capability vertical after JSON).
+pub fn bytes_to_bytes_handler(
+    implementation_id: impl Into<String>,
+    capability_key: impl Into<String>,
+    f: fn(&[u8]) -> Result<Vec<u8>, String>,
+) -> Box<dyn ErasedComponent> {
+    Box::new(BytesToBytes {
+        implementation_id: implementation_id.into(),
+        capability_key: capability_key.into(),
+        f,
+    })
+}
+
+struct BytesToBytes {
+    implementation_id: String,
+    capability_key: String,
+    f: fn(&[u8]) -> Result<Vec<u8>, String>,
+}
+
+impl ErasedComponent for BytesToBytes {
+    fn implementation_id(&self) -> &str {
+        &self.implementation_id
+    }
+    fn capability_key(&self) -> &str {
+        &self.capability_key
+    }
+    fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let bytes = match inputs.get("bytes") {
+            Some(WvxValue::Bytes(b)) => b.as_slice(),
+            Some(_) => return Err("data.text.*: port `bytes` must be bytes".into()),
+            None => return Err("data.text.*: missing port `bytes`".into()),
+        };
+        let out_bytes = (self.f)(bytes)?;
+        let mut out = WvxValueMap::new();
+        out.insert("bytes".into(), WvxValue::Bytes(out_bytes));
+        Ok(out)
+    }
+}
+
 /// Helper: wrap `fn(Value, &str, Value) -> Result<Value, String>` as path_set handler.
 pub fn path_set_handler(
     implementation_id: impl Into<String>,

@@ -8,13 +8,15 @@
 use std::sync::Once;
 
 use wvx_component_sdk::{
-    bytes_to_json_handler, json_to_bytes_handler, path_set_handler, register_plugin,
+    bytes_to_bytes_handler, bytes_to_json_handler, json_to_bytes_handler, path_set_handler,
+    register_plugin,
 };
 
 use crate::{
     json_crate_parse, reference_json_parse, reference_json_serialize,
-    reference_json_serialize_pretty, reference_path_set, serde_json_parse_owned,
-    serde_json_pointer_set, serde_json_serialize,
+    reference_json_serialize_pretty, reference_path_set, reference_text_ascii_lower,
+    reference_text_ascii_upper, reference_text_lowercase, reference_text_uppercase,
+    serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize,
 };
 
 /// Register all pilot transform implementations into the SDK plugin table.
@@ -88,5 +90,51 @@ pub fn register_pilot_plugins() {
                 serde_json_pointer_set::path_set,
             )
         });
+
+        // data.text.* — second capability family (bytes → bytes)
+        register_plugin(
+            "wvx.reference.text-uppercase@1",
+            "data.text.uppercase@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.text-uppercase@1",
+                    "data.text.uppercase@1",
+                    reference_text_uppercase::transform,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.text-ascii-upper@1",
+            "data.text.uppercase@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.text-ascii-upper@1",
+                    "data.text.uppercase@1",
+                    reference_text_ascii_upper::transform,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.text-lowercase@1",
+            "data.text.lowercase@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.text-lowercase@1",
+                    "data.text.lowercase@1",
+                    reference_text_lowercase::transform,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.text-ascii-lower@1",
+            "data.text.lowercase@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.text-ascii-lower@1",
+                    "data.text.lowercase@1",
+                    reference_text_ascii_lower::transform,
+                )
+            },
+        );
     });
 }

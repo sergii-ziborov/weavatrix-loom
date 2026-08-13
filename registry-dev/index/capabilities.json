@@ -2,6 +2,8 @@
   "data.json.parse@1",
   "data.json.path_set@1",
   "data.json.serialize@1",
+  "data.text.lowercase@1",
+  "data.text.uppercase@1",
   "io.input.bytes@1",
   "io.output.bytes@1"
 ]

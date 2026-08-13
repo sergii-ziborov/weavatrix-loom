@@ -91,7 +91,14 @@ jobs:
           test -f docs/go-no-go-a-d-pilot-json.md
           test -f docs/go-no-go-e-pilot.md
           test -f docs/go-no-go-f-pilot.md
+          test -f docs/go-no-go-c-pilot.md
           test -f docs/adr/0011-gate-f-core-independent-extensibility.md
+          test -f docs/adr/0012-ecosystem-boundaries.md
+          test -f docs/ecosystem-distribution.md
           test -f fixtures/pilot-json-pipeline.wvx.json
           test -d registry-dev/evidence
           test -f registry-dev/implementations/external.demo.upper-parse@1.json
+          # README must keep ecosystem positioning (anti dual-graph)
+          grep -q "ADR-0012" README.md
+          grep -q "Weavatrix" README.md
+          grep -q "FerroSift\|ferrosift" README.md

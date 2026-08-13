@@ -66,3 +66,27 @@ npm run alpha:check   # test + build (+ check:api if server up)
 | alpha | First working vertical |
 | **beta** | Clear product surfaces + path ingest + Studio About/UX |
 | rc / 1.0 | Weavatrix facts feed, second capability family, publish policy |
+
+## What next (priority order)
+
+Product focus after Library/Forge beta surfaces:
+
+| # | Work | Why |
+|---|------|-----|
+| **P0** | **Library catalog UX** (families, kind filter, Implementations tab) | Registry is the product surface — must scale past 5 pilot caps |
+| **P1** | **Second capability family** (beyond JSON transform) | Proves Registry is not a one-off vertical |
+| **P1** | **Weavatrix facts → Forge** | Replace bootstrap Cargo/AST as product story (ADR-0012) |
+| **P2** | **crates.io library crates** | Path deps first; flip `publish` only after README + API freeze |
+| **P2** | **Capability `description` / tags** in IR + registry | Human browse without opening every detail page |
+| **P3** | Hosted registry / admit fleet | Not beta; needs evidence + policy product |
+| **Never product** | Studio/MCP product wiring | MCP stays agent-only; Studio stays HTTP → loom-server |
+
+**Do not split monorepo into crate sub-repos** until public API freeze — path workspace is the consumer mode.
+
+### Library expansion (beta+)
+
+- Group by **family** (`data.json.*`, `io.*`)
+- Filter by **kind** · sort by name / impl count
+- Tab: **Capabilities | Implementations** (lifecycle + evidence browse)
+- Richer cards: port type flow `bytes → json_value`
+- Detail: copy key, status histogram, Forge CTA

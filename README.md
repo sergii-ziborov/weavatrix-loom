@@ -84,13 +84,33 @@ feeds signatures/spans (ADR-0012).
 > smoke: [alpha-prototype.md](docs/alpha-prototype.md). UI:
 > **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**.
 
-## Studio preview
+## Studio preview (v0.2 beta)
 
-![Loom Studio — JSON pilot pipeline](docs/images/studio-pilot.png)
+UI: **[loom-studio](https://github.com/sergii-ziborov/loom-studio)** — HTTP only to
+`loom-server`. Screenshots below are from the live JSON pilot (same assets as Studio
+repo `docs/images/`).
 
-*Design canvas: capability library + **WVX semantic** graph (not a code graph),
-multi-impl swap, run trace, thin Forge (match/draft/Gate C), intent → GraphPatch.
-UI: [loom-studio](https://github.com/sergii-ziborov/loom-studio).*
+### Design — Library + WVX semantic canvas
+
+![Loom Studio Design](docs/images/studio-design.png)
+
+*Capability **Library** (Registry, not crates) · typed bindings · inspector.
+Not a Weavatrix File/Call code graph.*
+
+### Inspector + Run
+
+| Inspector (swap impls) | Run (trace + output) |
+| --- | --- |
+| ![Inspector](docs/images/studio-inspector.png) | ![Run](docs/images/studio-run.png) |
+
+### Library detail · Forge · About
+
+| Capability page | Forge path ingest | About |
+| --- | --- | --- |
+| ![Library](docs/images/studio-library.png) | ![Forge](docs/images/studio-forge.png) | ![About](docs/images/studio-about.png) |
+
+*Forge: package/workspace path on the server host → inventory → match → draft /
+register **candidates** (never auto-admit). About: product boundaries + HTTP-only.*
 
 ## Why
 

@@ -34,6 +34,22 @@ Any package path  →  Forge  →  draft Implementation  →  Registry  →  Lib
 - Forge copy: add package source, never admits  
 - Chip: `beta` · loom-server · nodes  
 
+### README screenshots
+
+Live UI captures (English UI) live under `docs/images/` and are mirrored in
+[loom-studio](https://github.com/sergii-ziborov/loom-studio):
+
+| File | Surface |
+|------|---------|
+| `studio-design.png` / `studio-pilot.png` | Design · Library + canvas |
+| `studio-inspector.png` | Instance inspector · multi-impl |
+| `studio-run.png` | Run · trace + output |
+| `studio-library.png` | Capability detail page |
+| `studio-forge.png` | Forge wizard |
+| `studio-about.png` | About modal |
+
+Refresh from Studio: `node scripts/capture-screens.mjs` (Edge/Chrome + stack up).
+
 ## Smoke
 
 ```powershell

@@ -1,5 +1,8 @@
 //! FORGE-008: generate a **compileable** adapter crate from a draft.
 //!
+//! Semantic adapter packaging for a *single* composition path (Loom).
+//! Broader workspace/CI/deploy scaffolding is **Realforge** (ADR-0012), not here.
+//!
 //! Static only until optional `cargo check`. Never sets evidence pass or admits.
 //! Successful check may lift draft status label to `candidate` (local report only).
 

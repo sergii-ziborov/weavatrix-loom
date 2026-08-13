@@ -2,12 +2,20 @@
 
 **Compose systems from verified capabilities. Get ordinary Rust.**
 
-Weavatrix Loom is a **visual semantic compiler** and registry for proven Rust
-components. You work with formal *capabilities* (parse JSON, hash with BLAKE3,
-compress with Gzip) rather than raw crates and free-form prompts. Each capability
-can have one or more Rust implementations that share a contract, tests, and
-measured characteristics. Loom turns a typed graph of those capabilities into a
-normal, readable Rust workspace.
+Weavatrix Loom is **semantic software composition**: a capability registry,
+typed project graph (GraphPatch), conformance/evidence, and a compiler that
+exports ordinary Rust. It is **not** a repository indexer and **not** a second
+Weavatrix code graph ([ADR-0012](docs/adr/0012-ecosystem-boundaries.md)).
+
+```text
+Weavatrix (code facts)  →  Loom (meaning / proof / compose)  →  Realforge (artifacts)
+                              ▲
+                    FerroSift ops may back Implementations
+```
+
+You work with formal *capabilities* rather than free-form prompts. Each
+capability can have interchangeable *implementations* with multi-fact evidence.
+The capability graph compiles to a normal, readable Rust workspace.
 
 > **Status:** public **v0.1 pilot** (JSON transform vertical) with **Gate F SDK path**
 > and **Forge v2 pilot** (AST extract, ontology match, compileable adapters, Gate C
@@ -78,7 +86,7 @@ Studio UI lives in a separate repository and talks to the same command surface.
 | `wvx-adapters` | Pilot JSON implementations (parse / serialize / path_set) |
 | `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) |
 | `wvx-adapter-external-demo` | External fixture (`upper_parse`) — not in pilot match tables |
-| `wvx-forge` | Inventory, AST extract, ontology match, compileable adapters, Gate C pilot |
+| `wvx-forge` | Thin Forge: bootstrap inventory + **semantic match/draft** (deep code facts → Weavatrix; ADR-0012) |
 | `wvx-conformance` | Capability vectors (pos/neg error codes) + golden (dynamic ≡ export) |
 | `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) |
 | `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) |

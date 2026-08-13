@@ -47,8 +47,10 @@ cargo run -p wvx-cli -- forge gate-c --workspace .
 ## Residual
 
 - AST extract uses `syn` (static); unparseable files fall back to line heuristics.
-- Compileable adapters path-depend on the scanned crate (host-local); not published packages.
+- **ADR-0012:** local AST/inventory is **bootstrap**; deep repository intelligence belongs to **Weavatrix**. Forge should converge to *semantic classification only*.
+- Compileable adapters path-depend on the scanned crate (host-local); broad packaging is **Realforge**.
 - Gate C **production** Go still needs multi-domain sample + human review metrics.
+- **FerroSift** is the transform-ops runtime (separate repo); not a rival capability Registry.
 
 ## Verdict
 

@@ -1,8 +1,10 @@
-//! FORGE-007: map extract candidates onto the **existing** capability ontology.
+//! FORGE-007: map candidates onto the **existing** capability ontology.
 //!
-//! Order (roadmap §11.7):
-//! exact shape → compatible shape → family hint → new capability proposal.
+//! This is the **Loom-owned** half of Forge (semantic classification).
+//! Upstream shapes should eventually come from Weavatrix facts (ADR-0012);
+//! today they often come from bootstrap extract.
 //!
+//! Order: exact shape → compatible shape → family hint → new capability proposal.
 //! Matching is static heuristics only. Never sets evidence pass or admits.
 
 use crate::extract::{ApiCandidate, CandidateShape};

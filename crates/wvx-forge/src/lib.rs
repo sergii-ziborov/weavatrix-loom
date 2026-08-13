@@ -1,7 +1,18 @@
-//! Loom Forge — static inventory and public API extraction (no code execution).
+//! Loom Forge — **thin semantic ingestion** toward the Registry (ADR-0012).
 //!
-//! Does **not** run build.rs, proc macros, tests, or network. Only reads
-//! Cargo.toml / Cargo.lock metadata and source tree indicators.
+//! Target pipeline:
+//! ```text
+//! Weavatrix (code facts) → Forge (classify / match) → Registry
+//! ```
+//!
+//! **Bootstrap (current):** local Cargo inventory + AST/line extract live here so
+//! the pilot works offline. They are **not** product positioning as a second
+//! Weavatrix code graph. Deep indexing/search/impact belong in Weavatrix.
+//!
+//! **Keep in Loom:** capability matching, adapter drafts, compileable *semantic*
+//! adapter packs, Gate C metrics over capability mapping.
+//!
+//! Does **not** run build.rs, proc macros, or network for inventory/extract.
 
 mod capability_match;
 mod compile_adapter;

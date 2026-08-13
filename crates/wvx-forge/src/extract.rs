@@ -1,5 +1,9 @@
 //! Stage 2: static public API extraction and candidate shapes (no code execution).
 //!
+//! **ADR-0012:** this module is a *bootstrap* stand-in for Weavatrix code facts.
+//! Prefer feeding signatures/spans from Weavatrix when available; do not grow
+//! this into a full repository intelligence product.
+//!
 //! FORGE-004: prefer **syn AST** for multiline functions, impl methods, and types.
 //! Falls back to line heuristics when a file fails to parse.
 

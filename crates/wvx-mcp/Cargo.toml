@@ -7,8 +7,8 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Bounded MCP tools for Weavatrix Loom (via mcport)"
-publish.workspace = true
+description = "Optional agent-only MCP adapter over the Loom command bus (not used by Studio)"
+publish = false
 
 [[bin]]
 name = "wvx-mcp"

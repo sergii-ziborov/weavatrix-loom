@@ -1,0 +1,121 @@
+{
+  "architectureContractV": 1,
+  "name": "weavatrix-loom modular crates",
+  "style": "modular-components",
+  "enforcement": "ratchet",
+  "budgets": {
+    "maxFileLoc": 1200,
+    "maxFunctionLoc": 260,
+    "runtimeCycles": 0
+  },
+  "components": [
+    {
+      "id": "types",
+      "name": "wvx-types",
+      "paths": ["crates/wvx-types"]
+    },
+    {
+      "id": "ir",
+      "name": "wvx-ir",
+      "paths": ["crates/wvx-ir"]
+    },
+    {
+      "id": "project-graph",
+      "name": "wvx-project-graph",
+      "paths": ["crates/wvx-project-graph"]
+    },
+    {
+      "id": "validator",
+      "name": "wvx-validator",
+      "paths": ["crates/wvx-validator"]
+    },
+    {
+      "id": "runtime",
+      "name": "wvx-runtime",
+      "paths": ["crates/wvx-runtime"]
+    },
+    {
+      "id": "compiler",
+      "name": "wvx-compiler-rust",
+      "paths": ["crates/wvx-compiler-rust"]
+    },
+    {
+      "id": "registry",
+      "name": "wvx-registry-client",
+      "paths": ["crates/wvx-registry-client"]
+    },
+    {
+      "id": "command-bus",
+      "name": "wvx-command-bus",
+      "paths": ["crates/wvx-command-bus"]
+    },
+    {
+      "id": "forge",
+      "name": "wvx-forge",
+      "paths": ["crates/wvx-forge"]
+    },
+    {
+      "id": "sdk",
+      "name": "wvx-component-sdk",
+      "paths": ["crates/wvx-component-sdk"]
+    },
+    {
+      "id": "adapters",
+      "name": "wvx-adapters",
+      "paths": ["crates/wvx-adapters"]
+    },
+    {
+      "id": "conformance",
+      "name": "wvx-conformance",
+      "paths": ["crates/wvx-conformance"]
+    },
+    {
+      "id": "cortex-bridge",
+      "name": "wvx-cortex",
+      "paths": ["crates/wvx-cortex"]
+    },
+    {
+      "id": "hosts",
+      "name": "product-hosts",
+      "paths": ["crates/wvx-cli", "crates/loom-server"]
+    },
+    {
+      "id": "agent-adapter",
+      "name": "wvx-mcp agent-only",
+      "paths": ["crates/wvx-mcp"]
+    },
+    {
+      "id": "demo",
+      "name": "external-demo",
+      "paths": ["crates/wvx-adapter-external-demo"]
+    },
+    {
+      "id": "docs",
+      "name": "docs-and-schemas",
+      "paths": ["docs", "schemas", "fixtures", "registry-dev", ".github"]
+    }
+  ],
+  "dependencyRules": [
+    {
+      "name": "libs must not import product hosts",
+      "from": ["types", "ir", "project-graph", "validator", "runtime", "compiler", "registry", "forge", "sdk", "adapters", "conformance", "cortex-bridge"],
+      "to": ["hosts", "agent-adapter"],
+      "is": "forbid",
+      "severity": "error"
+    },
+    {
+      "name": "agent MCP adapter is not a dependency of product hosts",
+      "from": ["hosts"],
+      "to": ["agent-adapter"],
+      "is": "forbid",
+      "severity": "error"
+    }
+  ],
+  "exceptions": [],
+  "ratchet": {
+    "baseline": {
+      "fingerprints": [],
+      "metrics": {}
+    }
+  }
+}

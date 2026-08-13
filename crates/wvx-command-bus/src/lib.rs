@@ -1,6 +1,8 @@
-//! Single semantic API used by CLI, MCP, and future HTTP hosts.
+//! Single semantic API used by product hosts (CLI, HTTP/`loom-server`) and the
+//! optional **agent-only** MCP adapter (`wvx-mcp`).
 //!
-//! Hosts must not re-implement validation or graph rules.
+//! Studio never talks MCP — it uses HTTP into `loom-server`. Hosts must not
+//! re-implement validation or graph rules.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

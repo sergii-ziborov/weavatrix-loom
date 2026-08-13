@@ -136,28 +136,35 @@ Rust IR types remain authoritative if schema and code diverge.
 
 ## Workspace
 
-This repository is a **Rust library platform** plus thin hosts. The visual
-Studio UI lives in a separate repository and talks to the same command surface.
+This repository is a **Rust library platform** plus thin hosts. **All library
+crates are consumer-accessible via path** (Realforge, Cortex, …). See
+**[docs/crate-surface.md](docs/crate-surface.md)**.
+
+The visual Studio UI lives in a separate repository and talks **HTTP only** to
+`loom-server` — **not** MCP. `wvx-mcp` is an **optional agent adapter** over the
+same command bus (for coding agents), never a Studio or Realforge dependency.
+Weavatrix MCP is a separate agent tool for code facts; Loom products do not
+embed it.
 
 | Crate | Role |
 | --- | --- |
-| `wvx-types` | Canonical boundary types |
-| `wvx-ir` | WVX entities (capability, implementation, instance, binding, project) |
-| `wvx-project-graph` | Project graph operations + GraphPatch apply |
-| `wvx-validator` | Structural and type validation |
-| `wvx-runtime` | Dynamic playground execution (erased values) |
-| `wvx-compiler-rust` | Export a validated graph to a native Rust workspace |
-| `wvx-registry-client` | Read a local capability registry (lifecycle + multi-fact evidence hits) |
-| `wvx-command-bus` | Shared semantic API for CLI, MCP, and HTTP |
-| `wvx-cli` | Command-line entry point |
-| `wvx-mcp` | Bounded MCP tools over the command bus ([`mcport`](https://crates.io/crates/mcport)) |
-| `wvx-adapters` | Pilot JSON implementations (parse / serialize / path_set) |
-| `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) |
-| `wvx-adapter-external-demo` | External fixture (`upper_parse`) — not in pilot match tables |
-| `wvx-forge` | Thin Forge: bootstrap inventory + **semantic match/draft** (deep code facts → Weavatrix; ADR-0012) |
-| `wvx-conformance` | Capability vectors (pos/neg error codes) + golden (dynamic ≡ export) |
-| `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) |
-| `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) |
+| `wvx-types` | Canonical boundary types (**lib**) |
+| `wvx-ir` | WVX entities (capability, implementation, instance, binding, project) (**lib**) |
+| `wvx-project-graph` | Project graph operations + GraphPatch apply (**lib**) |
+| `wvx-validator` | Structural and type validation (**lib**) |
+| `wvx-runtime` | Dynamic playground execution (erased values) (**lib**) |
+| `wvx-compiler-rust` | Export a validated graph to a native Rust workspace (**lib**) |
+| `wvx-registry-client` | Read a local capability registry (lifecycle + multi-fact evidence hits) (**lib**) |
+| `wvx-command-bus` | Shared semantic API for **CLI + HTTP** (**lib**; preferred host entry) |
+| `wvx-cli` | Command-line entry point (**product host**) |
+| `wvx-mcp` | Optional **agent-only** MCP adapter (`mcport`) — not used by Studio |
+| `wvx-adapters` | Pilot JSON implementations (parse / serialize / path_set) (**lib**) |
+| `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) (**lib**) |
+| `wvx-adapter-external-demo` | External fixture (`upper_parse`) — demo only |
+| `wvx-forge` | Thin Forge: bootstrap inventory + **semantic match/draft** (**lib**; deep code facts → Weavatrix; ADR-0012) |
+| `wvx-conformance` | Capability vectors (pos/neg error codes) + golden (dynamic ≡ export) (**lib**) |
+| `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) (**lib** bridge) |
+| `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) (**product host**) |
 
 ## CI
 
@@ -389,7 +396,7 @@ Goals for this series:
 - more than one implementation for JSON parse / serialize
 - playground run with a trace
 - export to a `cargo`-buildable workspace whose results match the playground
-- CLI and MCP over one command bus (no free-form AI file edits)
+- CLI and HTTP over one command bus (optional agent MCP adapter; no free-form AI file edits)
 
 Out of scope for `0.1`: multi-language implementations, required WASM, databases
 and queues, distributed transactions, autonomous production swaps, and a full
@@ -399,7 +406,7 @@ UI builder.
 
 - **Rust is the production output.** Generated code should be readable and
   maintainable outside Loom.
-- **One command bus.** Studio, CLI, and MCP share the same operations; the UI is
+- **One command bus.** Studio (HTTP), CLI, and optional agent MCP share the same operations; the UI is
   not a second backend.
 - **Evidence is multi-fact.** Build, conformance, benchmarks, license, and
   advisories stay separate — there is no single “readiness 82%” score.

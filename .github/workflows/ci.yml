@@ -95,6 +95,7 @@ jobs:
           test -f docs/adr/0011-gate-f-core-independent-extensibility.md
           test -f docs/adr/0012-ecosystem-boundaries.md
           test -f docs/ecosystem-distribution.md
+          test -f docs/crate-surface.md
           test -f fixtures/pilot-json-pipeline.wvx.json
           test -d registry-dev/evidence
           test -f registry-dev/implementations/external.demo.upper-parse@1.json
@@ -102,3 +103,7 @@ jobs:
           grep -q "ADR-0012" README.md
           grep -q "Weavatrix" README.md
           grep -q "FerroSift\|ferrosift" README.md
+          # Product hosts must not wire MCP; libs are path-consumable
+          grep -q "crate-surface" README.md
+          grep -q "HTTP only" README.md
+          grep -q "agent-only" README.md

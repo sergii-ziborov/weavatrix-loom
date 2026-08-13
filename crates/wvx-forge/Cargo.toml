@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Package inventory and qualification pipeline for Loom (static stage first)"
+description = "Thin Loom Forge: semantic match/draft + bootstrap inventory (not a code indexer)"
 publish.workspace = true
 
 [dependencies]

@@ -1,4 +1,7 @@
-//! MCP stdio host for Loom — transport is [`mcport`]; semantics are the command bus.
+//! Optional **agent-only** MCP stdio host for Loom.
+//!
+//! Transport is [`mcport`]; semantics are the command bus. **Not** used by
+//! Loom Studio or product packaging — Studio uses `loom-server` HTTP only.
 
 use mcport::{json, serve, ServerIdentity, ToolReply, ToolServer, Value};
 use wvx_command_bus::{project_validate, PROTOCOL_VERSION};

@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Shared semantic command surface for Loom CLI, MCP, and HTTP hosts"
+description = "Shared semantic API for Loom CLI and HTTP hosts (MCP is optional agent adapter only)"
 publish.workspace = true
 
 [dependencies]

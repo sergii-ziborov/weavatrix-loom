@@ -1,4 +1,6 @@
 [
+  "data.hash.blake3@1",
+  "data.hash.sha256@1",
   "data.json.parse@1",
   "data.json.path_set@1",
   "data.json.serialize@1",

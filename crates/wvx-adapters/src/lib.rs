@@ -3,6 +3,7 @@
 //! Transform handlers register via `wvx-component-sdk` ([`register_pilot_plugins`]).
 //! Pure functions remain the export surface for the compiler / vendoring.
 
+pub mod blake3_hash;
 pub mod json_crate_parse;
 pub mod reference_json_parse;
 pub mod reference_json_serialize;
@@ -17,6 +18,8 @@ pub mod register;
 pub mod serde_json_parse_owned;
 pub mod serde_json_pointer_set;
 pub mod serde_json_serialize;
+pub mod sha2_sha256;
+pub mod sha2_sha256_streaming;
 
 #[cfg(feature = "host")]
 pub use register::register_pilot_plugins;
@@ -39,4 +42,8 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("wvx.reference.text-ascii-upper@1", "reference_text_ascii_upper"),
     ("wvx.reference.text-lowercase@1", "reference_text_lowercase"),
     ("wvx.reference.text-ascii-lower@1", "reference_text_ascii_lower"),
+    // Domain 2 — hashing
+    ("sha2.sha256@1", "sha2_sha256"),
+    ("sha2.sha256-streaming@1", "sha2_sha256_streaming"),
+    ("blake3.blake3@1", "blake3_hash"),
 ];

@@ -1,0 +1,81 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "pilot-hash-pipeline",
+  "name": "Hash pilot pipeline (Domain 2)",
+  "entrypoint": "input",
+  "metadata": {
+    "pilot": "true",
+    "family": "data.hash",
+    "domain": "2"
+  },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.hash.sha256",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "digest", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "io.output.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [],
+      "errors": [],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 56, "y": 140 }
+    },
+    {
+      "id": "hash",
+      "capability": { "id": "data.hash.sha256", "version": "1" },
+      "implementation": "sha2.sha256@1",
+      "config": {},
+      "ui": { "x": 300, "y": 140 }
+    },
+    {
+      "id": "output",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 560, "y": 140 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "hash", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "hash", "port": "digest" },
+      "to": { "instance": "output", "port": "bytes" }
+    }
+  ]
+}

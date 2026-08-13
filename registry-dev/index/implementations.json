@@ -1,4 +1,11 @@
 {
+  "data.hash.blake3@1": [
+    "blake3.blake3@1"
+  ],
+  "data.hash.sha256@1": [
+    "sha2.sha256@1",
+    "sha2.sha256-streaming@1"
+  ],
   "data.json.parse@1": [
     "serde-json.parse-owned@1",
     "wvx.reference.json-parse@1",

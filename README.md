@@ -445,27 +445,35 @@ See also [ecosystem-distribution.md](docs/ecosystem-distribution.md).
 
 ## Pilot scope (`0.1` / beta)
 
-Two pure data-transform verticals in `registry-dev`:
+Semantic domains in `registry-dev` (architecture freeze — grow domains, not IR):
 
-**JSON family**
+**Domain 1 — JSON**
 
 ```text
 Input Bytes → JSON Parse → JSON Path Set → JSON Serialize → Output Bytes
 ```
 
-**Text family** (second capability family)
+**Text family** (still Domain-adjacent transforms)
 
 ```text
 Input Bytes → Text Uppercase → Text Lowercase → Output Bytes
 ```
 
+**Domain 2 — Hashing** (Gate C multi-domain proof)
+
+```text
+Input Bytes → SHA-256 digest → Output Bytes
+```
+
 | Family | Capabilities | Multi-impl examples |
 | --- | --- | --- |
 | `data.json.*` | parse · path_set · serialize | serde-json / reference / json-crate |
-| `data.text.*` | uppercase · lowercase | Unicode vs ASCII-only adapters |
+| `data.text.*` | uppercase · lowercase | Unicode vs ASCII-only |
+| `data.hash.*` | sha256 · blake3 | sha2 one-shot / streaming · blake3 |
 | `io.*` | input.bytes · output.bytes | reference I/O |
 
-Fixtures: `fixtures/pilot-json-pipeline.wvx.json`, `fixtures/pilot-text-pipeline.wvx.json`.
+Fixtures: `pilot-json-pipeline`, `pilot-text-pipeline`, `pilot-hash-pipeline`.  
+Roadmap: [docs/domain-roadmap.md](docs/domain-roadmap.md).
 
 Goals:
 

@@ -156,26 +156,40 @@ impl ErasedComponent for JsonToBytes {
 
 /// Helper: wrap `fn(&[u8]) -> Result<Vec<u8>, String>` as bytes→bytes transform handler.
 ///
-/// Used by the **data.text.*** pilot family (second capability vertical after JSON).
+/// Default output port is `bytes` (text family). Prefer
+/// [`bytes_to_named_bytes_handler`] when the capability names the output differently
+/// (e.g. hash domain → `digest`).
 pub fn bytes_to_bytes_handler(
     implementation_id: impl Into<String>,
     capability_key: impl Into<String>,
     f: fn(&[u8]) -> Result<Vec<u8>, String>,
 ) -> Box<dyn ErasedComponent> {
-    Box::new(BytesToBytes {
+    bytes_to_named_bytes_handler(implementation_id, capability_key, "bytes", f)
+}
+
+/// Like [`bytes_to_bytes_handler`], but writes to a named output port (`digest`, …).
+pub fn bytes_to_named_bytes_handler(
+    implementation_id: impl Into<String>,
+    capability_key: impl Into<String>,
+    out_port: impl Into<String>,
+    f: fn(&[u8]) -> Result<Vec<u8>, String>,
+) -> Box<dyn ErasedComponent> {
+    Box::new(BytesToNamedBytes {
         implementation_id: implementation_id.into(),
         capability_key: capability_key.into(),
+        out_port: out_port.into(),
         f,
     })
 }
 
-struct BytesToBytes {
+struct BytesToNamedBytes {
     implementation_id: String,
     capability_key: String,
+    out_port: String,
     f: fn(&[u8]) -> Result<Vec<u8>, String>,
 }
 
-impl ErasedComponent for BytesToBytes {
+impl ErasedComponent for BytesToNamedBytes {
     fn implementation_id(&self) -> &str {
         &self.implementation_id
     }
@@ -185,12 +199,22 @@ impl ErasedComponent for BytesToBytes {
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
         let bytes = match inputs.get("bytes") {
             Some(WvxValue::Bytes(b)) => b.as_slice(),
-            Some(_) => return Err("data.text.*: port `bytes` must be bytes".into()),
-            None => return Err("data.text.*: missing port `bytes`".into()),
+            Some(_) => {
+                return Err(format!(
+                    "{}: port `bytes` must be bytes",
+                    self.capability_key
+                ))
+            }
+            None => {
+                return Err(format!(
+                    "{}: missing port `bytes`",
+                    self.capability_key
+                ))
+            }
         };
         let out_bytes = (self.f)(bytes)?;
         let mut out = WvxValueMap::new();
-        out.insert("bytes".into(), WvxValue::Bytes(out_bytes));
+        out.insert(self.out_port.clone(), WvxValue::Bytes(out_bytes));
         Ok(out)
     }
 }

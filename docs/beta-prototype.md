@@ -69,19 +69,18 @@ npm run alpha:check   # test + build (+ check:api if server up)
 
 ## What next (priority order)
 
-Product focus after Library/Forge beta surfaces:
+**Freeze new fundamental abstractions.** #1 bottleneck = multi-domain Gate C proof.
+See **[domain-roadmap.md](domain-roadmap.md)**.
 
 | # | Work | Why |
 |---|------|-----|
-| **P0** | **Library catalog UX** (families, kind filter, Implementations tab) | Registry is the product surface — must scale past 5 pilot caps |
-| **P1** | **Second capability family** (`data.text.*` — done in beta) | Proves Registry is not a one-off vertical |
-| **P1** | **Weavatrix facts → Forge** (wire format + match/draft — done) | Replace bootstrap Cargo/AST as product story (ADR-0012) |
-| **P2** | **crates.io library crates** (READMEs + `publish = true` on libs) | Hosts stay private; token only for `cargo publish` |
-| **P2** | **Capability `description` / tags** in IR + registry | Human browse without opening every detail page |
-| **P3** | Hosted registry / admit fleet | Not beta; needs evidence + policy product |
-| **Never product** | Studio/MCP product wiring | MCP stays agent-only; Studio stays HTTP → loom-server |
+| **#1** | **Domain 2 hashing** (`data.hash.*` pilot) | bytes→digest; multi-impl; axes for evidence |
+| **#1** | **Domain 3 compression** then **Domain 4 codecs** | Harder contracts; FerroSift as Implementations |
+| **Gate C open** | 5+ external conformant · multi-domain samples · human review · real Forge economics | Honest criteria |
+| **P2** | crates.io remainder (GitHub Actions + secret, rate-limit resume) | Hosts unpublished |
+| **Never product** | Studio/MCP product wiring · dual code graph | |
 
-**Do not split monorepo into crate sub-repos** until public API freeze — path workspace is the consumer mode.
+**Do not split monorepo into crate sub-repos** until public API freeze.
 
 ### Library expansion (beta+)
 

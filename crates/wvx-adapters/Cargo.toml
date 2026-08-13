@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "External pilot adapters for Weavatrix Loom JSON capabilities"
+description = "Pilot adapters for Weavatrix Loom (JSON, text, hash, …)"
 publish = true
 keywords = ["weavatrix", "loom", "wvx"]
 categories = ["development-tools"]
@@ -22,6 +22,9 @@ host = ["dep:wvx-component-sdk"]
 serde_json = { workspace = true }
 # Third independent parse path for Gate A (not serde-based).
 json = "0.12"
+# Domain 2 — hashing (bytes → digest); multi-impl + second algorithm.
+sha2 = "0.10"
+blake3 = "1.5"
 wvx-component-sdk = { workspace = true, optional = true }
 
 [lints]

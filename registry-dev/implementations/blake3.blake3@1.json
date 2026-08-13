@@ -1,0 +1,33 @@
+{
+  "id": "blake3.blake3",
+  "version": "1",
+  "capability": {
+    "id": "data.hash.blake3",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crates-io",
+    "package": "blake3",
+    "package_version": "1"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "conformant",
+  "evidence": {
+    "build": "pass",
+    "conformance": "pass",
+    "benchmark": "absent",
+    "license": "pass",
+    "security": "absent"
+  },
+  "notes": "Domain 2 second algorithm (BLAKE3). Distinct capability from SHA-256.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::blake3_hash::digest({bytes}.as_slice())?"
+    }
+  }
+}

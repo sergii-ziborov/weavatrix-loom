@@ -8,15 +8,16 @@
 use std::sync::Once;
 
 use wvx_component_sdk::{
-    bytes_to_bytes_handler, bytes_to_json_handler, json_to_bytes_handler, path_set_handler,
-    register_plugin,
+    bytes_to_bytes_handler, bytes_to_json_handler, bytes_to_named_bytes_handler,
+    json_to_bytes_handler, path_set_handler, register_plugin,
 };
 
 use crate::{
-    json_crate_parse, reference_json_parse, reference_json_serialize,
+    blake3_hash, json_crate_parse, reference_json_parse, reference_json_serialize,
     reference_json_serialize_pretty, reference_path_set, reference_text_ascii_lower,
     reference_text_ascii_upper, reference_text_lowercase, reference_text_uppercase,
-    serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize,
+    serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize, sha2_sha256,
+    sha2_sha256_streaming,
 };
 
 /// Register all pilot transform implementations into the SDK plugin table.
@@ -136,5 +137,31 @@ pub fn register_pilot_plugins() {
                 )
             },
         );
+
+        // Domain 2 — hashing (bytes → digest); multi-impl SHA-256 + BLAKE3
+        register_plugin("sha2.sha256@1", "data.hash.sha256@1", || {
+            bytes_to_named_bytes_handler(
+                "sha2.sha256@1",
+                "data.hash.sha256@1",
+                "digest",
+                sha2_sha256::digest,
+            )
+        });
+        register_plugin("sha2.sha256-streaming@1", "data.hash.sha256@1", || {
+            bytes_to_named_bytes_handler(
+                "sha2.sha256-streaming@1",
+                "data.hash.sha256@1",
+                "digest",
+                sha2_sha256_streaming::digest,
+            )
+        });
+        register_plugin("blake3.blake3@1", "data.hash.blake3@1", || {
+            bytes_to_named_bytes_handler(
+                "blake3.blake3@1",
+                "data.hash.blake3@1",
+                "digest",
+                blake3_hash::digest,
+            )
+        });
     });
 }

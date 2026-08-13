@@ -103,6 +103,16 @@ pub struct RegistrySummary {
     pub implementations: usize,
 }
 
+/// Result of installing one Forge draft as a local registry **candidate**.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallCandidateResult {
+    pub implementation_id: String,
+    pub capability_key: String,
+    /// Set when a new capability file was written (new_proposal path).
+    pub capability_written: Option<String>,
+    pub path: String,
+}
+
 impl LocalRegistry {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, RegistryError> {
         let root = root.into();
@@ -303,6 +313,86 @@ impl LocalRegistry {
     pub fn audit_admission(&self) -> Result<AdmissionReport, RegistryError> {
         let impls = self.list_implementations()?;
         Ok(audit_implementations(&impls))
+    }
+
+    /// Install a Forge draft as **candidate** implementation (never admitted).
+    ///
+    /// - Writes `implementations/{full_id}.json` with `status: candidate`.
+    /// - Optionally writes a new capability file when `write_capability` is true
+    ///   and the capability is not already present (for `new_proposal` drafts).
+    /// - Does **not** auto-admit or set conformance evidence.
+    pub fn install_forge_draft_candidate(
+        &self,
+        capability_json: &str,
+        implementation_json: &str,
+        write_capability_if_new: bool,
+    ) -> Result<InstallCandidateResult, RegistryError> {
+        let mut impl_val: serde_json::Value = serde_json::from_str(implementation_json)
+            .map_err(|e| RegistryError::Parse(self.root.join("implementation.json"), e.to_string()))?;
+        // Promote inventory_only → candidate for local registry listing.
+        if let Some(obj) = impl_val.as_object_mut() {
+            obj.insert("status".into(), serde_json::json!("candidate"));
+            let notes_owned = obj
+                .get("notes")
+                .and_then(|n| n.as_str())
+                .map(str::to_owned);
+            if let Some(notes) = notes_owned {
+                if !notes.contains("candidate") {
+                    obj.insert(
+                        "notes".into(),
+                        serde_json::json!(format!(
+                            "{notes} Registered as candidate via Forge (not admitted)."
+                        )),
+                    );
+                }
+            }
+        }
+        let imp: Implementation = serde_json::from_value(impl_val.clone()).map_err(|e| {
+            RegistryError::Parse(self.root.join("implementation.json"), e.to_string())
+        })?;
+        let full_id = imp.full_id();
+        let impl_path = self
+            .root
+            .join("implementations")
+            .join(format!("{full_id}.json"));
+        fs::create_dir_all(impl_path.parent().unwrap_or(self.root.as_path()))
+            .map_err(|e| RegistryError::Io(impl_path.clone(), e))?;
+        let pretty = serde_json::to_string_pretty(&impl_val)
+            .map_err(|e| RegistryError::Parse(impl_path.clone(), e.to_string()))?;
+        fs::write(&impl_path, pretty).map_err(|e| RegistryError::Io(impl_path.clone(), e))?;
+
+        let mut cap_written = None;
+        if write_capability_if_new {
+            let mut cap_val: serde_json::Value = serde_json::from_str(capability_json)
+                .map_err(|e| RegistryError::Parse(self.root.join("capability.json"), e.to_string()))?;
+            // Drop forge-only annotations before persistence.
+            if let Some(obj) = cap_val.as_object_mut() {
+                obj.remove("_forge");
+            }
+            let cap: Capability = serde_json::from_value(cap_val.clone()).map_err(|e| {
+                RegistryError::Parse(self.root.join("capability.json"), e.to_string())
+            })?;
+            let key = format!("{}@{}", cap.id, cap.version);
+            if self.find_capability(&cap.id, &cap.version)?.is_none() {
+                let cap_path = self
+                    .root
+                    .join("capabilities")
+                    .join(format!("{key}.json"));
+                fs::create_dir_all(cap_path.parent().unwrap_or(self.root.as_path()))
+                    .map_err(|e| RegistryError::Io(cap_path.clone(), e))?;
+                let pretty = serde_json::to_string_pretty(&cap_val)
+                    .map_err(|e| RegistryError::Parse(cap_path.clone(), e.to_string()))?;
+                fs::write(&cap_path, pretty).map_err(|e| RegistryError::Io(cap_path.clone(), e))?;
+                cap_written = Some(key);
+            }
+        }
+
+        Ok(InstallCandidateResult {
+            implementation_id: full_id,
+            capability_key: imp.capability.as_key(),
+            capability_written: cap_written,
+            path: impl_path.display().to_string(),
+        })
     }
 
     /// Merge missing capability contracts from the registry into a project.

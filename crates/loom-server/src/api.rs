@@ -10,11 +10,10 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
     forge_compile, forge_draft, forge_extract, forge_gate_c, forge_inventory, forge_match,
-    graph_apply_patch, graph_propose_patch,
-    implementations_list, project_export_rust_hydrated, project_run_hydrated,
-    project_validate_hydrated, graph_propose_intent, registry_admission_audit,
-    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
-    BusResponse, PROTOCOL_VERSION,
+    forge_register_candidates, graph_apply_patch, graph_propose_patch, implementations_list,
+    project_export_rust_hydrated, project_run_hydrated, project_validate_hydrated,
+    graph_propose_intent, registry_admission_audit, registry_implementations, registry_inspect,
+    registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
 };
 use wvx_ir::Project;
 use wvx_project_graph::GraphPatch;
@@ -39,6 +38,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/forge/extract", post(forge_extract_handler))
         .route("/api/v1/forge/match", post(forge_match_handler))
         .route("/api/v1/forge/draft", post(forge_draft_handler))
+        .route(
+            "/api/v1/forge/register-candidates",
+            post(forge_register_candidates_handler),
+        )
         .route("/api/v1/forge/compile", post(forge_compile_handler))
         .route("/api/v1/forge/gate-c", post(forge_gate_c_handler))
         .route("/api/v1/graph/propose_patch", post(propose_patch))
@@ -356,6 +359,37 @@ async fn forge_draft_handler(
         body.name.as_deref(),
         out.as_deref(),
         Some(state.registry.as_ref()),
+    ) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ForgeRegisterBody {
+    path: String,
+    #[serde(default)]
+    name: Option<String>,
+    /// Default true: only install drafts that map onto an existing capability.
+    #[serde(default = "default_true")]
+    only_matched: bool,
+}
+
+/// Draft package + write **candidate** implementations into the live registry.
+/// Does not admit. Library will show new impls after reload.
+async fn forge_register_candidates_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeRegisterBody>,
+) -> Response {
+    let path = std::path::PathBuf::from(&body.path);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
+    }
+    match forge_register_candidates(
+        &path,
+        body.name.as_deref(),
+        state.registry.as_ref(),
+        body.only_matched,
     ) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),

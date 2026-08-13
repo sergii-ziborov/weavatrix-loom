@@ -24,8 +24,8 @@ use wvx_project_graph::{
 };
 use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
-    admit_implementation, CapabilityHit, ImplementationHit, LocalRegistry, RegistryError,
-    RegistrySummary, AdmitRequest, AdmitResult, AdmissionReport,
+    admit_implementation, CapabilityHit, ImplementationHit, InstallCandidateResult, LocalRegistry,
+    RegistryError, RegistrySummary, AdmitRequest, AdmitResult, AdmissionReport,
 };
 use std::collections::BTreeMap;
 use wvx_runtime::{
@@ -402,6 +402,69 @@ pub fn forge_draft(
         }
     }
     Ok(BusResponse::ok(report))
+}
+
+/// Draft + install selected Forge drafts into the local registry as **candidates**.
+///
+/// Never admits. By default only drafts that **reuse** an existing capability
+/// (`exact_shape` / `compatible_shape`) are installed, so Library grows with
+/// new implementations under known capabilities — not raw crates.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterCandidatesReport {
+    pub package_name: String,
+    pub considered: usize,
+    pub installed: Vec<InstallCandidateResult>,
+    pub skipped: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+/// When `only_matched` is true, only ontology-reusing mappings are written.
+pub fn forge_register_candidates(
+    path: &Path,
+    name_filter: Option<&str>,
+    registry: &LocalRegistry,
+    only_matched: bool,
+) -> Result<BusResponse<RegisterCandidatesReport>, BusError> {
+    let ontology = ontology_from_registry(Some(registry))?;
+    let draft = draft_adapters_with_ontology(path, name_filter, &ontology)?;
+    let mut installed = Vec::new();
+    let mut skipped = Vec::new();
+    let mut notes = draft.notes.clone();
+
+    for d in &draft.drafts {
+        let reuses = d.mapping_kind == "exact_shape" || d.mapping_kind == "compatible_shape";
+        if only_matched && !reuses {
+            skipped.push(format!(
+                "{} — skip (mapping={}, only_matched)",
+                d.implementation_id, d.mapping_kind
+            ));
+            continue;
+        }
+        let write_cap = !reuses;
+        match registry.install_forge_draft_candidate(
+            &d.capability_json,
+            &d.implementation_json,
+            write_cap,
+        ) {
+            Ok(r) => installed.push(r),
+            Err(e) => skipped.push(format!("{} — {e}", d.implementation_id)),
+        }
+    }
+
+    notes.push(format!(
+        "Registered {} candidate impl(s); skipped {}.",
+        installed.len(),
+        skipped.len()
+    ));
+    notes.push("Candidates are not admitted — run conformance before promote.".into());
+
+    Ok(BusResponse::ok(RegisterCandidatesReport {
+        package_name: draft.package_name,
+        considered: draft.drafts.len(),
+        installed,
+        skipped,
+        notes,
+    }))
 }
 
 /// FORGE-007: match public `fn` candidates to registry capability ontology (static).

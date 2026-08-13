@@ -113,3 +113,15 @@ Each lib has its own `README.md` for crates.io. Product docs stay in the monorep
 root README + `docs/`.
 
 `CARGO_REGISTRY_TOKEN` is **only** for `cargo publish` (never committed).
+
+### Publish via GitHub Actions
+
+Secret **`CARGO_REGISTRY_TOKEN`** lives in the repo (Settings → Secrets and variables → Actions).
+
+| Trigger | How |
+|---------|-----|
+| Manual | Actions → **Publish crates.io** → Run workflow |
+| Tag | `git tag v0.1.0 && git push origin v0.1.0` |
+
+Workflow: [`.github/workflows/publish-crates.yml`](../.github/workflows/publish-crates.yml)  
+Optional input **dry_run** runs `cargo publish --dry-run` without uploading.

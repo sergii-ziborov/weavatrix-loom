@@ -20,6 +20,9 @@ use wvx_registry_client::LocalRegistry;
 use wvx_types::WvxValue;
 
 fn main() -> ExitCode {
+    // Gate F external demo (unpublished) — host-only, not part of wvx-command-bus.
+    wvx_adapter_external_demo::register();
+
     let mut args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
         print_help();

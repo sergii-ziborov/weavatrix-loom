@@ -8,7 +8,10 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 description = "Compile a validated WVX graph to a native Rust Cargo workspace"
-publish.workspace = true
+publish = true
+keywords = ["weavatrix", "loom", "wvx"]
+categories = ["development-tools"]
+readme = "README.md"
 
 [dependencies]
 serde = { workspace = true }

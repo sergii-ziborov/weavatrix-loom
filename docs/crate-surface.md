@@ -87,7 +87,29 @@ are **vendored export sources** (static compile embeds adapters). Do not “dedu
 by making the compiler depend on the dynamic adapter crate at export time without
 an explicit design change.
 
-## crates.io later
+## crates.io (v0.1 beta)
 
-When ready: flip `publish` on **library** crates only; keep hosts/demos
-`publish = false` unless intentionally released as binaries.
+Library crates are published on **crates.io** under the same names (`wvx-types`, …).
+Hosts stay unpublishable:
+
+| Publish | Crates |
+|---------|--------|
+| **yes** | `wvx-types`, `wvx-ir`, `wvx-validator`, `wvx-project-graph`, `wvx-runtime`, `wvx-compiler-rust`, `wvx-registry-client`, `wvx-forge`, `wvx-component-sdk`, `wvx-adapters`, `wvx-conformance`, `wvx-cortex`, `wvx-command-bus` |
+| **no** | `loom-server`, `wvx-cli`, `wvx-mcp`, `wvx-adapter-external-demo` |
+
+```toml
+# crates.io
+wvx-command-bus = "0.1"
+# or leaf crates only
+wvx-types = "0.1"
+wvx-forge = "0.1"
+```
+
+Publish order (dependency bottom-up): types → ir → validator / registry-client →
+project-graph / runtime → compiler-rust / component-sdk → adapters →
+conformance / cortex → command-bus. `wvx-forge` is independent of other `wvx-*`.
+
+Each lib has its own `README.md` for crates.io. Product docs stay in the monorepo
+root README + `docs/`.
+
+`CARGO_REGISTRY_TOKEN` is **only** for `cargo publish` (never committed).

@@ -226,10 +226,12 @@ pub fn project_run_hydrated(
     Ok(BusResponse::ok(result))
 }
 
-/// I/O (with_pilot) + all SDK plugins: pilot adapters + external Gate F demo.
+/// I/O (with_pilot) + SDK plugins from pilot adapters.
+///
+/// Gate F external demo is registered by product hosts (`wvx-cli` / `loom-server`)
+/// before calling the bus — keeps this crate publishable without unpublished deps.
 fn playground_handlers() -> HandlerRegistry {
     wvx_adapters::register_pilot_plugins();
-    wvx_adapter_external_demo::register();
     wvx_component_sdk::registry_with_pilot_and_plugins()
 }
 

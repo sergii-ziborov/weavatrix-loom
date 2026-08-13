@@ -7,8 +7,11 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Intent → GraphPatch (rule heuristics + optional xAI LLM); ops only"
-publish.workspace = true
+description = "Intent â†’ GraphPatch (rule heuristics + optional xAI LLM); ops only"
+publish = true
+keywords = ["weavatrix", "loom", "wvx"]
+categories = ["development-tools"]
+readme = "README.md"
 
 [dependencies]
 serde = { workspace = true }

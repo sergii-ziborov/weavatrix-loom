@@ -625,6 +625,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "wvx-adapter-external-demo",
  "wvx-command-bus",
  "wvx-forge",
  "wvx-ir",
@@ -1636,6 +1637,7 @@ name = "wvx-cli"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "wvx-adapter-external-demo",
  "wvx-command-bus",
  "wvx-conformance",
  "wvx-forge",
@@ -1653,7 +1655,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "wvx-adapter-external-demo",
  "wvx-adapters",
  "wvx-compiler-rust",
  "wvx-component-sdk",
@@ -1746,6 +1747,7 @@ version = "0.1.0"
 dependencies = [
  "mcport",
  "serde_json",
+ "wvx-adapter-external-demo",
  "wvx-command-bus",
  "wvx-ir",
 ]

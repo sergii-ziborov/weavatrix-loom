@@ -75,5 +75,7 @@ fn validate_project_tool(arguments: Value) -> ToolReply {
 }
 
 fn main() -> std::io::Result<()> {
+    // Gate F external demo (unpublished) — host-only, not part of wvx-command-bus.
+    wvx_adapter_external_demo::register();
     serve(&mut LoomTools)
 }

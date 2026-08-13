@@ -158,9 +158,10 @@ Rust IR types remain authoritative if schema and code diverge.
 
 ## Workspace
 
-This repository is a **Rust library platform** plus thin hosts. **All library
-crates are consumer-accessible via path** (Realforge, Cortex, …). See
-**[docs/crate-surface.md](docs/crate-surface.md)**.
+This repository is a **Rust library platform** plus thin hosts. **Library crates**
+are on **crates.io** (`wvx-types`, `wvx-command-bus`, …) and remain
+path-consumable from this monorepo. Hosts (`loom-server`, `wvx-cli`, `wvx-mcp`)
+are not published. See **[docs/crate-surface.md](docs/crate-surface.md)**.
 
 The visual Studio UI lives in a separate repository and talks **HTTP only** to
 `loom-server` — **not** MCP. `wvx-mcp` is an **optional agent adapter** over the

@@ -28,6 +28,7 @@ wvx-registry-client = { workspace = true }
 wvx-runtime = { workspace = true }
 wvx-forge = { workspace = true }
 wvx-project-graph = { workspace = true }
+wvx-adapter-external-demo = { workspace = true, features = ["host"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

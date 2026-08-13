@@ -8,7 +8,10 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 description = "Shared semantic API for Loom CLI and HTTP hosts (MCP is optional agent adapter only)"
-publish.workspace = true
+publish = true
+readme = "README.md"
+keywords = ["weavatrix", "loom", "wvx", "composition", "registry"]
+categories = ["development-tools", "compilers"]
 
 [dependencies]
 serde = { workspace = true }
@@ -26,7 +29,6 @@ wvx-cortex = { workspace = true }
 wvx-conformance = { workspace = true }
 wvx-component-sdk = { workspace = true }
 wvx-adapters = { workspace = true }
-wvx-adapter-external-demo = { workspace = true }
 
 [lints]
 workspace = true

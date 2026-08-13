@@ -30,6 +30,9 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() {
+    // Gate F external demo (unpublished) — host-only, not part of wvx-command-bus.
+    wvx_adapter_external_demo::register();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),

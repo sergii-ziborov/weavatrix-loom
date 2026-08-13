@@ -24,6 +24,7 @@ wvx-project-graph = { workspace = true }
 wvx-runtime = { workspace = true }
 wvx-types = { workspace = true }
 wvx-ir = { workspace = true }
+wvx-adapter-external-demo = { workspace = true, features = ["host"] }
 
 [lints]
 workspace = true

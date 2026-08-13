@@ -76,7 +76,7 @@ Product focus after Library/Forge beta surfaces:
 | **P0** | **Library catalog UX** (families, kind filter, Implementations tab) | Registry is the product surface — must scale past 5 pilot caps |
 | **P1** | **Second capability family** (`data.text.*` — done in beta) | Proves Registry is not a one-off vertical |
 | **P1** | **Weavatrix facts → Forge** (wire format + match/draft — done) | Replace bootstrap Cargo/AST as product story (ADR-0012) |
-| **P2** | **crates.io library crates** | Path deps first; flip `publish` only after README + API freeze |
+| **P2** | **crates.io library crates** (READMEs + `publish = true` on libs) | Hosts stay private; token only for `cargo publish` |
 | **P2** | **Capability `description` / tags** in IR + registry | Human browse without opening every detail page |
 | **P3** | Hosted registry / admit fleet | Not beta; needs evidence + policy product |
 | **Never product** | Studio/MCP product wiring | MCP stays agent-only; Studio stays HTTP → loom-server |

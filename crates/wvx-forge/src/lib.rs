@@ -33,8 +33,9 @@ pub use draft::{
     draft_from_extract_with_ontology, write_draft_files, AdapterDraft, DraftReport,
 };
 pub use economics::{
-    default_workspace_root, pilot_gate_c_expectations, pilot_ontology, run_gate_c_pilot,
-    GateCCaseResult, GateCReport,
+    default_workspace_root, load_gate_c_expectations_file, pilot_gate_c_expectations,
+    pilot_ontology, run_gate_c, run_gate_c_external, run_gate_c_pilot, GateCCaseResult,
+    GateCOptions, GateCReport,
 };
 pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 pub use facts::{

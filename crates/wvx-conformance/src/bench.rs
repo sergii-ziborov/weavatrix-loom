@@ -89,12 +89,155 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         ));
     }
 
+    // Domain 2 — hashing (multi-impl equal digests)
+    let hash_in = b"Weavatrix Loom Domain 2 bench payload";
+    for impl_id in [
+        "sha2.sha256@1",
+        "sha2.sha256-streaming@1",
+        "sha2.sha256-chunked@1",
+        "sha2.sha256-update-all@1",
+    ] {
+        cases.push(bench_bytes_ports(
+            &reg,
+            "data.hash.sha256@1",
+            impl_id,
+            "digest_hello",
+            "bytes",
+            "digest",
+            hash_in,
+            iterations,
+            warmup,
+        ));
+    }
+    cases.push(bench_bytes_ports(
+        &reg,
+        "data.hash.blake3@1",
+        "blake3.blake3@1",
+        "digest_hello",
+        "bytes",
+        "digest",
+        hash_in,
+        iterations,
+        warmup,
+    ));
+
+    // Domain 3 — compression (gzip/gunzip multi-impl)
+    let gz_in = b"Weavatrix Loom Domain 3 compression bench payload xxxxxxxxxx";
+    for impl_id in [
+        "flate2.gzip@1",
+        "flate2.gzip-chunked@1",
+        "flate2.gzip-oneshot@1",
+    ] {
+        cases.push(bench_bytes_ports(
+            &reg,
+            "data.compress.gzip@1",
+            impl_id,
+            "gzip_payload",
+            "bytes",
+            "bytes",
+            gz_in,
+            iterations,
+            warmup,
+        ));
+    }
+    // Pre-compress once for gunzip benches
+    let gz_bytes = match reg.resolve("data.compress.gzip@1", Some("flate2.gzip@1")) {
+        Ok(h) => {
+            let mut inputs = WvxValueMap::new();
+            inputs.insert("bytes".into(), WvxValue::Bytes(gz_in.to_vec()));
+            h.execute(&inputs, &BTreeMap::new())
+                .ok()
+                .and_then(|m| match m.get("bytes") {
+                    Some(WvxValue::Bytes(b)) => Some(b.clone()),
+                    _ => None,
+                })
+        }
+        Err(_) => None,
+    };
+    if let Some(gz) = gz_bytes {
+        for impl_id in [
+            "flate2.gunzip@1",
+            "flate2.gunzip-chunked@1",
+            "flate2.gunzip-take@1",
+        ] {
+            cases.push(bench_bytes_ports(
+                &reg,
+                "data.compress.gunzip@1",
+                impl_id,
+                "gunzip_payload",
+                "bytes",
+                "bytes",
+                &gz,
+                iterations,
+                warmup,
+            ));
+        }
+    }
+
     let ok = cases.iter().all(|c| c.ok);
     BenchReport {
         ok,
         cases,
         provenance: capture_provenance(parse_input),
     }
+}
+
+/// Generic bench for bytes → named-bytes transforms (hash digest, gzip, …).
+fn bench_bytes_ports(
+    reg: &HandlerRegistry,
+    cap: &str,
+    impl_id: &str,
+    case: &str,
+    in_port: &str,
+    out_port: &str,
+    bytes: &[u8],
+    iterations: u32,
+    warmup: u32,
+) -> BenchCaseResult {
+    let handler = match reg.resolve(cap, Some(impl_id)) {
+        Ok(h) => h,
+        Err(e) => {
+            return fail_case(cap, impl_id, case, iterations, warmup, e.to_string());
+        }
+    };
+    let mut inputs = WvxValueMap::new();
+    inputs.insert(in_port.into(), WvxValue::Bytes(bytes.to_vec()));
+    let config = BTreeMap::new();
+
+    for _ in 0..warmup {
+        match handler.execute(&inputs, &config) {
+            Ok(m) => {
+                if !m.contains_key(out_port) {
+                    return fail_case(
+                        cap,
+                        impl_id,
+                        case,
+                        iterations,
+                        warmup,
+                        format!("missing output port `{out_port}`"),
+                    );
+                }
+            }
+            Err(e) => return fail_case(cap, impl_id, case, iterations, warmup, e),
+        }
+    }
+
+    let mut min_ns = u64::MAX;
+    let mut max_ns = 0u64;
+    let mut sum_ns = 0u64;
+    for _ in 0..iterations {
+        let t0 = Instant::now();
+        match handler.execute(&inputs, &config) {
+            Ok(_) => {
+                let ns = t0.elapsed().as_nanos() as u64;
+                min_ns = min_ns.min(ns);
+                max_ns = max_ns.max(ns);
+                sum_ns = sum_ns.saturating_add(ns);
+            }
+            Err(e) => return fail_case(cap, impl_id, case, iterations, warmup, e),
+        }
+    }
+    ok_case(cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns)
 }
 
 fn capture_provenance(input: &[u8]) -> BenchProvenance {

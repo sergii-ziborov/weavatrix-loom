@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-12  
 **Scope:** FORGE-004 AST extract · FORGE-007 ontology match · FORGE-008 compileable adapters  
-**Status:** **Go (pilot fixture harness)** — not production marketplace Go
+**Status:** **Go (pilot fixture harness)** + **Go (external multi-domain campaign)** with measured human-minutes
 
 ## Criterion (roadmap §11.9, pilot-scaled)
 
@@ -14,7 +14,17 @@
 | False semantic mappings | 0 | `exact_shape` to wrong capability |
 | Evidence integrity | hard | No AI-only pass / no auto-admit |
 
-Full Gate C (5 external conformant impls, human minutes, overhead) remains open.
+Full Gate C on **external** multi-domain packages:
+
+```bash
+# External tree: fixtures/gate-c-external (5 packages: JSON×2 + hash + gzip + gunzip)
+cargo run -p wvx-cli -- forge gate-c \
+  --external fixtures/gate-c-external \
+  --human-minutes 45 \
+  --check
+```
+
+`pilot_go` for external requires: metrics thresholds + ≥5 cases + multi-domain + **measured** `--human-minutes`.
 
 ## Evidence
 

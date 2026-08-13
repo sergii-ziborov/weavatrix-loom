@@ -15,10 +15,10 @@ use wvx_ir::SdkEmit;
 use wvx_forge::{
     compile_adapters_batch, default_workspace_root, draft_adapters_with_ontology,
     draft_from_extract_with_ontology, extract_from_facts, extract_public_api, facts_from_extract,
-    inventory_path, load_facts_file, match_candidates, parse_facts_json, run_gate_c_pilot,
-    write_draft_files, write_facts_file, CompileBatchReport, DraftReport, ExtractReport,
-    ForgeError, GateCReport, InventoryReport, MatchReport, OntologyCapability, OntologyPort,
-    WeavatrixFactsBundle,
+    inventory_path, load_facts_file, match_candidates, parse_facts_json, run_gate_c_external,
+    run_gate_c_pilot, write_draft_files, write_facts_file, CompileBatchReport, DraftReport,
+    ExtractReport, ForgeError, GateCReport, InventoryReport, MatchReport, OntologyCapability,
+    OntologyPort, WeavatrixFactsBundle,
 };
 use wvx_ir::Project;
 use wvx_project_graph::{
@@ -757,22 +757,43 @@ pub fn forge_compile(
     Ok(BusResponse::ok(report))
 }
 
-/// Gate C pilot economics harness (fixture metrics; not production admission).
+/// Gate C economics harness.
+///
+/// - Default: monorepo pilot fixtures.
+/// - `external_root`: full Gate C on external package tree (e.g. `fixtures/gate-c-external`).
+/// - `human_minutes`: measured review time (required for full external Go).
 pub fn forge_gate_c(
     workspace_root: Option<&Path>,
     registry: Option<&LocalRegistry>,
     run_compile: bool,
 ) -> Result<BusResponse<GateCReport>, BusError> {
-    let root = workspace_root
-        .map(Path::to_path_buf)
-        .unwrap_or_else(default_workspace_root);
+    forge_gate_c_ex(workspace_root, None, registry, run_compile, None)
+}
+
+/// Extended Gate C (external crates + measured human-minutes).
+pub fn forge_gate_c_ex(
+    workspace_root: Option<&Path>,
+    external_root: Option<&Path>,
+    registry: Option<&LocalRegistry>,
+    run_compile: bool,
+    human_minutes: Option<f64>,
+) -> Result<BusResponse<GateCReport>, BusError> {
     let ontology = ontology_from_registry(registry)?;
     let ontology_ref = if ontology.is_empty() {
         None
     } else {
         Some(ontology.as_slice())
     };
-    let report = run_gate_c_pilot(&root, ontology_ref, run_compile)?;
+    let report = if let Some(ext) = external_root {
+        run_gate_c_external(ext, ontology_ref, run_compile, human_minutes)
+            .map_err(|e| BusError::Forge(e.to_string()))?
+    } else {
+        let root = workspace_root
+            .map(Path::to_path_buf)
+            .unwrap_or_else(default_workspace_root);
+        run_gate_c_pilot(&root, ontology_ref, run_compile)
+            .map_err(|e| BusError::Forge(e.to_string()))?
+    };
     Ok(BusResponse::ok(report))
 }
 

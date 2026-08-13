@@ -173,6 +173,32 @@ pub fn match_candidate(
             score += 20;
             rationale.push("candidate name appears in capability id".into());
         }
+        // Strong multi-domain disambiguation for identical bytes→bytes shapes
+        if (name_l == "digest" || name_l.contains("sha256") || name_l.contains("hash"))
+            && cap.id.contains("hash")
+        {
+            score += 80;
+            rationale.push("hash verb → data.hash.*".into());
+            // Prefer sha256 for bare `digest` (blake3 wins only if name mentions blake)
+            if name_l.contains("blake") && cap.id.contains("blake") {
+                score += 25;
+                rationale.push("blake name → blake3".into());
+            } else if !name_l.contains("blake") && cap.id.contains("sha256") {
+                score += 25;
+                rationale.push("digest default → sha256".into());
+            }
+        }
+        if (name_l == "compress" || name_l == "gzip")
+            && cap.id.contains("gzip")
+            && !cap.id.contains("gunzip")
+        {
+            score += 80;
+            rationale.push("compress verb → data.compress.gzip".into());
+        }
+        if (name_l == "decompress" || name_l == "gunzip") && cap.id.contains("gunzip") {
+            score += 80;
+            rationale.push("decompress verb → data.compress.gunzip".into());
+        }
 
         if score == 0 {
             continue;
@@ -291,6 +317,28 @@ fn is_io_passthrough(cap: &OntologyCapability) -> bool {
 
 fn family_hint(name: &str, signature: &str) -> Option<&'static str> {
     let blob = format!("{name} {signature}").to_ascii_lowercase();
+    // Domain verbs first (before generic encode/parse) for multi-domain bytes→bytes.
+    if blob.contains("gunzip")
+        || blob.contains("decompress")
+        || blob.contains("inflate")
+        || name.eq_ignore_ascii_case("decompress")
+    {
+        return Some("gunzip");
+    }
+    if blob.contains("gzip")
+        || blob.contains("compress")
+        || name.eq_ignore_ascii_case("compress")
+    {
+        return Some("gzip");
+    }
+    if blob.contains("sha256")
+        || blob.contains("blake3")
+        || blob.contains("digest")
+        || blob.contains("hash")
+        || name.eq_ignore_ascii_case("digest")
+    {
+        return Some("hash");
+    }
     if blob.contains("parse") || blob.contains("from_str") || blob.contains("from_slice") {
         return Some("parse");
     }
@@ -316,6 +364,9 @@ fn family_aliases(fam: &str) -> &'static [&'static str] {
         "parse" => &["parse", "decode", "from"],
         "serialize" => &["serialize", "encode", "to_bytes"],
         "path_set" => &["path_set", "pointer", "path"],
+        "hash" => &["hash", "sha256", "blake3", "digest"],
+        "gzip" => &["gzip", "compress"],
+        "gunzip" => &["gunzip", "decompress"],
         _ => &[],
     }
 }

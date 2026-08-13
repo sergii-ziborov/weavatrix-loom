@@ -93,7 +93,7 @@ pub fn pilot_gate_c_expectations() -> Vec<GateCCaseExpectation> {
     ]
 }
 
-/// Pilot ontology (JSON capabilities) for offline Gate C without registry dir.
+/// Pilot ontology (JSON + hash + compress) for offline Gate C without registry dir.
 pub fn pilot_ontology() -> Vec<OntologyCapability> {
     vec![
         OntologyCapability {
@@ -135,7 +135,108 @@ pub fn pilot_ontology() -> Vec<OntologyCapability> {
                 ty: "json_value".into(),
             }],
         },
+        OntologyCapability {
+            id: "data.hash.sha256".into(),
+            version: "1".into(),
+            kind: "transform".into(),
+            inputs: vec![OntologyPort {
+                id: "bytes".into(),
+                ty: "bytes".into(),
+            }],
+            outputs: vec![OntologyPort {
+                id: "digest".into(),
+                ty: "bytes".into(),
+            }],
+        },
+        OntologyCapability {
+            id: "data.compress.gzip".into(),
+            version: "1".into(),
+            kind: "transform".into(),
+            inputs: vec![OntologyPort {
+                id: "bytes".into(),
+                ty: "bytes".into(),
+            }],
+            outputs: vec![OntologyPort {
+                id: "bytes".into(),
+                ty: "bytes".into(),
+            }],
+        },
+        OntologyCapability {
+            id: "data.compress.gunzip".into(),
+            version: "1".into(),
+            kind: "transform".into(),
+            inputs: vec![OntologyPort {
+                id: "bytes".into(),
+                ty: "bytes".into(),
+            }],
+            outputs: vec![OntologyPort {
+                id: "bytes".into(),
+                ty: "bytes".into(),
+            }],
+        },
     ]
+}
+
+/// Options for Gate C runs (pilot monorepo vs full external suite).
+#[derive(Debug, Clone, Default)]
+pub struct GateCOptions {
+    /// Mark report as external-crates campaign.
+    pub external_crates: bool,
+    /// Measured human review minutes (if None, use heuristic cases×3).
+    pub human_minutes: Option<f64>,
+    /// Optional explicit expectations (else pilot monorepo set).
+    pub expectations: Option<Vec<GateCCaseExpectation>>,
+}
+
+/// Load expectations JSON from `fixtures/gate-c-external/expectations.json` shape.
+pub fn load_gate_c_expectations_file(path: impl AsRef<Path>) -> Result<Vec<GateCCaseExpectation>, ForgeError> {
+    let path = path.as_ref();
+    let text = std::fs::read_to_string(path).map_err(|e| ForgeError::Io(path.to_path_buf(), e))?;
+    #[derive(Deserialize)]
+    struct File {
+        cases: Vec<GateCCaseExpectation>,
+    }
+    let f: File = serde_json::from_str(&text)
+        .map_err(|e| ForgeError::Parse(path.to_path_buf(), e.to_string()))?;
+    Ok(f.cases)
+}
+
+/// Full Gate C on **external** package tree (`fixtures/gate-c-external` layout).
+///
+/// Requires ≥5 packages, multi-domain capabilities, and records human-minutes
+/// (measured via `human_minutes` or heuristic).
+pub fn run_gate_c_external(
+    external_root: impl AsRef<Path>,
+    ontology: Option<&[OntologyCapability]>,
+    run_compile: bool,
+    human_minutes: Option<f64>,
+) -> Result<GateCReport, ForgeError> {
+    let root = external_root.as_ref();
+    let exp_path = root.join("expectations.json");
+    let expectations = if exp_path.is_file() {
+        load_gate_c_expectations_file(&exp_path)?
+    } else {
+        return Err(ForgeError::Missing(exp_path));
+    };
+    if expectations.len() < 5 {
+        return Err(ForgeError::Parse(
+            root.to_path_buf(),
+            format!(
+                "full Gate C needs ≥5 external cases, got {}",
+                expectations.len()
+            ),
+        ));
+    }
+    run_gate_c(
+        root,
+        ontology,
+        run_compile,
+        GateCOptions {
+            external_crates: true,
+            human_minutes,
+            expectations: Some(expectations),
+        },
+    )
 }
 
 /// Run Gate C pilot metrics against `workspace_root` (weavatrix-loom monorepo).
@@ -143,6 +244,25 @@ pub fn run_gate_c_pilot(
     workspace_root: impl AsRef<Path>,
     ontology: Option<&[OntologyCapability]>,
     run_compile: bool,
+) -> Result<GateCReport, ForgeError> {
+    run_gate_c(
+        workspace_root,
+        ontology,
+        run_compile,
+        GateCOptions {
+            external_crates: false,
+            human_minutes: None,
+            expectations: None,
+        },
+    )
+}
+
+/// Shared Gate C engine.
+pub fn run_gate_c(
+    workspace_root: impl AsRef<Path>,
+    ontology: Option<&[OntologyCapability]>,
+    run_compile: bool,
+    opts: GateCOptions,
 ) -> Result<GateCReport, ForgeError> {
     let workspace_root = workspace_root.as_ref();
     let ontology_owned;
@@ -153,7 +273,10 @@ pub fn run_gate_c_pilot(
             &ontology_owned
         }
     };
-    let expectations = pilot_gate_c_expectations();
+    let expectations = opts
+        .expectations
+        .clone()
+        .unwrap_or_else(pilot_gate_c_expectations);
     let mut cases = Vec::new();
     let compile_root = std::env::temp_dir().join(format!(
         "wvx-gate-c-{}",
@@ -328,8 +451,65 @@ pub fn run_gate_c_pilot(
 
     let _ = std::fs::remove_dir_all(&compile_root);
 
-    // Pilot heuristic: ~3 min review per case (extract+map+compile glance). Not measured.
-    let human_minutes_estimate = (cases.len() as f64) * 3.0;
+    // Prefer measured human minutes; else heuristic cases×3 (document as estimate).
+    let human_minutes_estimate = opts
+        .human_minutes
+        .unwrap_or((cases.len() as f64) * 3.0);
+    let measured = opts.human_minutes.is_some();
+
+    // Full external Gate C also requires multi-domain sample (JSON + non-JSON).
+    let multi_domain = cases.iter().any(|c| {
+        c.expected_capability.starts_with("data.hash.")
+            || c.expected_capability.starts_with("data.compress.")
+    }) && cases
+        .iter()
+        .any(|c| c.expected_capability.starts_with("data.json."));
+
+    let full_external_go = opts.external_crates
+        && cases.len() >= 5
+        && multi_domain
+        && pilot_go
+        && measured
+        && human_minutes_estimate > 0.0;
+
+    let mut notes = vec![
+        if opts.external_crates {
+            "Gate C EXTERNAL campaign — packages outside Loom product crates/.".into()
+        } else {
+            "Gate C pilot harness — monorepo fixtures; not full external Go.".into()
+        },
+        "AI/heuristic mapping never sets evidence pass (ADR-0010).".into(),
+        format!(
+            "thresholds: extraction_recall≥0.8 mapping_accuracy≥0.8 compile_rate≥0.5 false_map=0"
+        ),
+        format!(
+            "human_minutes={} ({})",
+            human_minutes_estimate,
+            if measured {
+                "measured/override"
+            } else {
+                "heuristic cases×3"
+            }
+        ),
+        format!(
+            "external_crates={} multi_domain={} cases={} full_external_go={}",
+            opts.external_crates,
+            multi_domain,
+            cases.len(),
+            full_external_go
+        ),
+    ];
+    if opts.external_crates && !measured {
+        notes.push(
+            "Pass --human-minutes <N> with measured review time for full Gate C Go.".into(),
+        );
+    }
+    if full_external_go {
+        notes.push(
+            "Full Gate C external criteria met (metrics + multi-domain + measured human-minutes)."
+                .into(),
+        );
+    }
 
     Ok(GateCReport {
         cases,
@@ -337,19 +517,16 @@ pub fn run_gate_c_pilot(
         mapping_accuracy,
         compile_rate,
         false_semantic_mappings,
-        pilot_go,
-        notes: vec![
-            "Gate C pilot harness — fixture metrics only; not public Registry Go.".into(),
-            "AI/heuristic mapping never sets evidence pass (ADR-0010).".into(),
-            format!(
-                "thresholds: extraction_recall≥0.8 mapping_accuracy≥0.8 compile_rate≥0.5 false_map=0"
-            ),
-            format!(
-                "human_minutes_estimate={human_minutes_estimate} (heuristic on monorepo fixtures; full Gate C needs external crates + measured human minutes)"
-            ),
-        ],
+        // For external campaign, pilot_go alone is insufficient — expose combined flag in notes;
+        // keep pilot_go as metric pass; CLI will use full_external when external.
+        pilot_go: if opts.external_crates {
+            full_external_go
+        } else {
+            pilot_go
+        },
+        notes,
         human_minutes_estimate,
-        external_crates: false,
+        external_crates: opts.external_crates,
     })
 }
 

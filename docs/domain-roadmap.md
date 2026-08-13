@@ -82,11 +82,17 @@ ops as Loom Implementations (not importing FerroSift into Loom core) — ADR-001
 - Splitting monorepo before API freeze
 - Treating Forge bootstrap AST as the product story (Weavatrix facts preferred)
 
-## Gate C checklist (open)
+## Gate C checklist
 
-- [ ] 5+ external conformant implementations (count across domains)
-- [ ] Multi-domain sample suite (JSON + hash + …)
-- [ ] Human review metrics sheet
-- [ ] Forge economics on real packages (not only monorepo fixture)
+- [x] 5+ external packages in `fixtures/gate-c-external` (JSON×2 + hash + gzip + gunzip)
+- [x] Multi-domain sample (JSON + hash + compress)
+- [x] Human minutes field (`--human-minutes`, measured override)
+- [x] Forge economics on external package tree (`forge gate-c --external … --check`)
+- [ ] Production marketplace / public Registry Go (still out of scope)
+
+```bash
+cargo run -p wvx-cli -- forge gate-c --external fixtures/gate-c-external --human-minutes 45 --check
+# go=true · extract=1.00 · map=1.00 · compile=1.00 · human_min=45
+```
 
 See also: [go-no-go-c-pilot.md](go-no-go-c-pilot.md), [beta-prototype.md](beta-prototype.md).

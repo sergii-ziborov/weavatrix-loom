@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
     forge_compile, forge_draft, forge_draft_facts, forge_export_facts, forge_extract,
-    forge_facts_file, forge_gate_c, forge_inventory, forge_match, forge_match_facts,
+    forge_facts_file, forge_gate_c_ex, forge_inventory, forge_match, forge_match_facts,
     graph_apply_patch, graph_propose_intent, graph_propose_patch, implementations_list,
     load_project_path, pilot_bench, project_export_rust, project_export_to_dir_with_registry,
     project_run, project_validate, registry_admission_audit, registry_human_admit,
@@ -564,12 +564,27 @@ fn cmd_forge(args: &[String]) -> ExitCode {
             }
         }
         "gate-c" | "economics" => {
+            // wvx forge gate-c [--workspace root] [--external path] [--human-minutes N] [--check|--no-check]
             let mut workspace: Option<&str> = None;
+            let mut external: Option<&str> = None;
+            let mut human_minutes: Option<f64> = None;
             let mut check = true;
             let mut i = 1;
             while i < args.len() {
                 if args[i] == "--workspace" || args[i] == "-w" {
                     workspace = args.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                if args[i] == "--external" || args[i] == "-e" {
+                    external = args.get(i + 1).map(|s| s.as_str());
+                    i += 2;
+                    continue;
+                }
+                if args[i] == "--human-minutes" {
+                    human_minutes = args
+                        .get(i + 1)
+                        .and_then(|s| s.parse::<f64>().ok());
                     i += 2;
                     continue;
                 }
@@ -586,19 +601,23 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                 i += 1;
             }
             let reg = LocalRegistry::open_default().ok();
-            match forge_gate_c(
+            match forge_gate_c_ex(
                 workspace.map(std::path::Path::new),
+                external.map(std::path::Path::new),
                 reg.as_ref(),
                 check,
+                human_minutes,
             ) {
                 Ok(resp) => {
                     if let Some(r) = &resp.data {
                         eprintln!(
-                            "Gate C pilot: go={} · extract_recall={:.2} · map_acc={:.2} · compile_rate={:.2}",
+                            "Gate C: go={} external={} · extract={:.2} · map={:.2} · compile={:.2} · human_min={:.1}",
                             r.pilot_go,
+                            r.external_crates,
                             r.extraction_recall,
                             r.mapping_accuracy,
-                            r.compile_rate
+                            r.compile_rate,
+                            r.human_minutes_estimate
                         );
                     }
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());

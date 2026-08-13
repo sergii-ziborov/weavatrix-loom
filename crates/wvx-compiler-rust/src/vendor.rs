@@ -102,7 +102,7 @@ serde_json = "1"
 json = "0.12"
 # Domain 2 hashing + Domain 3 compression (vendored pilot modules)
 sha2 = "0.10"
-blake3 = "1.5"
+blake3 = { version = "1.5", default-features = false, features = ["std", "pure"] }
 flate2 = "1"
 "#
     .into()

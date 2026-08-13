@@ -9,8 +9,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
-    forge_compile, forge_draft, forge_extract, forge_gate_c, forge_inventory, forge_match,
-    forge_register_candidates, graph_apply_patch, graph_propose_patch, implementations_list,
+    forge_cargo_search, forge_compile, forge_draft, forge_extract, forge_gate_c, forge_inventory,
+    forge_match, forge_register_candidates, graph_apply_patch, graph_propose_patch,
+    implementations_list,
     project_export_rust_hydrated, project_run_hydrated, project_validate_hydrated,
     graph_propose_intent, registry_admission_audit, registry_implementations, registry_inspect,
     registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
@@ -35,6 +36,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/registry/admission", get(reg_admission))
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
+        .route("/api/v1/forge/cargo-search", get(forge_cargo_search_handler))
         .route("/api/v1/forge/extract", post(forge_extract_handler))
         .route("/api/v1/forge/match", post(forge_match_handler))
         .route("/api/v1/forge/draft", post(forge_draft_handler))
@@ -44,6 +46,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/v1/forge/compile", post(forge_compile_handler))
         .route("/api/v1/forge/gate-c", post(forge_gate_c_handler))
+        .route("/api/v1/forge/workspace-roots", get(forge_workspace_roots))
         .route("/api/v1/graph/propose_patch", post(propose_patch))
         .route("/api/v1/graph/propose_intent", post(propose_intent))
         .route("/api/v1/graph/validate_patch", post(validate_patch))
@@ -286,6 +289,40 @@ async fn forge_inventory_handler(
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoSearchQuery {
+    q: String,
+    #[serde(default = "default_search_limit")]
+    limit: usize,
+}
+
+fn default_search_limit() -> usize {
+    8
+}
+
+/// Interactive crates.io search (`cargo search`) for Forge source pickers.
+async fn forge_cargo_search_handler(Query(q): Query<CargoSearchQuery>) -> Response {
+    match forge_cargo_search(&q.q, q.limit) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+/// Allowed workspace roots (hints for path field / presets).
+async fn forge_workspace_roots(State(state): State<AppState>) -> impl IntoResponse {
+    let roots: Vec<String> = state
+        .security
+        .workspace_roots
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    Json(serde_json::json!({
+        "ok": true,
+        "protocol_version": PROTOCOL_VERSION,
+        "data": { "roots": roots },
+    }))
 }
 
 async fn forge_extract_handler(

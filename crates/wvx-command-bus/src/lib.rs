@@ -6,7 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use wvx_compiler_rust::{
     compile_to_rust_with_sdk, export_to_directory_with_sdk, ExportReport, GeneratedWorkspace,
 };
@@ -416,6 +417,154 @@ pub struct RegisterCandidatesReport {
     pub installed: Vec<InstallCandidateResult>,
     pub skipped: Vec<String>,
     pub notes: Vec<String>,
+}
+
+/// One hit from `cargo search` (crates.io), optionally with a local registry cache path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CargoSearchHit {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    /// Best-effort path under `$CARGO_HOME/registry/src` when the crate is already cached.
+    pub local_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CargoSearchReport {
+    pub query: String,
+    pub hits: Vec<CargoSearchHit>,
+    pub notes: Vec<String>,
+}
+
+/// Interactive crates.io search via the host `cargo search` (not a product MCP).
+///
+/// Results may include a **local cache path** so Forge inventory can run without
+/// downloading. Selecting a hit never puts a crate into the Capability Library
+/// directly — inventory / match / register still apply.
+pub fn forge_cargo_search(
+    query: &str,
+    limit: usize,
+) -> Result<BusResponse<CargoSearchReport>, BusError> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Err(BusError::Forge("cargo search query is empty".into()));
+    }
+    let limit = limit.clamp(1, 20);
+    let output = Command::new("cargo")
+        .args(["search", q, "--limit", &limit.to_string()])
+        .output()
+        .map_err(|e| BusError::Forge(format!("failed to run cargo search: {e}")))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(BusError::Forge(format!(
+            "cargo search failed: {}",
+            err.trim()
+        )));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut hits = Vec::new();
+    let mut notes = Vec::new();
+    for line in stdout.lines() {
+        // serde = "1.0.210"    # description...
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((left, rest)) = line.split_once('=') else {
+            continue;
+        };
+        let name = left.trim().to_string();
+        let rest = rest.trim();
+        let version = rest
+            .trim_start_matches('"')
+            .split('"')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let description = rest
+            .split('#')
+            .nth(1)
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string();
+        if name.is_empty() || version.is_empty() {
+            continue;
+        }
+        let local_path = find_cached_crate_path(&name, &version);
+        hits.push(CargoSearchHit {
+            name,
+            version,
+            description,
+            local_path,
+        });
+    }
+    if hits.is_empty() {
+        notes.push("No crates.io hits (or cargo search unavailable).".into());
+    } else {
+        let cached = hits.iter().filter(|h| h.local_path.is_some()).count();
+        notes.push(format!(
+            "{} hit(s); {cached} already in local cargo registry cache.",
+            hits.len()
+        ));
+        notes.push(
+            "Pick a hit with a local path to Inventory, or clone/path the crate first."
+                .into(),
+        );
+    }
+    Ok(BusResponse::ok(CargoSearchReport {
+        query: q.to_string(),
+        hits,
+        notes,
+    }))
+}
+
+fn find_cached_crate_path(name: &str, version: &str) -> Option<String> {
+    let cargo_home = std::env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .or_else(|| std::env::var_os("HOME"))
+                .map(|h| PathBuf::from(h).join(".cargo"))
+        })?;
+    let src = cargo_home.join("registry").join("src");
+    if !src.is_dir() {
+        return None;
+    }
+    let prefix = format!("{name}-{version}");
+    let prefix_name = format!("{name}-");
+    let mut best: Option<PathBuf> = None;
+    if let Ok(indexes) = std::fs::read_dir(&src) {
+        for index in indexes.flatten() {
+            let index_path = index.path();
+            if !index_path.is_dir() {
+                continue;
+            }
+            // Prefer exact version, else newest matching name- prefix.
+            let exact = index_path.join(&prefix);
+            if exact.is_dir() {
+                return Some(exact.display().to_string());
+            }
+            if let Ok(crates) = std::fs::read_dir(&index_path) {
+                for c in crates.flatten() {
+                    let p = c.path();
+                    let Some(fname) = p.file_name().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if fname.starts_with(&prefix_name) && p.is_dir() {
+                        match &best {
+                            None => best = Some(p),
+                            Some(b) => {
+                                if fname > b.file_name().and_then(|s| s.to_str()).unwrap_or("") {
+                                    best = Some(p);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    best.map(|p| p.display().to_string())
 }
 
 /// When `only_matched` is true, only ontology-reusing mappings are written.

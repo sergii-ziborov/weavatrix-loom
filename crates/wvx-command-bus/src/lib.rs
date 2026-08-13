@@ -14,9 +14,11 @@ use wvx_compiler_rust::{
 use wvx_ir::SdkEmit;
 use wvx_forge::{
     compile_adapters_batch, default_workspace_root, draft_adapters_with_ontology,
-    extract_public_api, inventory_path, match_candidates, run_gate_c_pilot, write_draft_files,
-    CompileBatchReport, DraftReport, ExtractReport, ForgeError, GateCReport, InventoryReport,
-    MatchReport, OntologyCapability, OntologyPort,
+    draft_from_extract_with_ontology, extract_from_facts, extract_public_api, facts_from_extract,
+    inventory_path, load_facts_file, match_candidates, parse_facts_json, run_gate_c_pilot,
+    write_draft_files, write_facts_file, CompileBatchReport, DraftReport, ExtractReport,
+    ForgeError, GateCReport, InventoryReport, MatchReport, OntologyCapability, OntologyPort,
+    WeavatrixFactsBundle,
 };
 use wvx_ir::Project;
 use wvx_project_graph::{
@@ -376,9 +378,43 @@ pub fn forge_inventory(path: &Path) -> Result<BusResponse<InventoryReport>, BusE
 }
 
 /// Public API extract + candidate shapes (Forge stage 2 — static only).
+///
+/// **Bootstrap** path: local Cargo AST. Prefer [`forge_facts_to_extract`] when
+/// Weavatrix facts are available (ADR-0012).
 pub fn forge_extract(path: &Path) -> Result<BusResponse<ExtractReport>, BusError> {
     let report = extract_public_api(path)?;
     Ok(BusResponse::ok(report))
+}
+
+/// Convert a Weavatrix facts bundle → extract-shaped candidates (no filesystem walk).
+pub fn forge_facts_to_extract(
+    facts: &WeavatrixFactsBundle,
+) -> Result<BusResponse<ExtractReport>, BusError> {
+    let report = extract_from_facts(facts);
+    Ok(BusResponse::ok(report))
+}
+
+/// Load Weavatrix facts JSON from disk → extract report.
+pub fn forge_facts_file(path: &Path) -> Result<BusResponse<ExtractReport>, BusError> {
+    let bundle = load_facts_file(path).map_err(|e| BusError::Forge(e.to_string()))?;
+    forge_facts_to_extract(&bundle)
+}
+
+/// Parse Weavatrix facts JSON text → extract report.
+pub fn forge_facts_json(text: &str) -> Result<BusResponse<ExtractReport>, BusError> {
+    let bundle = parse_facts_json(text).map_err(|e| BusError::Forge(e))?;
+    forge_facts_to_extract(&bundle)
+}
+
+/// Export bootstrap AST extract as a Weavatrix-compatible facts JSON file.
+pub fn forge_export_facts(
+    crate_path: &Path,
+    out_path: &Path,
+) -> Result<BusResponse<WeavatrixFactsBundle>, BusError> {
+    let extract = extract_public_api(crate_path)?;
+    let bundle = facts_from_extract(&extract, "bootstrap-export");
+    write_facts_file(&bundle, out_path).map_err(|e| BusError::Forge(e.to_string()))?;
+    Ok(BusResponse::ok(bundle))
 }
 
 /// Adapter drafts from extract (Forge stage 3 — static only, `inventory_only`).
@@ -617,6 +653,9 @@ pub fn forge_register_candidates(
 }
 
 /// FORGE-007: match public `fn` candidates to registry capability ontology (static).
+///
+/// Bootstrap: extract from `path`. Prefer [`forge_match_facts`] when Weavatrix
+/// facts are available.
 pub fn forge_match(
     path: &Path,
     registry: Option<&LocalRegistry>,
@@ -624,6 +663,46 @@ pub fn forge_match(
     let extract = extract_public_api(path)?;
     let ontology = ontology_from_registry(registry)?;
     let report = match_candidates(&extract.package_name, &extract.candidates, &ontology);
+    Ok(BusResponse::ok(report))
+}
+
+/// FORGE-007 from **Weavatrix facts** (no bootstrap AST walk).
+pub fn forge_match_facts(
+    facts: &WeavatrixFactsBundle,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<MatchReport>, BusError> {
+    let extract = extract_from_facts(facts);
+    let ontology = ontology_from_registry(registry)?;
+    let report = match_candidates(&extract.package_name, &extract.candidates, &ontology);
+    Ok(BusResponse::ok(report))
+}
+
+/// Draft adapters from Weavatrix facts (ontology match when registry set).
+pub fn forge_draft_facts(
+    facts: &WeavatrixFactsBundle,
+    name_filter: Option<&str>,
+    out_dir: Option<&Path>,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<DraftReport>, BusError> {
+    let extract = extract_from_facts(facts);
+    let ontology = ontology_from_registry(registry)?;
+    let root = facts
+        .package_root
+        .as_deref()
+        .map(Path::new)
+        .unwrap_or_else(|| Path::new("."));
+    let mut report = draft_from_extract_with_ontology(&extract, name_filter, root, &ontology)?;
+    if let Some(dir) = out_dir {
+        match write_draft_files(&report, dir) {
+            Ok(n) => report
+                .notes
+                .push(format!("Wrote {n} draft package(s) under {}", dir.display())),
+            Err(e) => return Err(BusError::Forge(e.to_string())),
+        }
+    }
+    report
+        .notes
+        .push("Draft source: Weavatrix facts (not bootstrap AST).".into());
     Ok(BusResponse::ok(report))
 }
 

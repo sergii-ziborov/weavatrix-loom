@@ -1,0 +1,46 @@
+{
+  "schema_version": "wvx.facts.v0.1",
+  "source": "weavatrix",
+  "package_name": "sample_json_like",
+  "package_root": "facts://sample_json_like",
+  "package_version": "0.1.0",
+  "notes": [
+    "Sample Weavatrix facts bundle for Forge (ADR-0012).",
+    "Shapes chosen to match pilot ontology data.json.parse / serialize."
+  ],
+  "entities": [
+    {
+      "kind": "function",
+      "name": "parse",
+      "path": "src/lib.rs",
+      "line": 12,
+      "signature": "pub fn parse(bytes: &[u8]) -> Result<Value, Error>",
+      "module_path": "lib",
+      "inputs": ["bytes"],
+      "outputs": ["json_value"],
+      "notes": ["weavatrix fact — not bootstrap AST"]
+    },
+    {
+      "kind": "function",
+      "name": "serialize",
+      "path": "src/lib.rs",
+      "line": 40,
+      "signature": "pub fn serialize(value: &Value) -> Result<Vec<u8>, Error>",
+      "module_path": "lib",
+      "inputs": ["json_value"],
+      "outputs": ["bytes"],
+      "notes": []
+    },
+    {
+      "kind": "function",
+      "name": "uppercase",
+      "path": "src/text.rs",
+      "line": 8,
+      "signature": "pub fn uppercase(bytes: &[u8]) -> Result<Vec<u8>, Error>",
+      "module_path": "text",
+      "inputs": ["bytes"],
+      "outputs": ["bytes"],
+      "notes": ["maps toward data.text.uppercase"]
+    }
+  ]
+}

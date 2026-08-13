@@ -75,7 +75,7 @@ Product focus after Library/Forge beta surfaces:
 |---|------|-----|
 | **P0** | **Library catalog UX** (families, kind filter, Implementations tab) | Registry is the product surface — must scale past 5 pilot caps |
 | **P1** | **Second capability family** (`data.text.*` — done in beta) | Proves Registry is not a one-off vertical |
-| **P1** | **Weavatrix facts → Forge** | Replace bootstrap Cargo/AST as product story (ADR-0012) |
+| **P1** | **Weavatrix facts → Forge** (wire format + match/draft — done) | Replace bootstrap Cargo/AST as product story (ADR-0012) |
 | **P2** | **crates.io library crates** | Path deps first; flip `publish` only after README + API freeze |
 | **P2** | **Capability `description` / tags** in IR + registry | Human browse without opening every detail page |
 | **P3** | Hosted registry / admit fleet | Not beta; needs evidence + policy product |
@@ -109,3 +109,21 @@ cargo run -p wvx-cli -- export-rust fixtures/pilot-text-pipeline.wvx.json -o $en
 ```
 
 Studio: Library shows family **data.text**; drag onto canvas like JSON caps.
+
+### Weavatrix facts → Forge (ADR-0012)
+
+Preferred path (no product MCP; no embed of Weavatrix):
+
+```text
+Weavatrix export  →  wvx.facts.v0.1 JSON  →  Forge match/draft  →  Registry
+```
+
+| Surface | Command / API |
+|---------|----------------|
+| CLI load | `wvx forge facts fixtures/weavatrix-facts-sample.json` |
+| CLI match | `wvx forge match --facts fixtures/weavatrix-facts-sample.json` |
+| CLI draft | `wvx forge draft --facts fixtures/weavatrix-facts-sample.json` |
+| Bootstrap → facts | `wvx forge export-facts <crate> -o facts.json` |
+| HTTP | `POST /api/v1/forge/facts` · match/draft accept `facts` / `facts_json` / `facts_path` |
+
+Schema: `schema_version: "wvx.facts.v0.1"`. Bootstrap Cargo/AST extract remains for offline pilots.

@@ -9,13 +9,15 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
-    forge_cargo_search, forge_compile, forge_draft, forge_extract, forge_gate_c, forge_inventory,
-    forge_match, forge_register_candidates, graph_apply_patch, graph_propose_patch,
-    implementations_list,
-    project_export_rust_hydrated, project_run_hydrated, project_validate_hydrated,
-    graph_propose_intent, registry_admission_audit, registry_implementations, registry_inspect,
-    registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
+    forge_cargo_search, forge_compile, forge_draft, forge_draft_facts, forge_export_facts,
+    forge_extract, forge_facts_to_extract, forge_gate_c, forge_inventory, forge_match,
+    forge_match_facts, forge_register_candidates, graph_apply_patch, graph_propose_patch,
+    implementations_list, project_export_rust_hydrated, project_run_hydrated,
+    project_validate_hydrated, graph_propose_intent, registry_admission_audit,
+    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
+    BusResponse, PROTOCOL_VERSION,
 };
+use wvx_forge::WeavatrixFactsBundle;
 use wvx_ir::Project;
 use wvx_project_graph::GraphPatch;
 
@@ -38,6 +40,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
         .route("/api/v1/forge/cargo-search", get(forge_cargo_search_handler))
         .route("/api/v1/forge/extract", post(forge_extract_handler))
+        .route("/api/v1/forge/facts", post(forge_facts_handler))
+        .route("/api/v1/forge/export-facts", post(forge_export_facts_handler))
         .route("/api/v1/forge/match", post(forge_match_handler))
         .route("/api/v1/forge/draft", post(forge_draft_handler))
         .route(
@@ -339,11 +343,126 @@ async fn forge_extract_handler(
     }
 }
 
-async fn forge_match_handler(
+/// Body for Weavatrix facts ingest (ADR-0012 preferred path).
+///
+/// Provide **one of**: inline `facts`, server-local `facts_path`, or raw `facts_json`.
+#[derive(Debug, Deserialize)]
+struct ForgeFactsBody {
+    #[serde(default)]
+    facts: Option<WeavatrixFactsBundle>,
+    /// Absolute path to a facts JSON file on the loom-server host.
+    #[serde(default)]
+    facts_path: Option<String>,
+    /// Raw JSON string (e.g. pasted in Studio).
+    #[serde(default)]
+    facts_json: Option<String>,
+}
+
+async fn forge_facts_handler(
     State(state): State<AppState>,
-    Json(body): Json<ForgeInventoryBody>,
+    Json(body): Json<ForgeFactsBody>,
+) -> Response {
+    match resolve_facts(&state, &body) {
+        Ok(bundle) => match forge_facts_to_extract(&bundle) {
+            Ok(resp) => Json(resp).into_response(),
+            Err(e) => bus_error(e),
+        },
+        Err(resp) => resp,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ForgeExportFactsBody {
+    path: String,
+    out_path: String,
+}
+
+/// Bootstrap AST extract → write Weavatrix-compatible facts JSON (interop test aid).
+async fn forge_export_facts_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeExportFactsBody>,
 ) -> Response {
     let path = std::path::PathBuf::from(&body.path);
+    let out = std::path::PathBuf::from(&body.out_path);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
+    }
+    if !state.security.path_allowed(&out) {
+        return path_denied(&out);
+    }
+    match forge_export_facts(&path, &out) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+/// Resolve Weavatrix facts from inline object, JSON string, or host path.
+fn resolve_facts(
+    state: &AppState,
+    body: &ForgeFactsBody,
+) -> Result<WeavatrixFactsBundle, Response> {
+    if let Some(ref f) = body.facts {
+        return Ok(f.clone());
+    }
+    if let Some(ref raw) = body.facts_json {
+        return match wvx_forge::parse_facts_json(raw) {
+            Ok(b) => Ok(b),
+            Err(e) => Err(bus_error(BusError::Forge(e))),
+        };
+    }
+    if let Some(ref p) = body.facts_path {
+        let path = std::path::PathBuf::from(p);
+        if !state.security.path_allowed(&path) {
+            return Err(path_denied(&path));
+        }
+        return match wvx_forge::load_facts_file(&path) {
+            Ok(b) => Ok(b),
+            Err(e) => Err(bus_error(BusError::Forge(e.to_string()))),
+        };
+    }
+    Err((
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "ok": false,
+            "diagnostics": [
+                "provide facts, facts_json, or facts_path (Weavatrix wvx.facts.v0.1)"
+            ]
+        })),
+    )
+        .into_response())
+}
+
+async fn forge_match_handler(
+    State(state): State<AppState>,
+    Json(body): Json<ForgeMatchBody>,
+) -> Response {
+    // Prefer Weavatrix facts when present (ADR-0012).
+    if body.facts.is_some() || body.facts_json.is_some() || body.facts_path.is_some() {
+        let facts_body = ForgeFactsBody {
+            facts: body.facts.clone(),
+            facts_path: body.facts_path.clone(),
+            facts_json: body.facts_json.clone(),
+        };
+        let bundle = match resolve_facts(&state, &facts_body) {
+            Ok(b) => b,
+            Err(r) => return r,
+        };
+        return match forge_match_facts(&bundle, Some(state.registry.as_ref())) {
+            Ok(resp) => Json(resp).into_response(),
+            Err(e) => bus_error(e),
+        };
+    }
+    let Some(ref path_str) = body.path else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "ok": false,
+                "diagnostics": ["match requires path (bootstrap) or facts / facts_json / facts_path"]
+            })),
+        )
+            .into_response();
+    };
+    let path = std::path::PathBuf::from(path_str);
     if !state.security.path_allowed(&path) {
         return path_denied(&path);
     }
@@ -351,6 +470,19 @@ async fn forge_match_handler(
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct ForgeMatchBody {
+    /// Bootstrap crate/workspace path (AST extract).
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    facts: Option<WeavatrixFactsBundle>,
+    #[serde(default)]
+    facts_path: Option<String>,
+    #[serde(default)]
+    facts_json: Option<String>,
 }
 
 fn path_denied(path: &std::path::Path) -> Response {
@@ -369,27 +501,65 @@ fn path_denied(path: &std::path::Path) -> Response {
 
 #[derive(Debug, Deserialize)]
 struct ForgeDraftBody {
-    path: String,
+    /// Bootstrap crate path (optional when facts* present).
+    #[serde(default)]
+    path: Option<String>,
     #[serde(default)]
     name: Option<String>,
     /// Optional server-local directory to write draft packages.
     #[serde(default)]
     out_dir: Option<String>,
+    #[serde(default)]
+    facts: Option<WeavatrixFactsBundle>,
+    #[serde(default)]
+    facts_path: Option<String>,
+    #[serde(default)]
+    facts_json: Option<String>,
 }
 
 async fn forge_draft_handler(
     State(state): State<AppState>,
     Json(body): Json<ForgeDraftBody>,
 ) -> Response {
-    let path = std::path::PathBuf::from(&body.path);
-    if !state.security.path_allowed(&path) {
-        return path_denied(&path);
-    }
     let out = body.out_dir.as_ref().map(std::path::PathBuf::from);
     if let Some(ref o) = out {
         if !state.security.path_allowed(o) {
             return path_denied(o);
         }
+    }
+    if body.facts.is_some() || body.facts_json.is_some() || body.facts_path.is_some() {
+        let facts_body = ForgeFactsBody {
+            facts: body.facts.clone(),
+            facts_path: body.facts_path.clone(),
+            facts_json: body.facts_json.clone(),
+        };
+        let bundle = match resolve_facts(&state, &facts_body) {
+            Ok(b) => b,
+            Err(r) => return r,
+        };
+        return match forge_draft_facts(
+            &bundle,
+            body.name.as_deref(),
+            out.as_deref(),
+            Some(state.registry.as_ref()),
+        ) {
+            Ok(resp) => Json(resp).into_response(),
+            Err(e) => bus_error(e),
+        };
+    }
+    let Some(ref path_str) = body.path else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "ok": false,
+                "diagnostics": ["draft requires path or facts / facts_json / facts_path"]
+            })),
+        )
+            .into_response();
+    };
+    let path = std::path::PathBuf::from(path_str);
+    if !state.security.path_allowed(&path) {
+        return path_denied(&path);
     }
     match forge_draft(
         &path,

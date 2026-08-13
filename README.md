@@ -317,17 +317,32 @@ cargo run -p loom-server
 
 ### Loom Forge (thin semantic ingestion)
 
-**Not** a code-intelligence product. Target: Weavatrix facts → classify → Registry.
-Today, local inventory/AST is **bootstrap** (ADR-0012).
+**Not** a code-intelligence product. Target path (ADR-0012):
+
+```text
+Weavatrix (code facts) → Forge (match / draft) → Registry
+```
+
+**Preferred:** ingest a Weavatrix facts bundle (`wvx.facts.v0.1`). Local Cargo inventory/AST
+extract remains **bootstrap** when facts are unavailable.
 
 ```bash
+# Weavatrix facts → candidates → ontology match
+cargo run -p wvx-cli -- forge facts fixtures/weavatrix-facts-sample.json
+cargo run -p wvx-cli -- forge match --facts fixtures/weavatrix-facts-sample.json
+cargo run -p wvx-cli -- forge draft --facts fixtures/weavatrix-facts-sample.json
+
+# Bootstrap (offline AST) still works
 cargo run -p wvx-cli -- forge inventory .
 cargo run -p wvx-cli -- forge extract crates/wvx-adapters
 cargo run -p wvx-cli -- forge match crates/wvx-adapters
+cargo run -p wvx-cli -- forge export-facts crates/wvx-adapters -o /tmp/facts.json
 cargo run -p wvx-cli -- forge draft crates/wvx-adapters --name parse -o /tmp/loom-drafts
 cargo run -p wvx-cli -- forge compile crates/wvx-adapter-external-demo -o /tmp/fa --name upper --check
 cargo run -p wvx-cli -- forge gate-c --workspace .
 ```
+
+HTTP: `POST /api/v1/forge/facts`, and `match`/`draft` accept `facts` | `facts_json` | `facts_path`.
 
 No `build.rs`, no network for inventory/extract. Drafts are **not** admitted.
 Broad packaging/CI/deploy → **Realforge**; deep symbols/search → **Weavatrix**.

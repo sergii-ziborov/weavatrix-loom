@@ -19,6 +19,7 @@ mod compile_adapter;
 mod draft;
 mod economics;
 mod extract;
+mod facts;
 
 pub use capability_match::{
     match_candidate, match_candidates, CapabilityMatch, CandidateMatchRow, MappingKind,
@@ -28,14 +29,18 @@ pub use compile_adapter::{
     compile_adapter_from_draft, compile_adapters_batch, CompileAdapterReport, CompileBatchReport,
 };
 pub use draft::{
-    draft_adapters, draft_adapters_with_ontology, draft_from_extract, write_draft_files,
-    AdapterDraft, DraftReport,
+    draft_adapters, draft_adapters_with_ontology, draft_from_extract,
+    draft_from_extract_with_ontology, write_draft_files, AdapterDraft, DraftReport,
 };
 pub use economics::{
     default_workspace_root, pilot_gate_c_expectations, pilot_ontology, run_gate_c_pilot,
     GateCCaseResult, GateCReport,
 };
 pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
+pub use facts::{
+    extract_from_facts, facts_from_extract, load_facts_file, parse_facts_json, validate_facts,
+    write_facts_file, WeavatrixFactEntity, WeavatrixFactsBundle, FACTS_SCHEMA_VERSION,
+};
 
 use serde::{Deserialize, Serialize};
 use std::fs;

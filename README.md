@@ -77,9 +77,10 @@ Weavatrix facts → Loom Forge (classify / match) → Registry draft
 Local Cargo/AST inventory in `wvx-forge` is **bootstrap only** until Weavatrix
 feeds signatures/spans (ADR-0012).
 
-> **Status:** public **v0.1 pilot** (JSON transform vertical) with **Gate F SDK**,
-> Forge as **thin semantic ingestion** (bootstrap extract still in-tree), Gate C
-> pilot harness, and Cortex intent→GraphPatch. UI:
+> **Status:** **v0.1 alpha** — working JSON pipeline prototype (validate / run /
+> multi-impl / export / registry / Studio over HTTP / thin Forge).  
+> Not production trust or hosted registry. Details:
+> **[docs/alpha-prototype.md](docs/alpha-prototype.md)**. UI:
 > **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**.
 
 ## Studio preview
@@ -175,7 +176,30 @@ GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`:
 3. Smoke run with `json-crate.parse@1`
 4. Presence checks for schemas / ADRs / pilot fixture
 
-## Quick start
+## Quick start (alpha)
+
+**Full local alpha (API + Studio):**
+
+```powershell
+# Terminal A
+cd weavatrix-loom
+powershell -File ./scripts/dev-server.ps1
+
+# Terminal B
+cd loom-studio
+npm install
+npm run dev
+# http://127.0.0.1:5173  — HTTP only (no MCP)
+```
+
+**Smoke without the browser:**
+
+```powershell
+cd weavatrix-loom
+powershell -File ./scripts/alpha-smoke.ps1
+```
+
+**CLI only:**
 
 ```bash
 cargo check --workspace

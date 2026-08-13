@@ -78,6 +78,8 @@ async fn main() {
         "session token (set header X-WVX-Token): {}",
         security.session_token
     );
+    tracing::info!("Studio (HTTP only): cd ../loom-studio && npm run dev → http://127.0.0.1:5173");
+    tracing::info!("Alpha smoke: powershell -File ./scripts/alpha-smoke.ps1");
     tracing::info!(
         "workspace roots: {:?}",
         security

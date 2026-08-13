@@ -2,34 +2,93 @@
 
 **Compose systems from verified capabilities. Get ordinary Rust.**
 
-Weavatrix Loom is **semantic software composition**: a capability registry,
-typed project graph (GraphPatch), conformance/evidence, and a compiler that
-exports ordinary Rust. It is **not** a repository indexer and **not** a second
-Weavatrix code graph ([ADR-0012](docs/adr/0012-ecosystem-boundaries.md)).
+Weavatrix Loom is **semantic software composition** — not a repository indexer
+and not a second Weavatrix code graph.
+
+| This product **owns** | This product **does not own** |
+| --- | --- |
+| Capability · Implementation · Instance · Binding | Deep AST / symbol / call / import graph |
+| **Registry** (interchange + multi-fact evidence + resolve) | Generic deploy / multi-package scaffolding |
+| GraphPatch · validator · playground | Agent token economy / model routing |
+| **Semantic compiler** → ordinary Rust | Deterministic transform-ops *runtime* (see FerroSift) |
+| Thin **Forge** = semantic ingestion / classification | “Code intelligence” product positioning |
+
+Full boundaries: **[ADR-0012](docs/adr/0012-ecosystem-boundaries.md)** ·
+**[ecosystem distribution](docs/ecosystem-distribution.md)**.
+
+## Place in the ecosystem
 
 ```text
-Weavatrix (code facts)  →  Loom (meaning / proof / compose)  →  Realforge (artifacts)
-                              ▲
-                    FerroSift ops may back Implementations
+                         AI
+                          │
+              ┌───────────┴───────────┐
+              │                       │
+          Cortex                 GrantTap / …
+       token economy             agent control
+              │
+              ▼
+       ┌───────────────┐
+       │   Weavatrix   │  UNDERSTAND — “what exists in code?”
+       │ Code facts    │
+       └───────┬───────┘
+               │ facts (target: feed Forge)
+               ▼
+       ┌───────────────┐
+       │ Weavatrix Loom│  SEMANTIC — “what does it mean / proven / compose?”
+       │ Registry +    │  ← YOU ARE HERE
+       │ Compiler +    │
+       │ thin Forge    │
+       └───────┬───────┘
+               │ capability graph / resolved export
+               ▼
+       ┌───────────────┐
+       │   Realforge   │  CONSTRUCT — “how do we get a shippable artifact?”
+       └───────────────┘
+
+FerroSift (transform recipes / ops runtime)
+    → may back Loom Implementations after conformance
+    → is NOT a rival capability Registry
 ```
 
-You work with formal *capabilities* rather than free-form prompts. Each
-capability can have interchangeable *implementations* with multi-fact evidence.
-The capability graph compiles to a normal, readable Rust workspace.
+| Product | Repo | Role |
+| --- | --- | --- |
+| **Weavatrix** | [weavatrix](https://github.com/sergii-ziborov/weavatrix) | Code intelligence (index, symbols, impact, search) |
+| **Weavatrix Loom** | **this repo** | Capability registry, composition, proof, semantic compile |
+| **Loom Studio** | [loom-studio](https://github.com/sergii-ziborov/loom-studio) | Visual shell over Loom (no second backend) |
+| **Realforge** | construct product (TBD) | Scaffold / package / deploy; *may call* Loom compiler |
+| **FerroSift** | [ferrosift](https://github.com/sergii-ziborov/ferrosift) | Deterministic transform recipes/ops (Wasm-capable) |
+| **Cortex Loom** | [cortex-loom](https://github.com/sergii-ziborov/cortex-loom) | Agent process / context; thin bridge: `wvx-cortex` |
 
-> **Status:** public **v0.1 pilot** (JSON transform vertical) with **Gate F SDK path**
-> and **Forge v2 pilot** (AST extract, ontology match, compileable adapters, Gate C
-> harness). Core libs, CLI, MCP, HTTP, conformance (Gates A/D/E/F pilot), and Cortex
-> intent→GraphPatch live in this repo. The visual UI is the sibling
+**Naming:** in architecture text use **Weavatrix Loom**. “Loom” alone never means
+Weavatrix or Cortex Loom. **Loom Forge** ≠ Realforge.
+
+### Loom core pipeline (unique)
+
+```text
+Capability → Implementations → Conformance → Evidence → Resolution → Compile → Rust
+```
+
+Forge target shape (not a code graph product):
+
+```text
+Weavatrix facts → Loom Forge (classify / match) → Registry draft
+```
+
+Local Cargo/AST inventory in `wvx-forge` is **bootstrap only** until Weavatrix
+feeds signatures/spans (ADR-0012).
+
+> **Status:** public **v0.1 pilot** (JSON transform vertical) with **Gate F SDK**,
+> Forge as **thin semantic ingestion** (bootstrap extract still in-tree), Gate C
+> pilot harness, and Cortex intent→GraphPatch. UI:
 > **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**.
 
 ## Studio preview
 
 ![Loom Studio — JSON pilot pipeline](docs/images/studio-pilot.png)
 
-*Design canvas: library + typed graph (roomier auto-layout), multi-impl swap with
-per-impl Run, run trace, Forge (match / compile / Gate C), and optional intent →
-GraphPatch. UI lives in [loom-studio](https://github.com/sergii-ziborov/loom-studio).*
+*Design canvas: capability library + **WVX semantic** graph (not a code graph),
+multi-impl swap, run trace, thin Forge (match/draft/Gate C), intent → GraphPatch.
+UI: [loom-studio](https://github.com/sergii-ziborov/loom-studio).*
 
 ## Why
 
@@ -41,6 +100,9 @@ appears when four things are true at once:
 3. **Compatibility and behavior are checked**, not only documented
 4. **Humans and AI edit the same structural model** (not free-form file edits)
 
+Weavatrix answers *what is in the repository*. Loom answers *what it means as a
+composable, proven capability system* and *how to emit ordinary Rust*.
+
 ## Core ideas
 
 | Concept | Meaning |
@@ -49,8 +111,10 @@ appears when four things are true at once:
 | **Implementation** | Which Rust code fulfills that contract |
 | **Instance** | A capability placed in a project with config |
 | **Binding** | A validated connection between typed ports |
-| **Evidence** | Why an implementation can be trusted (build, conformance, benchmarks, policy) |
-| **WVX** | The project / IR format (`.wvx`) |
+| **Evidence** | Multi-fact trust axes (build, conformance, bench, license, security) — never a single % |
+| **Registry** | Interchangeable implementations + lifecycle + resolution (**Loom-owned**) |
+| **GraphPatch** | Authoritative semantic edit ops |
+| **WVX** | Project / IR format (`.wvx`) |
 
 Boundary types in `0.1` are owned and canonical (`string`, `bytes`,
 `json.value`, lists, options, records, …). Upstream crates may use any Rust
@@ -61,8 +125,12 @@ types internally; adapters normalize them at the component boundary.
 | Path | What |
 | --- | --- |
 | [`schemas/`](schemas/) | JSON Schema for project, capability, GraphPatch (`wvx.project.v0.1`, …) |
-| [`docs/adr/`](docs/adr/) | Architecture Decision Records (Rust-first, GraphPatch, export, …) |
+| [`docs/adr/`](docs/adr/) | ADRs — especially **[0012 ecosystem boundaries](docs/adr/0012-ecosystem-boundaries.md)** |
+| [`docs/ecosystem-distribution.md`](docs/ecosystem-distribution.md) | Ownership matrix (Weavatrix / Loom / Realforge / FerroSift / Cortex) |
 | [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md) | Gate A/D evidence on the JSON pilot |
+| [`docs/go-no-go-e-pilot.md`](docs/go-no-go-e-pilot.md) | Gate E pilot (registry trust lab) |
+| [`docs/go-no-go-f-pilot.md`](docs/go-no-go-f-pilot.md) | Gate F pilot (SDK extensibility) |
+| [`docs/go-no-go-c-pilot.md`](docs/go-no-go-c-pilot.md) | Gate C pilot (Forge economics harness) |
 
 Rust IR types remain authoritative if schema and code diverge.
 
@@ -185,22 +253,32 @@ cargo run -p loom-server
 | GET | `/api/v1/registry/inspect/{key}` | |
 | GET | `/api/v1/registry/admission` | lifecycle vs evidence audit (overclaim) |
 | GET | `/api/v1/pilot/implementations` | playground handler catalog |
-| POST | `/api/v1/forge/inventory` | body `{ "path": "<crate-or-workspace>" }` static scan |
-| POST | `/api/v1/forge/extract` | public API candidates from `src/` |
-| POST | `/api/v1/forge/draft` | body `{ "path", "name"?, "out_dir"? }` adapter drafts (`inventory_only`) |
+| POST | `/api/v1/forge/inventory` | bootstrap crate scan (not Weavatrix-grade index) |
+| POST | `/api/v1/forge/extract` | bootstrap public-API candidates |
+| POST | `/api/v1/forge/match` | map candidates → capability ontology (FORGE-007) |
+| POST | `/api/v1/forge/draft` | adapter drafts (`inventory_only`) |
+| POST | `/api/v1/forge/compile` | compileable semantic adapter pack (FORGE-008) |
+| POST | `/api/v1/forge/gate-c` | Gate C pilot economics harness |
 | POST | `/api/v1/graph/propose_patch` | body `{ project? }` — relative pilot GraphPatch |
 | POST | `/api/v1/graph/propose_intent` | body `{ project, intent }` — heuristic or LLM (ops only) |
 | POST | `/api/v1/graph/apply_patch` | body `{ project, patch }` |
 
-### Forge (static inventory)
+### Loom Forge (thin semantic ingestion)
+
+**Not** a code-intelligence product. Target: Weavatrix facts → classify → Registry.
+Today, local inventory/AST is **bootstrap** (ADR-0012).
 
 ```bash
 cargo run -p wvx-cli -- forge inventory .
 cargo run -p wvx-cli -- forge extract crates/wvx-adapters
+cargo run -p wvx-cli -- forge match crates/wvx-adapters
 cargo run -p wvx-cli -- forge draft crates/wvx-adapters --name parse -o /tmp/loom-drafts
+cargo run -p wvx-cli -- forge compile crates/wvx-adapter-external-demo -o /tmp/fa --name upper --check
+cargo run -p wvx-cli -- forge gate-c --workspace .
 ```
 
-Reads `Cargo.toml` / `src/` only — no `build.rs`, no network. Drafts are **not** admitted.
+No `build.rs`, no network for inventory/extract. Drafts are **not** admitted.
+Broad packaging/CI/deploy → **Realforge**; deep symbols/search → **Weavatrix**.
 
 CORS is open for local Studio development. Bind stays loopback by default.
 
@@ -240,6 +318,7 @@ Go/No-Go evidence:
 | Gate | Doc | Pilot verdict |
 | --- | --- | --- |
 | **A** / **D** | [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md) | **Go** transform interchange + dynamic≡static |
+| **C** | [`docs/go-no-go-c-pilot.md`](docs/go-no-go-c-pilot.md) | **Go (pilot harness)** Forge economics on fixture set |
 | **E** | [`docs/go-no-go-e-pilot.md`](docs/go-no-go-e-pilot.md) | **Go (pilot lab)** bench + provenance + human admit |
 | **F** | [`docs/go-no-go-f-pilot.md`](docs/go-no-go-f-pilot.md) | **Go (pilot fixture)** SDK external adapter without pilot match arms |
 
@@ -248,10 +327,13 @@ cargo run -p wvx-cli -- bench -o .lab/bench.json
 cargo run -p wvx-cli -- registry check
 ```
 
-### Intent → GraphPatch (Cortex)
+### Intent → GraphPatch (thin Cortex bridge)
+
+`wvx-cortex` only proposes **GraphPatch ops** (not a full Cortex Loom product).
+Full agent workflow / token economy lives in **[cortex-loom](https://github.com/sergii-ziborov/cortex-loom)** (ADR-0012).
 
 **Most of Loom works with zero cloud keys.** Run, validate, export, registry, Forge
-inventory, and rule-based / heuristic GraphPatch are fully offline.
+match/draft, and rule-based / heuristic GraphPatch are fully offline.
 
 Optional LLM propose (free-form English → ops-only GraphPatch) uses **xAI**
 (SpaceXAI-compatible API) when the **server** has:
@@ -283,8 +365,15 @@ Studio: toolbar **intent** + **Propose intent** → Accept/Reject (ghost banner)
 
 | Repo | Role |
 | --- | --- |
-| **[weavatrix-loom](https://github.com/sergii-ziborov/weavatrix-loom)** (this) | Rust platform, CLI, MCP, HTTP, registry-dev, docs |
-| **[loom-studio](https://github.com/sergii-ziborov/loom-studio)** | TypeScript / React Studio UI |
+| **[weavatrix-loom](https://github.com/sergii-ziborov/weavatrix-loom)** (this) | Semantic composition platform (Registry, compiler, WVX) |
+| **[loom-studio](https://github.com/sergii-ziborov/loom-studio)** | Studio UI over Loom |
+| **[weavatrix](https://github.com/sergii-ziborov/weavatrix)** | Code intelligence — facts Loom should consume |
+| **[weavatrix-graph](https://github.com/sergii-ziborov/weavatrix-graph)** | Deterministic code-graph core (Weavatrix) |
+| **[ferrosift](https://github.com/sergii-ziborov/ferrosift)** | Transform recipe/ops runtime → optional Implementations |
+| **[cortex-loom](https://github.com/sergii-ziborov/cortex-loom)** | Agent process / context (not Loom Registry) |
+| **[mcport](https://crates.io/crates/mcport)** | MCP stdio runtime for `wvx-mcp` |
+
+See also [ecosystem-distribution.md](docs/ecosystem-distribution.md).
 
 ## Pilot scope (`0.1`)
 
@@ -316,12 +405,11 @@ UI builder.
   advisories stay separate — there is no single “readiness 82%” score.
 - **Fail closed on structure.** Bindings exist only after validation.
 - **Transport-independent core.** Libraries do not depend on HTTP or the editor.
-
-## Related projects
-
-- [Weavatrix](https://github.com/sergii-ziborov/weavatrix) — repository intelligence for coding agents
-- [mcport](https://crates.io/crates/mcport) — MCP stdio runtime used by `wvx-mcp`
-- [blazingly-json](https://crates.io/crates/blazingly-json) — JSON engine used across the Weavatrix stack
+- **No dual code graph.** Deep repository intelligence is Weavatrix; Loom only
+  references facts for semantic classification (ADR-0012).
+- **Registry + compiler stay in Loom.** Realforge may *call* compile; it does not
+  own WVX IR or admit policy.
+- **AI suggestions are not evidence.** (ADR-0010)
 
 ## License
 

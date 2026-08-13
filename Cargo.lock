@@ -719,7 +719,7 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "loom-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "http-body-util",
@@ -1761,7 +1761,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "wvx-adapter-external-demo"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
  "wvx-component-sdk",
@@ -1769,7 +1769,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-adapters"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blake3",
  "flate2",
@@ -1781,7 +1781,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
  "wvx-adapter-external-demo",
@@ -1797,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-command-bus"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1818,7 +1818,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-compiler-rust"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1830,7 +1830,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-component-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-conformance"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1855,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-cortex"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "reqwest",
  "serde",
@@ -1868,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-forge"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1881,7 +1881,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-ir"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-mcp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "mcport",
  "serde_json",
@@ -1901,7 +1901,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-project-graph"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1913,7 +1913,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-registry-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1923,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1935,7 +1935,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-types"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1943,7 +1943,7 @@ dependencies = [
 
 [[package]]
 name = "wvx-validator"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "wvx-ir",

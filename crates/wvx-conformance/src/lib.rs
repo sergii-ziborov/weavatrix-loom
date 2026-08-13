@@ -586,7 +586,8 @@ fn conform_path_set_negative(
 
 /// Load pilot fixture project from embedded JSON.
 pub fn pilot_project() -> Result<Project, ConformanceError> {
-    let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
+    // Local path so the crate packages cleanly on crates.io (no monorepo root).
+    let text = include_str!("../fixtures/pilot-json-pipeline.wvx.json");
     serde_json::from_str(text).map_err(|e| ConformanceError::Failed(e.to_string()))
 }
 

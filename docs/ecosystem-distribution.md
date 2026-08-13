@@ -105,7 +105,9 @@ Not: build a second symbol graph inside Loom.
 |------|--------|
 | Loom Registry + compiler | In-tree, keep |
 | Library crate access | **All libs path-consumable** — [crate-surface.md](crate-surface.md) |
+| Studio Library panel | **Capabilities only** (Registry); packages via Forge |
 | Studio transport | **HTTP → loom-server only** (no product MCP) |
+| Maturity | **beta** — [beta-prototype.md](beta-prototype.md) |
 | `wvx-mcp` | Optional agent adapter only — not Studio/Realforge |
 | `wvx-forge` inventory/AST | Bootstrap; labeled transitional |
 | Weavatrix → Forge API | Not wired yet (planned); Weavatrix MCP is agent-side only |

@@ -77,10 +77,11 @@ Weavatrix facts → Loom Forge (classify / match) → Registry draft
 Local Cargo/AST inventory in `wvx-forge` is **bootstrap only** until Weavatrix
 feeds signatures/spans (ADR-0012).
 
-> **Status:** **v0.1 alpha** — working JSON pipeline prototype (validate / run /
-> multi-impl / export / registry / Studio over HTTP / thin Forge).  
+> **Status:** **v0.2 beta** — working JSON vertical + product surfaces
+> (Registry Library vs Forge package ingest, Studio About/UX, HTTP-only).  
 > Not production trust or hosted registry. Details:
-> **[docs/alpha-prototype.md](docs/alpha-prototype.md)**. UI:
+> **[docs/beta-prototype.md](docs/beta-prototype.md)** ·
+> smoke: [alpha-prototype.md](docs/alpha-prototype.md). UI:
 > **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**.
 
 ## Studio preview

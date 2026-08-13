@@ -97,6 +97,7 @@ jobs:
           test -f docs/ecosystem-distribution.md
           test -f docs/crate-surface.md
           test -f docs/alpha-prototype.md
+          test -f docs/beta-prototype.md
           test -f scripts/alpha-smoke.ps1
           test -f scripts/dev-server.ps1
           test -f fixtures/pilot-json-pipeline.wvx.json

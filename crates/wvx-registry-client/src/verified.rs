@@ -2,9 +2,7 @@
 //!
 //! Release compile must accept only these, not raw manifests.
 
-use crate::evidence_artifact::{
-    load_artifact, verify_artifact, ArtifactCheck, EvidenceArtifact,
-};
+use crate::evidence_artifact::{load_artifact, verify_artifact, ArtifactCheck, EvidenceArtifact};
 use crate::RegistryError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;

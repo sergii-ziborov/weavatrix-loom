@@ -189,14 +189,8 @@ pub enum WvxValue {
     Json(serde_json::Value),
     List(Vec<WvxValue>),
     Record(BTreeMap<String, WvxValue>),
-    Variant {
-        tag: String,
-        value: Box<WvxValue>,
-    },
-    Error {
-        code: String,
-        message: String,
-    },
+    Variant { tag: String, value: Box<WvxValue> },
+    Error { code: String, message: String },
 }
 
 impl WvxValue {

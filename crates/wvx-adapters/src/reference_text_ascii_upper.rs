@@ -7,7 +7,13 @@
 pub fn transform(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(bytes
         .iter()
-        .map(|b| if (b'a'..=b'z').contains(b) { b - 32 } else { *b })
+        .map(|b| {
+            if (b'a'..=b'z').contains(b) {
+                b - 32
+            } else {
+                *b
+            }
+        })
         .collect())
 }
 
@@ -19,6 +25,9 @@ mod tests {
     fn ascii_only() {
         assert_eq!(transform(b"Hello").unwrap(), b"HELLO");
         // non-ascii byte unchanged
-        assert_eq!(transform(&[0xc3, 0xa4, b'a']).unwrap(), vec![0xc3, 0xa4, b'A']);
+        assert_eq!(
+            transform(&[0xc3, 0xa4, b'a']).unwrap(),
+            vec![0xc3, 0xa4, b'A']
+        );
     }
 }

@@ -223,11 +223,7 @@ pub fn promote_implementation(
                 .unwrap_or_else(|| "bench_ok".into()),
         ));
     } else if target == LifecycleStatus::Admitted {
-        steps.push(step(
-            "benchmark",
-            false,
-            "admitted requires bench_ok=true",
-        ));
+        steps.push(step("benchmark", false, "admitted requires bench_ok=true"));
         return Ok(fail_result(
             imp,
             previous,
@@ -236,11 +232,7 @@ pub fn promote_implementation(
             "benchmark required for admitted",
         ));
     } else {
-        steps.push(step(
-            "benchmark",
-            true,
-            "skipped (optional for conformant)",
-        ));
+        steps.push(step("benchmark", true, "skipped (optional for conformant)"));
     }
 
     // ── 4. License / security ─────────────────────────────────────────────
@@ -328,11 +320,7 @@ pub fn promote_implementation(
 
     let check = verify_artifact(registry_root, &imp);
     if !check.ok {
-        steps.push(step(
-            "artifact_verify",
-            false,
-            check.findings.join("; "),
-        ));
+        steps.push(step("artifact_verify", false, check.findings.join("; ")));
         return Ok(fail_result(
             imp,
             previous,
@@ -439,28 +427,16 @@ pub fn promote_implementation(
             "admission overclaim check failed",
         ));
     }
-    steps.push(step(
-        "policy",
-        true,
-        format!("justified={}", just.as_str()),
-    ));
+    steps.push(step("policy", true, format!("justified={}", just.as_str())));
 
     // ── 8. Atomic manifest write ──────────────────────────────────────────
     let mut manifest_path = None;
     if req.apply {
         let path = write_implementation_manifest(registry_root, &imp)?;
-        steps.push(step(
-            "manifest",
-            true,
-            format!("wrote {}", path.display()),
-        ));
+        steps.push(step("manifest", true, format!("wrote {}", path.display())));
         manifest_path = Some(path.display().to_string());
     } else {
-        steps.push(step(
-            "manifest",
-            true,
-            "dry-run (pass apply=true to write)",
-        ));
+        steps.push(step("manifest", true, "dry-run (pass apply=true to write)"));
     }
 
     // ── 9. Verified handle + truthful audit ───────────────────────────────

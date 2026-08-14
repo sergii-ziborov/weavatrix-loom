@@ -2,8 +2,7 @@
 //!
 //! Pure-Rust RFC 4648 standard Base64 encode (multi-impl equality with crate path).
 
-const TABLE: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// Encode raw bytes as standard Base64 ASCII (pure).
 pub fn encode(bytes: &[u8]) -> Result<Vec<u8>, String> {

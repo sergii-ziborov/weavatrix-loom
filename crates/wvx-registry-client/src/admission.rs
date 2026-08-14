@@ -29,15 +29,9 @@ pub fn status_rank(s: LifecycleStatus) -> u8 {
 pub fn justified_status(imp: &Implementation) -> LifecycleStatus {
     let e = &imp.evidence;
     let has_adapter = imp.adapter.is_some();
-    let any_fail = [
-        e.build,
-        e.conformance,
-        e.benchmark,
-        e.license,
-        e.security,
-    ]
-    .iter()
-    .any(|a| *a == AxisFact::Fail);
+    let any_fail = [e.build, e.conformance, e.benchmark, e.license, e.security]
+        .iter()
+        .any(|a| *a == AxisFact::Fail);
 
     if any_fail {
         // Failed evidence blocks conformant/admitted.
@@ -270,8 +264,8 @@ mod tests {
             evidence: ImplementationEvidence::default(),
             notes: None,
             sdk: None,
-        conformance_profile: None,
-        evidence_artifact: None,
+            conformance_profile: None,
+            evidence_artifact: None,
         }
     }
 

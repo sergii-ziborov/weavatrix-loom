@@ -30,9 +30,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use wvx_compiler_rust::export_to_directory;
 use wvx_ir::Project;
-use wvx_runtime::{
-    apply_implementation_overrides, run_project, HandlerRegistry, WvxValueMap,
-};
+use wvx_runtime::{apply_implementation_overrides, run_project, HandlerRegistry, WvxValueMap};
 use wvx_types::WvxValue;
 
 #[derive(Debug, Error)]
@@ -81,7 +79,11 @@ fn parse_vectors() -> Vec<(&'static str, Vec<u8>, serde_json::Value)> {
             br#"{"a":{"b":[1,2,3],"c":true}}"#.to_vec(),
             serde_json::json!({"a":{"b":[1,2,3],"c":true}}),
         ),
-        ("array", br#"[1,"x",null]"#.to_vec(), serde_json::json!([1, "x", null])),
+        (
+            "array",
+            br#"[1,"x",null]"#.to_vec(),
+            serde_json::json!([1, "x", null]),
+        ),
         ("number", br#"-42.5"#.to_vec(), serde_json::json!(-42.5)),
         ("string", br#""loom""#.to_vec(), serde_json::json!("loom")),
         ("bool", br#"false"#.to_vec(), serde_json::json!(false)),
@@ -103,10 +105,7 @@ fn parse_vectors() -> Vec<(&'static str, Vec<u8>, serde_json::Value)> {
 }
 
 fn path_set_impls() -> &'static [&'static str] {
-    &[
-        "wvx.reference.path-set@1",
-        "serde-json.pointer-set@1",
-    ]
+    &["wvx.reference.path-set@1", "serde-json.pointer-set@1"]
 }
 
 /// Shared path_set cases: (name, input, path, set_value, expected)
@@ -165,10 +164,7 @@ fn parse_impls() -> &'static [&'static str] {
 }
 
 fn serialize_impls_compact() -> &'static [&'static str] {
-    &[
-        "serde-json.serialize@1",
-        "wvx.reference.json-serialize@1",
-    ]
+    &["serde-json.serialize@1", "wvx.reference.json-serialize@1"]
 }
 
 /// Extract the capability error code family from an adapter error string.
@@ -191,17 +187,37 @@ fn parse_negative_vectors() -> Vec<(&'static str, Vec<u8>, &'static str)> {
         ("neg_truncated_array", b"[1,".to_vec(), "invalid-syntax"),
         ("neg_unclosed_string", b"\"hi".to_vec(), "invalid-syntax"),
         ("neg_trailing_value", b"{}{}".to_vec(), "invalid-syntax"),
-        ("neg_trailing_after_true", b"true false".to_vec(), "invalid-syntax"),
+        (
+            "neg_trailing_after_true",
+            b"true false".to_vec(),
+            "invalid-syntax",
+        ),
         ("neg_bad_token", b"undefined".to_vec(), "invalid-syntax"),
-        ("neg_trailing_comma", br#"{"a":1,}"#.to_vec(), "invalid-syntax"),
-        ("neg_single_quotes", br#"{'a':1}"#.to_vec(), "invalid-syntax"),
+        (
+            "neg_trailing_comma",
+            br#"{"a":1,}"#.to_vec(),
+            "invalid-syntax",
+        ),
+        (
+            "neg_single_quotes",
+            br#"{'a':1}"#.to_vec(),
+            "invalid-syntax",
+        ),
         ("neg_plus_number", b"+1".to_vec(), "invalid-syntax"),
         ("neg_bare_key", br#"{a:1}"#.to_vec(), "invalid-syntax"),
-        ("neg_control_in_string", b"\"\x01\"".to_vec(), "invalid-syntax"),
+        (
+            "neg_control_in_string",
+            b"\"\x01\"".to_vec(),
+            "invalid-syntax",
+        ),
         // Whole buffer is not valid UTF-8.
         ("neg_invalid_utf8", vec![0xff, 0xfe], "invalid-unicode"),
         // Valid structure framing but invalid UTF-8 inside a string.
-        ("neg_invalid_utf8_in_string", vec![b'"', 0xff, b'"'], "invalid-unicode"),
+        (
+            "neg_invalid_utf8_in_string",
+            vec![b'"', 0xff, b'"'],
+            "invalid-unicode",
+        ),
     ]
 }
 
@@ -275,7 +291,12 @@ pub fn run_pilot_conformance() -> ConformanceReport {
     // --- serialize (compact): re-parse bytes must equal original JSON ---
     let sample = serde_json::json!({"hello":"world","n":1,"ok":true});
     for impl_id in serialize_impls_compact() {
-        cases.push(conform_serialize_roundtrip(&reg, impl_id, "roundtrip_object", &sample));
+        cases.push(conform_serialize_roundtrip(
+            &reg,
+            impl_id,
+            "roundtrip_object",
+            &sample,
+        ));
     }
 
     // pretty serialize: semantic only
@@ -308,7 +329,8 @@ pub fn run_pilot_conformance() -> ConformanceReport {
     cases.extend(run_multi_impl_equality(&reg));
 
     // --- profile-driven multi-domain suites (when registry-dev is present) ---
-    let registry_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
+    let registry_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
     if registry_root.is_dir() {
         let profile_report = profile_runner::run_multi_domain_profiles(&registry_root, &reg);
         cases.extend(profile_report.cases);
@@ -401,7 +423,10 @@ fn run_multi_impl_equality(reg: &HandlerRegistry) -> Vec<ConformanceCaseResult> 
         "wvx.reference.hex-decode@1",
         "wvx.reference.hex-decode-table@1",
     ];
-    if let Ok(enc) = reg.resolve("data.codec.hex_encode@1", Some("wvx.reference.hex-encode@1")) {
+    if let Ok(enc) = reg.resolve(
+        "data.codec.hex_encode@1",
+        Some("wvx.reference.hex-encode@1"),
+    ) {
         for (vname, input) in &vectors {
             let mut inputs = WvxValueMap::new();
             inputs.insert("bytes".into(), WvxValue::Bytes(input.to_vec()));
@@ -422,14 +447,8 @@ fn run_multi_impl_equality(reg: &HandlerRegistry) -> Vec<ConformanceCaseResult> 
     }
 
     // Domain 4 — base64 encode/decode multi-impl (crate vs pure)
-    let b64_enc = [
-        "base64.standard-encode@1",
-        "wvx.reference.base64-encode@1",
-    ];
-    let b64_dec = [
-        "base64.standard-decode@1",
-        "wvx.reference.base64-decode@1",
-    ];
+    let b64_enc = ["base64.standard-encode@1", "wvx.reference.base64-encode@1"];
+    let b64_dec = ["base64.standard-decode@1", "wvx.reference.base64-decode@1"];
     for (vname, input) in &vectors {
         cases.push(conform_multi_bytes(
             reg,
@@ -970,8 +989,7 @@ pub fn golden_dynamic_static_ex(
         run_dynamic_pilot_ex(parse_impl, serialize_impl, path_set_impl, input)?;
 
     let dir = unique_temp_dir("wvx-golden");
-    let static_json =
-        run_static_pilot_ex(parse_impl, serialize_impl, path_set_impl, input, &dir);
+    let static_json = run_static_pilot_ex(parse_impl, serialize_impl, path_set_impl, input, &dir);
     let _ = std::fs::remove_dir_all(&dir);
 
     match static_json {
@@ -1098,8 +1116,7 @@ mod tests {
 
     #[test]
     fn golden_default_pipeline() {
-        let report =
-            golden_dynamic_static(None, None, br#"{"hello":"world"}"#).expect("golden");
+        let report = golden_dynamic_static(None, None, br#"{"hello":"world"}"#).expect("golden");
         assert!(
             report.ok,
             "detail={:?} dyn={} static={}",
@@ -1125,12 +1142,9 @@ mod tests {
 
     #[test]
     fn golden_json_crate_parse() {
-        let report = golden_dynamic_static(
-            Some("json-crate.parse@1"),
-            None,
-            br#"{"hello":"world"}"#,
-        )
-        .expect("golden");
+        let report =
+            golden_dynamic_static(Some("json-crate.parse@1"), None, br#"{"hello":"world"}"#)
+                .expect("golden");
         assert!(report.ok, "detail={:?}", report.detail);
         assert_eq!(report.parse_impl, "json-crate.parse@1");
         assert_eq!(report.dynamic_json["tag"], "loom");

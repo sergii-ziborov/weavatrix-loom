@@ -63,7 +63,11 @@ pub fn lockfile_with_meta(
     resolutions: &[wvx_ir::ResolveDecision],
 ) -> String {
     let mut out = String::new();
-    writeln!(out, "# WVX lockfile — exact implementations used for this export").ok();
+    writeln!(
+        out,
+        "# WVX lockfile — exact implementations used for this export"
+    )
+    .ok();
     writeln!(out, "schema = {:?}", project.schema_version).ok();
     writeln!(out, "project = {:?}", project.id).ok();
     writeln!(out, "name = {:?}", project.name).ok();
@@ -142,7 +146,11 @@ pub fn pipeline(
         "// Capability graph is fixed; implementations are selected at export time.\n"
     )
     .ok();
-    writeln!(out, "// External adapters: dependency `wvx-adapters` (vendored).\n").ok();
+    writeln!(
+        out,
+        "// External adapters: dependency `wvx-adapters` (vendored).\n"
+    )
+    .ok();
     writeln!(
         out,
         "/// Run the exported pipeline. Input seeds the entrypoint `bytes` port."
@@ -167,8 +175,11 @@ pub fn pipeline(
             .get(instance_id)
             .ok_or_else(|| CompileError::Graph(format!("unresolved impl for {instance_id}")))?;
 
-        writeln!(out, "    // instance `{instance_id}`  capability `{cap_key}`  impl `{impl_id}`")
-            .ok();
+        writeln!(
+            out,
+            "    // instance `{instance_id}`  capability `{cap_key}`  impl `{impl_id}`"
+        )
+        .ok();
 
         if cap_key == "io.input.bytes@1" {
             let var = rust_var(instance_id, "bytes");
@@ -229,9 +240,8 @@ pub fn pipeline(
         );
 
         let sdk = sdk_emits.get(impl_id.as_str());
-        let call = adapters::emit_call(impl_id, &input_exprs, &config, sdk).map_err(|e| {
-            CompileError::UnsupportedImplementation(impl_id.clone(), e)
-        })?;
+        let call = adapters::emit_call(impl_id, &input_exprs, &config, sdk)
+            .map_err(|e| CompileError::UnsupportedImplementation(impl_id.clone(), e))?;
 
         // Determine output ports and types from capability
         let cap = project

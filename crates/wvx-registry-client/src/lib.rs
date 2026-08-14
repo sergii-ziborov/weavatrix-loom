@@ -14,8 +14,8 @@ pub mod admit;
 pub mod evidence_artifact;
 pub mod promote;
 pub mod provenance;
-pub mod resolve;
 pub mod requalify;
+pub mod resolve;
 pub mod verified;
 
 pub use admission::{
@@ -39,8 +39,8 @@ pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
     ProvenanceRecord,
 };
-pub use resolve::resolve_implementation;
 pub use requalify::{requalify_implementation, RequalifyReport};
+pub use resolve::resolve_implementation;
 pub use verified::{verify_all_conformant, verify_implementation, VerifiedImplementation};
 
 use serde::{Deserialize, Serialize};
@@ -147,9 +147,7 @@ impl LocalRegistry {
         if let Ok(path) = std::env::var("WVX_REGISTRY") {
             return Self::open(path);
         }
-        let cwd = std::env::current_dir().map_err(|e| {
-            RegistryError::Io(PathBuf::from("."), e)
-        })?;
+        let cwd = std::env::current_dir().map_err(|e| RegistryError::Io(PathBuf::from("."), e))?;
         let candidate = cwd.join("registry-dev");
         if candidate.is_dir() {
             return Self::open(candidate);
@@ -216,7 +214,10 @@ impl LocalRegistry {
         self.find_capability(id, version)
     }
 
-    pub fn find_implementation(&self, full_id: &str) -> Result<Option<Implementation>, RegistryError> {
+    pub fn find_implementation(
+        &self,
+        full_id: &str,
+    ) -> Result<Option<Implementation>, RegistryError> {
         Ok(self
             .list_implementations()?
             .into_iter()
@@ -247,9 +248,7 @@ impl LocalRegistry {
         let impls = self.list_implementations()?;
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         for imp in &impls {
-            *counts
-                .entry(imp.capability.as_key())
-                .or_insert(0) += 1;
+            *counts.entry(imp.capability.as_key()).or_insert(0) += 1;
         }
         let mut hits = Vec::new();
         for cap in self.list_capabilities()? {
@@ -309,7 +308,10 @@ impl LocalRegistry {
         Ok(hits)
     }
 
-    pub fn search_implementations(&self, query: &str) -> Result<Vec<ImplementationHit>, RegistryError> {
+    pub fn search_implementations(
+        &self,
+        query: &str,
+    ) -> Result<Vec<ImplementationHit>, RegistryError> {
         let q = query.trim().to_ascii_lowercase();
         Ok(self
             .list_implementations()?
@@ -355,15 +357,14 @@ impl LocalRegistry {
         implementation_json: &str,
         write_capability_if_new: bool,
     ) -> Result<InstallCandidateResult, RegistryError> {
-        let mut impl_val: serde_json::Value = serde_json::from_str(implementation_json)
-            .map_err(|e| RegistryError::Parse(self.root.join("implementation.json"), e.to_string()))?;
+        let mut impl_val: serde_json::Value =
+            serde_json::from_str(implementation_json).map_err(|e| {
+                RegistryError::Parse(self.root.join("implementation.json"), e.to_string())
+            })?;
         // Promote inventory_only → candidate for local registry listing.
         if let Some(obj) = impl_val.as_object_mut() {
             obj.insert("status".into(), serde_json::json!("candidate"));
-            let notes_owned = obj
-                .get("notes")
-                .and_then(|n| n.as_str())
-                .map(str::to_owned);
+            let notes_owned = obj.get("notes").and_then(|n| n.as_str()).map(str::to_owned);
             if let Some(notes) = notes_owned {
                 if !notes.contains("candidate") {
                     obj.insert(
@@ -391,8 +392,10 @@ impl LocalRegistry {
 
         let mut cap_written = None;
         if write_capability_if_new {
-            let mut cap_val: serde_json::Value = serde_json::from_str(capability_json)
-                .map_err(|e| RegistryError::Parse(self.root.join("capability.json"), e.to_string()))?;
+            let mut cap_val: serde_json::Value =
+                serde_json::from_str(capability_json).map_err(|e| {
+                    RegistryError::Parse(self.root.join("capability.json"), e.to_string())
+                })?;
             // Drop forge-only annotations before persistence.
             if let Some(obj) = cap_val.as_object_mut() {
                 obj.remove("_forge");
@@ -402,10 +405,7 @@ impl LocalRegistry {
             })?;
             let key = format!("{}@{}", cap.id, cap.version);
             if self.find_capability(&cap.id, &cap.version)?.is_none() {
-                let cap_path = self
-                    .root
-                    .join("capabilities")
-                    .join(format!("{key}.json"));
+                let cap_path = self.root.join("capabilities").join(format!("{key}.json"));
                 fs::create_dir_all(cap_path.parent().unwrap_or(self.root.as_path()))
                     .map_err(|e| RegistryError::Io(cap_path.clone(), e))?;
                 let pretty = serde_json::to_string_pretty(&cap_val)
@@ -424,7 +424,10 @@ impl LocalRegistry {
     }
 
     /// Merge missing capability contracts from the registry into a project.
-    pub fn hydrate_project_capabilities(&self, project: &mut Project) -> Result<usize, RegistryError> {
+    pub fn hydrate_project_capabilities(
+        &self,
+        project: &mut Project,
+    ) -> Result<usize, RegistryError> {
         let mut added = 0;
         let mut needed: Vec<CapabilityRef> = project
             .instances
@@ -493,13 +496,23 @@ mod tests {
         let reg = LocalRegistry::open(registry_dev()).unwrap();
         let caps = reg.list_capabilities().unwrap();
         let impls = reg.list_implementations().unwrap();
-        assert!(caps.len() >= 5, "expected pilot capabilities, got {}", caps.len());
-        assert!(impls.len() >= 8, "expected pilot implementations, got {}", impls.len());
+        assert!(
+            caps.len() >= 5,
+            "expected pilot capabilities, got {}",
+            caps.len()
+        );
+        assert!(
+            impls.len() >= 8,
+            "expected pilot implementations, got {}",
+            impls.len()
+        );
         let parse_impls = reg
             .implementations_for_capability("data.json.parse@1")
             .unwrap();
         assert!(parse_impls.len() >= 2);
-        assert!(parse_impls.iter().any(|i| i.full_id() == "serde-json.parse-owned@1"));
+        assert!(parse_impls
+            .iter()
+            .any(|i| i.full_id() == "serde-json.parse-owned@1"));
         assert!(parse_impls
             .iter()
             .any(|i| i.full_id() == "wvx.reference.json-parse@1"));

@@ -86,7 +86,11 @@ impl HandlerRegistry {
         self.register_with_default(handler, true);
     }
 
-    fn register_with_default(&mut self, handler: impl ErasedComponent + 'static, force_default: bool) {
+    fn register_with_default(
+        &mut self,
+        handler: impl ErasedComponent + 'static,
+        force_default: bool,
+    ) {
         let impl_id = handler.implementation_id().to_string();
         let cap = handler.capability_key().to_string();
         if force_default || !self.defaults.contains_key(&cap) {
@@ -155,10 +159,7 @@ impl HandlerRegistry {
 }
 
 /// Apply instance implementation overrides: `instance_id → implementation_id`.
-pub fn apply_implementation_overrides(
-    project: &mut Project,
-    overrides: &BTreeMap<String, String>,
-) {
+pub fn apply_implementation_overrides(project: &mut Project, overrides: &BTreeMap<String, String>) {
     for instance in &mut project.instances {
         if let Some(impl_id) = overrides.get(&instance.id) {
             instance.implementation = Some(impl_id.clone());
@@ -208,9 +209,9 @@ pub fn run_project(
             .map(|c| {
                 !c.outputs.is_empty()
                     && c.inputs.is_empty()
-                    && c.outputs.iter().all(|o| {
-                        port_values.contains_key(&format!("{instance_id}.{}", o.id))
-                    })
+                    && c.outputs
+                        .iter()
+                        .all(|o| port_values.contains_key(&format!("{instance_id}.{}", o.id)))
             })
             .unwrap_or(false);
         if fully_seeded {
@@ -225,9 +226,7 @@ pub fn run_project(
                             .iter()
                             .filter_map(|o| {
                                 let key = format!("{instance_id}.{}", o.id);
-                                port_values
-                                    .get(&key)
-                                    .map(|v| (o.id.clone(), v.clone()))
+                                port_values.get(&key).map(|v| (o.id.clone(), v.clone()))
                             })
                             .collect()
                     })
@@ -243,9 +242,9 @@ pub fn run_project(
                 // Allow missing handler only if outputs already partially seeded.
                 let has_seed = cap
                     .map(|c| {
-                        c.outputs.iter().any(|o| {
-                            port_values.contains_key(&format!("{instance_id}.{}", o.id))
-                        })
+                        c.outputs
+                            .iter()
+                            .any(|o| port_values.contains_key(&format!("{instance_id}.{}", o.id)))
                     })
                     .unwrap_or(false);
                 if has_seed {
@@ -379,11 +378,18 @@ mod tests {
         fn capability_key(&self) -> &str {
             "test.identity.bytes@1"
         }
-        fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        fn execute(
+            &self,
+            inputs: &WvxValueMap,
+            _config: &ConfigMap,
+        ) -> Result<WvxValueMap, String> {
             let mut out = WvxValueMap::new();
             out.insert(
                 "bytes".into(),
-                inputs.get("bytes").cloned().unwrap_or(WvxValue::Bytes(vec![])),
+                inputs
+                    .get("bytes")
+                    .cloned()
+                    .unwrap_or(WvxValue::Bytes(vec![])),
             );
             Ok(out)
         }

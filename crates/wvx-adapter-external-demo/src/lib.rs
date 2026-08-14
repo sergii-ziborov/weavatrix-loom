@@ -12,8 +12,7 @@ pub const CAPABILITY_KEY: &str = "data.json.parse@1";
 /// Parse JSON and uppercase all **string leaf values** (demo transform).
 pub fn upper_parse(bytes: &[u8]) -> Result<Value, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| format!("invalid-unicode: {e}"))?;
-    let mut v: Value =
-        serde_json::from_str(text).map_err(|e| format!("invalid-syntax: {e}"))?;
+    let mut v: Value = serde_json::from_str(text).map_err(|e| format!("invalid-syntax: {e}"))?;
     uppercase_strings(&mut v);
     Ok(v)
 }

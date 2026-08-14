@@ -16,10 +16,7 @@ fn parse_slice(input: &[u8]) -> Result<Value, String> {
     let value = p.parse_value()?;
     p.skip_ws();
     if p.i != p.bytes.len() {
-        return Err(format!(
-            "invalid-syntax: trailing input at byte {}",
-            p.i
-        ));
+        return Err(format!("invalid-syntax: trailing input at byte {}", p.i));
     }
     Ok(value)
 }
@@ -190,14 +187,10 @@ impl Parser<'_> {
                             "invalid-syntax: \\u escapes not supported in lite parser v0.1".into(),
                         );
                     }
-                    Some(b) => {
-                        return Err(format!("invalid-syntax: bad escape {}", b as char))
-                    }
+                    Some(b) => return Err(format!("invalid-syntax: bad escape {}", b as char)),
                     None => return Err("invalid-syntax: truncated escape".into()),
                 },
-                Some(b) if b < 0x20 => {
-                    return Err("invalid-syntax: control char in string".into())
-                }
+                Some(b) if b < 0x20 => return Err("invalid-syntax: control char in string".into()),
                 Some(b) if b < 0x80 => out.push(b as char),
                 Some(first) => {
                     // Multi-byte UTF-8 (JSON strings are Unicode; do not cast each byte to char).
@@ -253,8 +246,7 @@ impl Parser<'_> {
                 self.i += 1;
             }
         }
-        let slice = std::str::from_utf8(&self.bytes[start..self.i])
-            .map_err(|e| e.to_string())?;
+        let slice = std::str::from_utf8(&self.bytes[start..self.i]).map_err(|e| e.to_string())?;
         if let Ok(i) = slice.parse::<i64>() {
             return Ok(Value::Number(Number::from(i)));
         }

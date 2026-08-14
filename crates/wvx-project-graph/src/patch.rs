@@ -160,10 +160,7 @@ pub fn preview_patch(project: &Project, patch: &GraphPatch) -> Result<PatchPrevi
 ///
 /// Requires `patch.base_revision` to match when set (PATCH-001). On validation failure
 /// returns [`PatchError::ValidationFailed`] with a preview (revision unchanged).
-pub fn commit_patch(
-    project: &Project,
-    patch: &GraphPatch,
-) -> Result<PatchApplyResult, PatchError> {
+pub fn commit_patch(project: &Project, patch: &GraphPatch) -> Result<PatchApplyResult, PatchError> {
     let preview = preview_patch(project, patch)?;
     if !preview.validation.is_ok() {
         let error_count = preview.validation.errors().count();
@@ -221,7 +218,10 @@ fn apply_one(project: &mut Project, op: &GraphOp) -> Result<(), GraphError> {
             capability,
         } => {
             if let Some(cap) = capability {
-                if project.capability_for(&CapabilityRef::new(&cap.id, &cap.version)).is_none() {
+                if project
+                    .capability_for(&CapabilityRef::new(&cap.id, &cap.version))
+                    .is_none()
+                {
                     project.capabilities.push(cap.clone());
                 }
             }
@@ -325,7 +325,9 @@ pub fn propose_json_pipeline_patch_relative(
                 if project
                     .capability_for(&CapabilityRef::new(&c.id, &c.version))
                     .is_none()
-                    && !merged.iter().any(|m| m.id == c.id && m.version == c.version)
+                    && !merged
+                        .iter()
+                        .any(|m| m.id == c.id && m.version == c.version)
                 {
                     merged.push(c);
                 }
@@ -333,7 +335,10 @@ pub fn propose_json_pipeline_patch_relative(
             // Also allow registry list via empty→caller; here we only have project.
             if merged.len() < 5 {
                 for c in pilot_capabilities() {
-                    if !merged.iter().any(|m| m.id == c.id && m.version == c.version) {
+                    if !merged
+                        .iter()
+                        .any(|m| m.id == c.id && m.version == c.version)
+                    {
                         merged.push(c);
                     }
                 }
@@ -359,11 +364,8 @@ pub fn propose_json_pipeline_patch_relative(
 
     let mut ops = Vec::new();
     let mut unresolved = Vec::new();
-    let mut will_exist: std::collections::BTreeSet<String> = project
-        .instances
-        .iter()
-        .map(|i| i.id.clone())
-        .collect();
+    let mut will_exist: std::collections::BTreeSet<String> =
+        project.instances.iter().map(|i| i.id.clone()).collect();
 
     // --- instances ---
     for (id, cap_id, impl_id, x) in PILOT_NODES {
@@ -474,8 +476,8 @@ pub fn propose_json_pipeline_patch_relative(
     if ops.is_empty() && unresolved.is_empty() {
         return GraphPatch {
             ops,
-            rationale: "Relative propose: project already matches the JSON pilot pipeline (no ops)."
-                .into(),
+            rationale:
+                "Relative propose: project already matches the JSON pilot pipeline (no ops).".into(),
             unresolved: vec![
                 "Choose parse implementation (serde-json vs reference)".into(),
                 "Choose serialize implementation (compact vs pretty)".into(),
@@ -609,7 +611,11 @@ mod tests {
         project.schema_version = PROJECT_SCHEMA_VERSION.into();
         let patch = propose_json_pipeline_patch(&[]);
         let result = apply_graph_patch(&project, &patch).unwrap();
-        assert!(result.validation.is_ok(), "{:?}", result.validation.diagnostics);
+        assert!(
+            result.validation.is_ok(),
+            "{:?}",
+            result.validation.diagnostics
+        );
         assert_eq!(result.project.instances.len(), 5);
         assert_eq!(result.project.bindings.len(), 4);
     }
@@ -669,7 +675,11 @@ mod tests {
         );
 
         let result = apply_graph_patch(&project, &patch).unwrap();
-        assert!(result.validation.is_ok(), "{:?}", result.validation.diagnostics);
+        assert!(
+            result.validation.is_ok(),
+            "{:?}",
+            result.validation.diagnostics
+        );
         assert_eq!(result.project.instances.len(), 5);
         assert_eq!(result.project.bindings.len(), 4);
     }
@@ -681,9 +691,9 @@ mod tests {
         let full = propose_json_pipeline_patch(&[]);
         let mut applied = apply_graph_patch(&project, &full).unwrap().project;
         // Drop one binding
-        applied.bindings.retain(|b| {
-            !(b.from.instance == "parse" && b.to.instance == "path_set")
-        });
+        applied
+            .bindings
+            .retain(|b| !(b.from.instance == "parse" && b.to.instance == "path_set"));
         let patch = propose_json_pipeline_patch_relative(&applied, &[]);
         assert_eq!(patch.ops.len(), 1, "ops={:?}", patch.ops);
         assert!(matches!(
@@ -777,7 +787,10 @@ mod tests {
         };
         let err = commit_patch(&project, &patch).unwrap_err();
         match err {
-            PatchError::ValidationFailed { error_count, preview } => {
+            PatchError::ValidationFailed {
+                error_count,
+                preview,
+            } => {
                 assert!(error_count > 0);
                 assert!(!preview.is_valid());
                 assert_eq!(preview.base_revision, 0);

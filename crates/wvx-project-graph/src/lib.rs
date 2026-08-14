@@ -93,7 +93,10 @@ pub fn disconnect(project: &mut Project, from: &PortPath, to: &PortPath) -> bool
     project.bindings.len() != before
 }
 
-pub fn set_entrypoint(project: &mut Project, instance_id: Option<String>) -> Result<(), GraphError> {
+pub fn set_entrypoint(
+    project: &mut Project,
+    instance_id: Option<String>,
+) -> Result<(), GraphError> {
     if let Some(ref id) = instance_id {
         if project.instance(id).is_none() {
             return Err(GraphError::MissingInstance(id.clone()));
@@ -137,12 +140,7 @@ mod tests {
         let mut p = Project::new("t", "t");
         add_instance(&mut p, sample_instance("a")).unwrap();
         add_instance(&mut p, sample_instance("b")).unwrap();
-        connect(
-            &mut p,
-            PortPath::new("a", "out"),
-            PortPath::new("b", "in"),
-        )
-        .unwrap();
+        connect(&mut p, PortPath::new("a", "out"), PortPath::new("b", "in")).unwrap();
         assert_eq!(p.bindings.len(), 1);
         remove_instance(&mut p, "a").unwrap();
         assert!(p.bindings.is_empty());

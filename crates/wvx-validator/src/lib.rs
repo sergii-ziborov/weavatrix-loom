@@ -7,9 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use wvx_ir::{
-    Implementation, LifecycleStatus, PortPath, Project, PROJECT_SCHEMA_VERSION,
-};
+use wvx_ir::{Implementation, LifecycleStatus, PortPath, Project, PROJECT_SCHEMA_VERSION};
 use wvx_types::TypeRef;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,11 +102,7 @@ impl ValidateOptions {
             implementations: Vec::new(),
             strict_schema: true,
             require_release_lifecycle: false,
-            allowed_compiler_profiles: vec![
-                "dev".into(),
-                "release".into(),
-                "check".into(),
-            ],
+            allowed_compiler_profiles: vec!["dev".into(), "release".into(), "check".into()],
             require_known_implementation: false,
         }
     }
@@ -363,18 +357,13 @@ fn pass_bindings(project: &Project, _opts: &ValidateOptions, out: &mut Vec<Diagn
             out.push(error(
                 "bindings",
                 "binding.duplicate",
-                format!(
-                    "Duplicate binding {} → {}",
-                    binding.from, binding.to
-                ),
+                format!("Duplicate binding {} → {}", binding.from, binding.to),
                 Some(format!("{}→{}", binding.from, binding.to)),
             ));
             continue;
         }
 
-        *targets
-            .entry(binding.to.to_string())
-            .or_insert(0) += 1;
+        *targets.entry(binding.to.to_string()).or_insert(0) += 1;
 
         let from_ty = match port_type(project, &binding.from, true) {
             Ok(ty) => ty,
@@ -418,9 +407,7 @@ fn pass_bindings(project: &Project, _opts: &ValidateOptions, out: &mut Vec<Diagn
                 out.push(error(
                     "bindings",
                     "binding.cardinality",
-                    format!(
-                        "Input `{path}` has {count} producers (at most one allowed)"
-                    ),
+                    format!("Input `{path}` has {count} producers (at most one allowed)"),
                     Some(key.clone()),
                 ));
             }
@@ -445,11 +432,7 @@ fn pass_cycles(project: &Project, _opts: &ValidateOptions, out: &mut Vec<Diagnos
     }
 }
 
-fn pass_impl_compatibility(
-    project: &Project,
-    opts: &ValidateOptions,
-    out: &mut Vec<Diagnostic>,
-) {
+fn pass_impl_compatibility(project: &Project, opts: &ValidateOptions, out: &mut Vec<Diagnostic>) {
     let by_full: BTreeMap<String, &Implementation> = opts
         .implementations
         .iter()
@@ -565,9 +548,7 @@ fn pass_outputs(project: &Project, _opts: &ValidateOptions, out: &mut Vec<Diagno
     // Map: output port path → number of consumers
     let mut consumers: BTreeMap<String, usize> = BTreeMap::new();
     for b in &project.bindings {
-        *consumers
-            .entry(b.from.to_string())
-            .or_insert(0) += 1;
+        *consumers.entry(b.from.to_string()).or_insert(0) += 1;
     }
 
     for instance in &project.instances {
@@ -615,11 +596,7 @@ fn pass_outputs(project: &Project, _opts: &ValidateOptions, out: &mut Vec<Diagno
     }
 }
 
-fn pass_compiler_profile(
-    project: &Project,
-    opts: &ValidateOptions,
-    out: &mut Vec<Diagnostic>,
-) {
+fn pass_compiler_profile(project: &Project, opts: &ValidateOptions, out: &mut Vec<Diagnostic>) {
     let Some(profile) = project.metadata.get("compiler_profile") else {
         return;
     };

@@ -120,7 +120,9 @@ pub fn vendor_crate_files(
     let root = if Path::new(src_path).is_absolute() {
         PathBuf::from(src_path)
     } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(src_path)
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(src_path)
     };
     let root = root
         .canonicalize()

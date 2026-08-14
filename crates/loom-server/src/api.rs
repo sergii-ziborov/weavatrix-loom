@@ -38,10 +38,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/registry/admission", get(reg_admission))
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
-        .route("/api/v1/forge/cargo-search", get(forge_cargo_search_handler))
+        .route(
+            "/api/v1/forge/cargo-search",
+            get(forge_cargo_search_handler),
+        )
         .route("/api/v1/forge/extract", post(forge_extract_handler))
         .route("/api/v1/forge/facts", post(forge_facts_handler))
-        .route("/api/v1/forge/export-facts", post(forge_export_facts_handler))
+        .route(
+            "/api/v1/forge/export-facts",
+            post(forge_export_facts_handler),
+        )
         .route("/api/v1/forge/match", post(forge_match_handler))
         .route("/api/v1/forge/draft", post(forge_draft_handler))
         .route(
@@ -217,10 +223,7 @@ struct SearchQuery {
     q: String,
 }
 
-async fn reg_search(
-    State(state): State<AppState>,
-    Query(q): Query<SearchQuery>,
-) -> Response {
+async fn reg_search(State(state): State<AppState>, Query(q): Query<SearchQuery>) -> Response {
     match registry_search(state.registry.as_ref(), &q.q) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
@@ -239,20 +242,13 @@ async fn reg_implementations(
     State(state): State<AppState>,
     Query(q): Query<ImplQuery>,
 ) -> Response {
-    match registry_implementations(
-        state.registry.as_ref(),
-        q.capability.as_deref(),
-        &q.q,
-    ) {
+    match registry_implementations(state.registry.as_ref(), q.capability.as_deref(), &q.q) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
 }
 
-async fn reg_inspect(
-    State(state): State<AppState>,
-    Path(key): Path<String>,
-) -> Response {
+async fn reg_inspect(State(state): State<AppState>, Path(key): Path<String>) -> Response {
     match registry_inspect(state.registry.as_ref(), &key) {
         Ok(resp) => {
             if !resp.ok {
@@ -675,10 +671,7 @@ struct ProposeBody {
     project: Option<Project>,
 }
 
-async fn propose_patch(
-    State(state): State<AppState>,
-    Json(body): Json<ProposeBody>,
-) -> Response {
+async fn propose_patch(State(state): State<AppState>, Json(body): Json<ProposeBody>) -> Response {
     match graph_propose_patch(Some(state.registry.as_ref()), body.project.as_ref()) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
@@ -695,11 +688,7 @@ async fn propose_intent(
     State(state): State<AppState>,
     Json(body): Json<ProposeIntentBody>,
 ) -> Response {
-    match graph_propose_intent(
-        Some(state.registry.as_ref()),
-        &body.project,
-        &body.intent,
-    ) {
+    match graph_propose_intent(Some(state.registry.as_ref()), &body.project, &body.intent) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
@@ -751,11 +740,7 @@ fn bus_error(e: BusError) -> Response {
         BusError::Registry(_) => StatusCode::BAD_REQUEST,
         BusError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
-    (
-        status,
-        Json(BusResponse::<()>::err(vec![e.to_string()])),
-    )
-        .into_response()
+    (status, Json(BusResponse::<()>::err(vec![e.to_string()]))).into_response()
 }
 
 #[cfg(test)]
@@ -868,7 +853,11 @@ mod tests {
         assert_eq!(v["ok"], true);
         // Find serialize output in traces/outputs
         let outputs = &v["data"]["outputs"];
-        assert!(outputs.get("serialize.bytes").is_some() || outputs.get("output.bytes").is_some() || outputs.as_object().map(|o| !o.is_empty()).unwrap_or(false));
+        assert!(
+            outputs.get("serialize.bytes").is_some()
+                || outputs.get("output.bytes").is_some()
+                || outputs.as_object().map(|o| !o.is_empty()).unwrap_or(false)
+        );
     }
 
     #[tokio::test]
@@ -898,7 +887,10 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["ok"], true, "body={v}");
-        assert!(v["data"]["traces"].as_array().map(|a| a.len() >= 4).unwrap_or(false));
+        assert!(v["data"]["traces"]
+            .as_array()
+            .map(|a| a.len() >= 4)
+            .unwrap_or(false));
     }
 
     #[test]

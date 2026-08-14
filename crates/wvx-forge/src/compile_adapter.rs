@@ -60,12 +60,7 @@ pub fn compile_adapter_from_draft(
 
     let call_path = upstream_call_path(package_name, draft);
     let shape = classify_shape(draft);
-    let (lib_rs, sdk_template) = render_adapter_lib(
-        package_name,
-        draft,
-        &call_path,
-        shape,
-    );
+    let (lib_rs, sdk_template) = render_adapter_lib(package_name, draft, &call_path, shape);
     let cargo_toml = render_cargo_toml(&crate_name, package_name, &package_root_str, shape);
 
     write(&root.join("Cargo.toml"), &cargo_toml)?;
@@ -106,18 +101,35 @@ pub fn compile_adapter_from_draft(
             .output()
             .map_err(|e| ForgeError::Io(root.clone(), e))?;
         let ok = output.status.success();
-        compile_ok = Some(ok);
         let log = format!(
             "stdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
         compile_log = Some(log.chars().take(4000).collect());
-        if ok {
+        // Gate C v2: not_wired() placeholders must never count as compile success.
+        let wired = !lib_rs.contains("fn not_wired")
+            && sdk_template
+                .as_ref()
+                .map(|t| !t.contains("not_wired"))
+                .unwrap_or(true);
+        let effective_ok = ok && wired;
+        compile_ok = Some(effective_ok);
+        if ok && !wired {
+            notes.push(
+                "cargo check ok but adapter is not_wired() — NOT counted as compile success (Gate C v2)"
+                    .into(),
+            );
+        }
+        if effective_ok {
             status = "candidate".into();
             notes.push("cargo check passed → local status candidate (not registry admit).".into());
-        } else {
-            notes.push("cargo check failed — keep inventory_only; fix path/signature manually.".into());
+            notes.push("wired_upstream=true".into());
+        } else if !ok {
+            notes.push(
+                "cargo check failed — keep inventory_only; fix path/signature manually.".into(),
+            );
+            notes.push("wired_upstream=false".into());
         }
     } else {
         notes.push("cargo check skipped (pass check=true to verify compile).".into());
@@ -177,7 +189,10 @@ pub fn compile_adapters_batch(
         }
     }
     let checked_n = adapters.iter().filter(|a| a.compile_ok.is_some()).count();
-    let ok_n = adapters.iter().filter(|a| a.compile_ok == Some(true)).count();
+    let ok_n = adapters
+        .iter()
+        .filter(|a| a.compile_ok == Some(true))
+        .count();
     let compile_rate = if checked_n == 0 {
         0.0
     } else {
@@ -200,22 +215,38 @@ enum AdapterShape {
     BytesToJson,
     JsonToBytes,
     JsonToJson,
+    /// bytes → bytes (hash digest, compress, codec, text)
+    BytesToBytes,
     Unknown,
 }
 
 fn classify_shape(draft: &AdapterDraft) -> AdapterShape {
     // Prefer capability id from ontology match.
-    if draft.capability_id.starts_with("data.json.parse") {
+    let cap = draft.capability_id.as_str();
+    if cap.starts_with("data.json.parse") {
         return AdapterShape::BytesToJson;
     }
-    if draft.capability_id.starts_with("data.json.serialize") {
+    if cap.starts_with("data.json.serialize") {
         return AdapterShape::JsonToBytes;
     }
-    if draft.capability_id.starts_with("data.json.path_set") {
+    if cap.starts_with("data.json.path_set") {
         return AdapterShape::JsonToJson;
+    }
+    if cap.starts_with("data.hash.")
+        || cap.starts_with("data.compress.")
+        || cap.starts_with("data.codec.")
+        || cap.starts_with("data.text.")
+    {
+        return AdapterShape::BytesToBytes;
     }
     // Fall back on stub signature heuristics.
     let sig = draft.signature.to_ascii_lowercase();
+    if sig.contains("&[u8]")
+        && (sig.contains("vec<u8>") || sig.contains("result<vec"))
+        && !sig.contains("value")
+    {
+        return AdapterShape::BytesToBytes;
+    }
     if sig.contains("&[u8]") && (sig.contains("value") || sig.contains("result")) {
         return AdapterShape::BytesToJson;
     }
@@ -367,6 +398,42 @@ pub fn path_set(value: Value, path: &str, set_to: Value) -> Result<Value, String
             );
             (lib, None)
         }
+        AdapterShape::BytesToBytes => {
+            let template = format!("{pkg_rust}_forge_adapter::transform({{bytes}}.as_slice())?");
+            // Avoid double-defining when upstream already named `transform`.
+            let alias = if fn_name == "transform" {
+                String::new()
+            } else {
+                format!(
+                    "\npub fn {fn_name}(bytes: &[u8]) -> Result<Vec<u8>, String> {{\n    transform(bytes)\n}}\n"
+                )
+            };
+            let lib = format!(
+                r#"//! FORGE-008 compileable adapter — NOT admitted.
+//! Upstream: `{call_path}`
+//! Implementation: {impl_id}
+//! Capability: {cap_key}
+
+pub const IMPLEMENTATION_ID: &str = "{impl_id}";
+pub const CAPABILITY_KEY: &str = "{cap_key}";
+
+/// Boundary entry: bytes → bytes (hash / compress / codec / text)
+pub fn transform(bytes: &[u8]) -> Result<Vec<u8>, String> {{
+    {call_path}(bytes)
+}}
+{alias}
+#[cfg(test)]
+mod runtime_smoke {{
+    use super::*;
+    #[test]
+    fn calls_upstream() {{
+        let _ = transform(b"gate-c-v2").ok();
+    }}
+}}
+"#
+            );
+            (lib, Some(template))
+        }
         AdapterShape::Unknown => {
             let lib = format!(
                 r#"//! FORGE-008 draft adapter (unknown shape) — NOT admitted.
@@ -420,9 +487,7 @@ fn write(path: &Path, contents: &str) -> Result<(), ForgeError> {
 
 /// Cargo `path = "..."` on Windows rejects `\\?\` extended prefixes from canonicalize.
 fn cargo_path_dep(path: &Path) -> String {
-    let abs = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let mut s = abs.display().to_string();
     for prefix in [r"\\?\UNC\", r"\\?\", r"//?/"] {
         if let Some(rest) = s.strip_prefix(prefix) {

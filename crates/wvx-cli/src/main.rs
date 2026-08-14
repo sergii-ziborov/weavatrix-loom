@@ -7,20 +7,20 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
     forge_compile, forge_draft, forge_draft_facts, forge_export_facts, forge_extract,
-    forge_facts_file, forge_gate_c_ex, forge_inventory, forge_match, forge_match_facts,
+    forge_facts_file, forge_gate_c_ex2, forge_inventory, forge_match, forge_match_facts,
     graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
-    implementations_list, load_project_path, pilot_bench, project_export_rust,
-    project_export_to_dir_with_policy, project_export_to_dir_with_registry, project_run,
-    pilot_parse_case_results, project_validate, registry_admission_audit, registry_human_admit,
+    implementations_list, load_project_path, pilot_bench, pilot_parse_case_results,
+    project_export_rust, project_export_to_dir_with_policy, project_export_to_dir_with_registry,
+    project_run, project_validate, registry_admission_audit, registry_human_admit,
     registry_implementations, registry_inspect, registry_mint_evidence, registry_promote,
     registry_requalify, registry_resolve, registry_search, registry_summary,
     registry_truthful_audit, registry_verify_evidence, BusError, CompilePolicy,
 };
-use wvx_registry_client::{CaseResult, HumanSignature, PromoteRequest};
 use wvx_forge::load_facts_file;
-use wvx_registry_client::AdmitRequest;
 use wvx_project_graph::GraphPatch;
+use wvx_registry_client::AdmitRequest;
 use wvx_registry_client::LocalRegistry;
+use wvx_registry_client::{CaseResult, HumanSignature, PromoteRequest};
 use wvx_types::WvxValue;
 
 fn main() -> ExitCode {
@@ -528,12 +528,8 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                         return ExitCode::FAILURE;
                     }
                 };
-                match forge_draft_facts(
-                    &bundle,
-                    name,
-                    out.map(std::path::Path::new),
-                    reg.as_ref(),
-                ) {
+                match forge_draft_facts(&bundle, name, out.map(std::path::Path::new), reg.as_ref())
+                {
                     Ok(resp) => {
                         println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                         ExitCode::SUCCESS
@@ -587,7 +583,9 @@ fn cmd_forge(args: &[String]) -> ExitCode {
         "compile" => {
             // wvx forge compile <path> -o <dir> [--name substr] [--check]
             let Some(path) = args.get(1) else {
-                eprintln!("usage: wvx forge compile <crate-path> -o <dir> [--name <substr>] [--check]");
+                eprintln!(
+                    "usage: wvx forge compile <crate-path> -o <dir> [--name <substr>] [--check]"
+                );
                 return ExitCode::FAILURE;
             };
             let mut name = None;
@@ -642,11 +640,12 @@ fn cmd_forge(args: &[String]) -> ExitCode {
             }
         }
         "gate-c" | "economics" => {
-            // wvx forge gate-c [--workspace root] [--external path] [--human-minutes N] [--check|--no-check]
+            // wvx forge gate-c [--workspace root] [--external path] [--blind|--v2] [--human-minutes N] [--check]
             let mut workspace: Option<&str> = None;
             let mut external: Option<&str> = None;
             let mut human_minutes: Option<f64> = None;
             let mut check = true;
+            let mut blind_v2 = false;
             let mut i = 1;
             while i < args.len() {
                 if args[i] == "--workspace" || args[i] == "-w" {
@@ -659,10 +658,13 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                     i += 2;
                     continue;
                 }
+                if args[i] == "--blind" || args[i] == "--v2" {
+                    blind_v2 = true;
+                    i += 1;
+                    continue;
+                }
                 if args[i] == "--human-minutes" {
-                    human_minutes = args
-                        .get(i + 1)
-                        .and_then(|s| s.parse::<f64>().ok());
+                    human_minutes = args.get(i + 1).and_then(|s| s.parse::<f64>().ok());
                     i += 2;
                     continue;
                 }
@@ -679,12 +681,13 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                 i += 1;
             }
             let reg = LocalRegistry::open_default().ok();
-            match forge_gate_c_ex(
+            match forge_gate_c_ex2(
                 workspace.map(std::path::Path::new),
                 external.map(std::path::Path::new),
                 reg.as_ref(),
                 check,
                 human_minutes,
+                blind_v2,
             ) {
                 Ok(resp) => {
                     if let Some(r) = &resp.data {
@@ -970,7 +973,9 @@ fn cmd_registry(args: &[String]) -> ExitCode {
     let rest = args_without_path(rest);
 
     let result = match sub {
-        "summary" | "list" => registry_summary(&reg).map(|r| serde_json::to_string_pretty(&r).unwrap()),
+        "summary" | "list" => {
+            registry_summary(&reg).map(|r| serde_json::to_string_pretty(&r).unwrap())
+        }
         "search" => {
             let q = rest.first().map(String::as_str).unwrap_or("");
             registry_search(&reg, q).map(|r| serde_json::to_string_pretty(&r).unwrap())
@@ -1188,9 +1193,7 @@ fn cmd_registry(args: &[String]) -> ExitCode {
         "mint-evidence" | "mint_evidence" => {
             let id = rest.first().map(|s| s.as_str()).unwrap_or("");
             if id.is_empty() || id.starts_with("--") {
-                eprintln!(
-                    "usage: wvx registry mint-evidence <impl-id> [--profile id] [--cases N]"
-                );
+                eprintln!("usage: wvx registry mint-evidence <impl-id> [--profile id] [--cases N]");
                 return ExitCode::FAILURE;
             }
             let mut profile: Option<String> = None;
@@ -1316,48 +1319,46 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 }
             };
         }
-        "check" | "audit" | "admission" => {
-            match registry_admission_audit(&reg) {
-                Ok(resp) => {
-                    let report = resp.data.as_ref();
-                    if let Some(r) = report {
-                        eprintln!(
-                            "admission audit: {} checked, {} overclaim, {} underclaim — {}",
-                            r.checked,
-                            r.overclaims,
-                            r.underclaims,
-                            if r.ok { "PASS" } else { "FAIL" }
-                        );
-                        for item in &r.items {
-                            if item.overclaim || item.underclaim || !item.findings.is_empty() {
-                                let mark = if item.overclaim {
-                                    "OVER"
-                                } else if item.underclaim {
-                                    "under"
-                                } else {
-                                    "info"
-                                };
-                                eprintln!(
-                                    "  [{mark}] {} declared={} justified={}",
-                                    item.full_id, item.declared, item.justified
-                                );
-                                for f in &item.findings {
-                                    eprintln!("         {}: {}", f.severity, f.message);
-                                }
+        "check" | "audit" | "admission" => match registry_admission_audit(&reg) {
+            Ok(resp) => {
+                let report = resp.data.as_ref();
+                if let Some(r) = report {
+                    eprintln!(
+                        "admission audit: {} checked, {} overclaim, {} underclaim — {}",
+                        r.checked,
+                        r.overclaims,
+                        r.underclaims,
+                        if r.ok { "PASS" } else { "FAIL" }
+                    );
+                    for item in &r.items {
+                        if item.overclaim || item.underclaim || !item.findings.is_empty() {
+                            let mark = if item.overclaim {
+                                "OVER"
+                            } else if item.underclaim {
+                                "under"
+                            } else {
+                                "info"
+                            };
+                            eprintln!(
+                                "  [{mark}] {} declared={} justified={}",
+                                item.full_id, item.declared, item.justified
+                            );
+                            for f in &item.findings {
+                                eprintln!("         {}: {}", f.severity, f.message);
                             }
                         }
                     }
-                    let text = serde_json::to_string_pretty(&resp).unwrap();
-                    if resp.data.as_ref().map(|d| d.ok).unwrap_or(false) {
-                        Ok(text)
-                    } else {
-                        println!("{text}");
-                        return ExitCode::FAILURE;
-                    }
                 }
-                Err(e) => Err(e),
+                let text = serde_json::to_string_pretty(&resp).unwrap();
+                if resp.data.as_ref().map(|d| d.ok).unwrap_or(false) {
+                    Ok(text)
+                } else {
+                    println!("{text}");
+                    return ExitCode::FAILURE;
+                }
             }
-        }
+            Err(e) => Err(e),
+        },
         "admit" => {
             // wvx registry admit <impl-id> --reviewer … --human-ack … --security-ack … --reason … --bench-file … [--apply]
             let Some(impl_id) = rest.first().cloned() else {
@@ -1415,9 +1416,7 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                                         .and_then(|x| x.as_str())
                                         .map(|s| s.to_string())
                                 })
-                                .unwrap_or_else(|| {
-                                    format!("file:{}:len={}", p.display(), t.len())
-                                })
+                                .unwrap_or_else(|| format!("file:{}:len={}", p.display(), t.len()))
                         } else {
                             format!("file:{}:len={}", p.display(), t.len())
                         }
@@ -1540,7 +1539,8 @@ fn cmd_run(args: &[String]) -> ExitCode {
         }
     };
 
-    match load_project_path(path.as_ref()).and_then(|p| project_run(&p, input_bytes, &impl_overrides))
+    match load_project_path(path.as_ref())
+        .and_then(|p| project_run(&p, input_bytes, &impl_overrides))
     {
         Ok(resp) => {
             if env::var_os("WVX_RUN_JSON").is_some() {
@@ -1548,10 +1548,7 @@ fn cmd_run(args: &[String]) -> ExitCode {
             } else if let Some(data) = &resp.data {
                 for tr in &data.traces {
                     let status = if tr.error.is_some() { "ERR" } else { "ok" };
-                    let impl_s = tr
-                        .implementation
-                        .as_deref()
-                        .unwrap_or("-");
+                    let impl_s = tr.implementation.as_deref().unwrap_or("-");
                     println!(
                         "{:>10.3} ms  [{status}]  {}  ({})  impl={}",
                         tr.duration_ms, tr.instance_id, tr.capability, impl_s
@@ -1744,13 +1741,7 @@ fn cmd_export(args: &[String]) -> ExitCode {
                 policy,
             )
         } else {
-            project_export_to_dir_with_registry(
-                &project,
-                &dir,
-                check,
-                run_input,
-                reg.as_ref(),
-            )
+            project_export_to_dir_with_registry(&project, &dir, check, run_input, reg.as_ref())
         };
         match result {
             Ok(resp) => {
@@ -1793,5 +1784,3 @@ fn cmd_export(args: &[String]) -> ExitCode {
         }
     }
 }
-
-

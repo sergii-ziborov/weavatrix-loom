@@ -45,11 +45,7 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
     }
 }
 
-pub fn supports(
-    implementation_id: &str,
-    capability_key: &str,
-    sdk_emit: Option<&SdkEmit>,
-) -> bool {
+pub fn supports(implementation_id: &str, capability_key: &str, sdk_emit: Option<&SdkEmit>) -> bool {
     if is_passthrough_io(capability_key) {
         return true;
     }
@@ -60,10 +56,7 @@ pub fn supports(
 }
 
 pub fn is_passthrough_io(capability_key: &str) -> bool {
-    matches!(
-        capability_key,
-        "io.input.bytes@1" | "io.output.bytes@1"
-    )
+    matches!(capability_key, "io.input.bytes@1" | "io.output.bytes@1")
 }
 
 pub fn default_implementation(capability_key: &str) -> Option<&'static str> {
@@ -308,7 +301,9 @@ pub fn emit_call(
     config_json: &serde_json::Value,
     sdk_emit: Option<&SdkEmit>,
 ) -> Result<String, String> {
-    let effective = sdk_emit.cloned().or_else(|| built_in_sdk_emit(implementation_id));
+    let effective = sdk_emit
+        .cloned()
+        .or_else(|| built_in_sdk_emit(implementation_id));
     if let Some(sdk) = effective {
         let mut map = BTreeMap::new();
         for (k, v) in input_exprs {

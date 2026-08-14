@@ -17,12 +17,15 @@ pub fn decompress(bytes: &[u8]) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{flate2_gzip, flate2_gunzip};
+    use crate::{flate2_gunzip, flate2_gzip};
 
     #[test]
     fn matches_oneshot() {
         let raw = b"take path";
         let c = flate2_gzip::compress(raw).unwrap();
-        assert_eq!(decompress(&c).unwrap(), flate2_gunzip::decompress(&c).unwrap());
+        assert_eq!(
+            decompress(&c).unwrap(),
+            flate2_gunzip::decompress(&c).unwrap()
+        );
     }
 }

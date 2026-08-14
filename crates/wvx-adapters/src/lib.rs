@@ -55,9 +55,15 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("serde-json.pointer-set@1", "serde_json_pointer_set"),
     // data.text.* family (second pilot vertical)
     ("wvx.reference.text-uppercase@1", "reference_text_uppercase"),
-    ("wvx.reference.text-ascii-upper@1", "reference_text_ascii_upper"),
+    (
+        "wvx.reference.text-ascii-upper@1",
+        "reference_text_ascii_upper",
+    ),
     ("wvx.reference.text-lowercase@1", "reference_text_lowercase"),
-    ("wvx.reference.text-ascii-lower@1", "reference_text_ascii_lower"),
+    (
+        "wvx.reference.text-ascii-lower@1",
+        "reference_text_ascii_lower",
+    ),
     // Domain 2 — hashing (4 multi-impl SHA-256 + blake3)
     ("sha2.sha256@1", "sha2_sha256"),
     ("sha2.sha256-streaming@1", "sha2_sha256_streaming"),
@@ -73,9 +79,15 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("flate2.gunzip-take@1", "flate2_gunzip_take"),
     // Domain 4 — binary codecs (hex + base64 multi-impl)
     ("wvx.reference.hex-encode@1", "reference_hex_encode"),
-    ("wvx.reference.hex-encode-chunked@1", "reference_hex_encode_chunked"),
+    (
+        "wvx.reference.hex-encode-chunked@1",
+        "reference_hex_encode_chunked",
+    ),
     ("wvx.reference.hex-decode@1", "reference_hex_decode"),
-    ("wvx.reference.hex-decode-table@1", "reference_hex_decode_table"),
+    (
+        "wvx.reference.hex-decode-table@1",
+        "reference_hex_decode_table",
+    ),
     ("base64.standard-encode@1", "base64_standard_encode"),
     ("wvx.reference.base64-encode@1", "reference_base64_encode"),
     ("base64.standard-decode@1", "base64_standard_decode"),

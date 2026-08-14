@@ -3,9 +3,7 @@
 //! Measures extraction / mapping / compile rates on a **fixed fixture set**.
 //! Does **not** claim production Gate C Go without human review (ADR-0007/0010).
 
-use crate::capability_match::{
-    match_candidate, MappingKind, OntologyCapability, OntologyPort,
-};
+use crate::capability_match::{match_candidate, MappingKind, OntologyCapability, OntologyPort};
 use crate::compile_adapter::{compile_adapter_from_draft, CompileAdapterReport};
 use crate::draft::draft_adapters_with_ontology;
 use crate::extract::{extract_public_api, CandidateKind};
@@ -93,7 +91,23 @@ pub fn pilot_gate_c_expectations() -> Vec<GateCCaseExpectation> {
     ]
 }
 
-/// Pilot ontology (JSON + hash + compress) for offline Gate C without registry dir.
+fn bytes_in_out(id: &str) -> OntologyCapability {
+    OntologyCapability {
+        id: id.into(),
+        version: "1".into(),
+        kind: "transform".into(),
+        inputs: vec![OntologyPort {
+            id: "bytes".into(),
+            ty: "bytes".into(),
+        }],
+        outputs: vec![OntologyPort {
+            id: "bytes".into(),
+            ty: "bytes".into(),
+        }],
+    }
+}
+
+/// Pilot ontology (JSON + hash + compress + codec + text) for offline Gate C.
 pub fn pilot_ontology() -> Vec<OntologyCapability> {
     vec![
         OntologyCapability {
@@ -149,6 +163,19 @@ pub fn pilot_ontology() -> Vec<OntologyCapability> {
             }],
         },
         OntologyCapability {
+            id: "data.hash.blake3".into(),
+            version: "1".into(),
+            kind: "transform".into(),
+            inputs: vec![OntologyPort {
+                id: "bytes".into(),
+                ty: "bytes".into(),
+            }],
+            outputs: vec![OntologyPort {
+                id: "digest".into(),
+                ty: "bytes".into(),
+            }],
+        },
+        OntologyCapability {
             id: "data.compress.gzip".into(),
             version: "1".into(),
             kind: "transform".into(),
@@ -174,6 +201,14 @@ pub fn pilot_ontology() -> Vec<OntologyCapability> {
                 ty: "bytes".into(),
             }],
         },
+        bytes_in_out("data.codec.hex_encode"),
+        bytes_in_out("data.codec.hex_decode"),
+        bytes_in_out("data.codec.base64_encode"),
+        bytes_in_out("data.codec.base64_decode"),
+        bytes_in_out("data.text.unicode_uppercase"),
+        bytes_in_out("data.text.unicode_lowercase"),
+        bytes_in_out("data.text.ascii_uppercase"),
+        bytes_in_out("data.text.ascii_lowercase"),
     ]
 }
 
@@ -186,10 +221,15 @@ pub struct GateCOptions {
     pub human_minutes: Option<f64>,
     /// Optional explicit expectations (else pilot monorepo set).
     pub expectations: Option<Vec<GateCCaseExpectation>>,
+    /// Gate C v2: never feed `expected_capability` into matcher/draft selection
+    /// (grading remains post-hoc against the label).
+    pub blind_mapping: bool,
 }
 
 /// Load expectations JSON from `fixtures/gate-c-external/expectations.json` shape.
-pub fn load_gate_c_expectations_file(path: impl AsRef<Path>) -> Result<Vec<GateCCaseExpectation>, ForgeError> {
+pub fn load_gate_c_expectations_file(
+    path: impl AsRef<Path>,
+) -> Result<Vec<GateCCaseExpectation>, ForgeError> {
     let path = path.as_ref();
     let text = std::fs::read_to_string(path).map_err(|e| ForgeError::Io(path.to_path_buf(), e))?;
     #[derive(Deserialize)]
@@ -211,18 +251,45 @@ pub fn run_gate_c_external(
     run_compile: bool,
     human_minutes: Option<f64>,
 ) -> Result<GateCReport, ForgeError> {
+    run_gate_c_external_ex(external_root, ontology, run_compile, human_minutes, false)
+}
+
+/// Gate C v2 external campaign: **blind** mapping (≥10 cases preferred).
+pub fn run_gate_c_external_v2(
+    external_root: impl AsRef<Path>,
+    ontology: Option<&[OntologyCapability]>,
+    run_compile: bool,
+    human_minutes: Option<f64>,
+) -> Result<GateCReport, ForgeError> {
+    run_gate_c_external_ex(external_root, ontology, run_compile, human_minutes, true)
+}
+
+fn run_gate_c_external_ex(
+    external_root: impl AsRef<Path>,
+    ontology: Option<&[OntologyCapability]>,
+    run_compile: bool,
+    human_minutes: Option<f64>,
+    blind: bool,
+) -> Result<GateCReport, ForgeError> {
     let root = external_root.as_ref();
-    let exp_path = root.join("expectations.json");
+    // Prefer v2 label file when blind.
+    let exp_path = if blind && root.join("expectations.v2.json").is_file() {
+        root.join("expectations.v2.json")
+    } else {
+        root.join("expectations.json")
+    };
     let expectations = if exp_path.is_file() {
         load_gate_c_expectations_file(&exp_path)?
     } else {
         return Err(ForgeError::Missing(exp_path));
     };
-    if expectations.len() < 5 {
+    let min = if blind { 10 } else { 5 };
+    if expectations.len() < min {
         return Err(ForgeError::Parse(
             root.to_path_buf(),
             format!(
-                "full Gate C needs ≥5 external cases, got {}",
+                "Gate C {} needs ≥{min} external cases, got {}",
+                if blind { "v2 blind" } else { "external" },
                 expectations.len()
             ),
         ));
@@ -235,6 +302,7 @@ pub fn run_gate_c_external(
             external_crates: true,
             human_minutes,
             expectations: Some(expectations),
+            blind_mapping: blind,
         },
     )
 }
@@ -253,6 +321,7 @@ pub fn run_gate_c_pilot(
             external_crates: false,
             human_minutes: None,
             expectations: None,
+            blind_mapping: false,
         },
     )
 }
@@ -329,12 +398,21 @@ pub fn run_gate_c(
             continue;
         }
 
-        // Prefer candidate that maps correctly if expected set.
+        // Select mapping. Gate C v2 blind: never use expected_capability as a hint.
+        // Include package path in the match blob so hex vs base64 / blake3 vs sha256 disambiguate.
+        let match_blob = |c: &crate::extract::ApiCandidate| -> (String, String) {
+            let name = format!("{} {} {}", c.name, exp.package_rel, c.path);
+            let sig = format!("{} {}", c.signature, exp.package_rel);
+            (name, sig)
+        };
         let mut best = fn_candidates[0];
-        let mut best_map = match_candidate(&best.name, &best.signature, &best.shape, ontology);
+        let (n0, s0) = match_blob(best);
+        let mut best_map = match_candidate(&n0, &s0, &best.shape, ontology);
         for c in &fn_candidates[1..] {
-            let m = match_candidate(&c.name, &c.signature, &c.shape, ontology);
-            if !exp.expected_capability.is_empty()
+            let (n, s) = match_blob(c);
+            let m = match_candidate(&n, &s, &c.shape, ontology);
+            if !opts.blind_mapping
+                && !exp.expected_capability.is_empty()
                 && m.capability_key == exp.expected_capability
                 && m.kind.reuses_existing()
             {
@@ -342,16 +420,20 @@ pub fn run_gate_c(
                 best_map = m;
                 break;
             }
-            if kind_rank(m.kind) > kind_rank(best_map.kind) {
+            if kind_rank(m.kind) > kind_rank(best_map.kind)
+                || (kind_rank(m.kind) == kind_rank(best_map.kind) && m.score > best_map.score)
+            {
                 best = c;
                 best_map = m;
             }
         }
+        if opts.blind_mapping {
+            notes.push("blind_mapping=true (expected_capability not fed to matcher)".into());
+        }
 
+        // Post-hoc grading only (label may be empty for open-ended cases).
         let mapping_correct = if exp.expected_capability.is_empty() {
-            // Expect no strong reuse of pilot JSON caps for unrelated fn.
-            !best_map.kind.reuses_existing()
-                || !best_map.capability_key.starts_with("data.json.")
+            !best_map.kind.reuses_existing() || !best_map.capability_key.starts_with("data.json.")
         } else {
             best_map.capability_key == exp.expected_capability && best_map.kind.reuses_existing()
         };
@@ -361,36 +443,59 @@ pub fn run_gate_c(
         }
 
         let mut compile = None;
-        if run_compile && exp.expect_compile && mapping_correct {
-            let draft_report =
-                draft_adapters_with_ontology(&pkg, Some(&exp.fn_name), ontology)?;
-            // Prefer draft whose capability matches expectation.
-            let draft = draft_report
-                .drafts
-                .iter()
-                .find(|d| {
-                    d.candidate_name == exp.fn_name
-                        && (exp.expected_capability.is_empty()
-                            || d.capability_id == exp.expected_capability)
-                })
-                .or_else(|| {
-                    draft_report
-                        .drafts
-                        .iter()
-                        .find(|d| d.capability_id == exp.expected_capability)
-                })
-                .or_else(|| draft_report.drafts.first());
+        // Compile when we reuse an existing capability (blind or graded).
+        let should_compile = run_compile
+            && exp.expect_compile
+            && best_map.kind.reuses_existing()
+            && (opts.blind_mapping || mapping_correct);
+        if should_compile {
+            let draft_report = draft_adapters_with_ontology(&pkg, Some(&exp.fn_name), ontology)?;
+            // Blind: take draft for the chosen mapping capability, not the label.
+            let draft = if opts.blind_mapping {
+                draft_report
+                    .drafts
+                    .iter()
+                    .find(|d| {
+                        d.candidate_name == exp.fn_name
+                            && d.capability_id == best_map.capability_key
+                    })
+                    .or_else(|| {
+                        draft_report
+                            .drafts
+                            .iter()
+                            .find(|d| d.candidate_name == exp.fn_name)
+                    })
+                    .or_else(|| draft_report.drafts.first())
+            } else {
+                draft_report
+                    .drafts
+                    .iter()
+                    .find(|d| {
+                        d.candidate_name == exp.fn_name
+                            && (exp.expected_capability.is_empty()
+                                || d.capability_id == exp.expected_capability)
+                    })
+                    .or_else(|| {
+                        draft_report
+                            .drafts
+                            .iter()
+                            .find(|d| d.capability_id == exp.expected_capability)
+                    })
+                    .or_else(|| draft_report.drafts.first())
+            };
             if let Some(d) = draft {
                 let out = compile_root.join(sanitize(&d.implementation_id));
-                match compile_adapter_from_draft(
-                    &pkg,
-                    &draft_report.package_name,
-                    d,
-                    &out,
-                    true,
-                ) {
+                match compile_adapter_from_draft(&pkg, &draft_report.package_name, d, &out, true) {
                     Ok(r) => {
                         notes.push(format!("compile status={}", r.status));
+                        if r.notes.iter().any(|n| n.contains("wired_upstream=true")) {
+                            notes.push("runtime_wired=true".into());
+                        }
+                        if r.compile_ok == Some(false)
+                            && r.notes.iter().any(|n| n.contains("not_wired"))
+                        {
+                            notes.push("not_wired rejected as compile success".into());
+                        }
                         compile = Some(r);
                     }
                     Err(e) => notes.push(format!("compile error: {e}")),
@@ -437,9 +542,7 @@ pub fn run_gate_c(
     let false_semantic_mappings = cases
         .iter()
         .filter(|c| {
-            c.found
-                && !c.mapping_correct
-                && c.mapping_kind.as_deref() == Some("exact_shape")
+            c.found && !c.mapping_correct && c.mapping_kind.as_deref() == Some("exact_shape")
         })
         .count();
 
@@ -452,9 +555,7 @@ pub fn run_gate_c(
     let _ = std::fs::remove_dir_all(&compile_root);
 
     // Prefer measured human minutes; else heuristic cases×3 (document as estimate).
-    let human_minutes_estimate = opts
-        .human_minutes
-        .unwrap_or((cases.len() as f64) * 3.0);
+    let human_minutes_estimate = opts.human_minutes.unwrap_or((cases.len() as f64) * 3.0);
     let measured = opts.human_minutes.is_some();
 
     // Full external Gate C also requires multi-domain sample (JSON + non-JSON).
@@ -466,20 +567,70 @@ pub fn run_gate_c(
         .iter()
         .any(|c| c.expected_capability.starts_with("data.json."));
 
+    let domains_hit = {
+        let mut d = 0usize;
+        if cases.iter().any(|c| {
+            c.mapped_capability
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("data.json.")
+                || c.expected_capability.starts_with("data.json.")
+        }) {
+            d += 1;
+        }
+        if cases.iter().any(|c| {
+            let k = c
+                .mapped_capability
+                .as_deref()
+                .unwrap_or(c.expected_capability.as_str());
+            k.starts_with("data.hash.")
+        }) {
+            d += 1;
+        }
+        if cases.iter().any(|c| {
+            let k = c
+                .mapped_capability
+                .as_deref()
+                .unwrap_or(c.expected_capability.as_str());
+            k.starts_with("data.compress.")
+        }) {
+            d += 1;
+        }
+        if cases.iter().any(|c| {
+            let k = c
+                .mapped_capability
+                .as_deref()
+                .unwrap_or(c.expected_capability.as_str());
+            k.starts_with("data.codec.") || k.starts_with("data.text.")
+        }) {
+            d += 1;
+        }
+        d
+    };
+
+    let min_cases = if opts.blind_mapping { 10 } else { 5 };
+    let min_domains = if opts.blind_mapping { 3 } else { 2 };
     let full_external_go = opts.external_crates
-        && cases.len() >= 5
+        && cases.len() >= min_cases
         && multi_domain
+        && domains_hit >= min_domains
         && pilot_go
         && measured
-        && human_minutes_estimate > 0.0;
+        && human_minutes_estimate > 0.0
+        && (!opts.blind_mapping || compile_rate >= 0.7);
 
     let mut notes = vec![
         if opts.external_crates {
-            "Gate C EXTERNAL campaign — packages outside Loom product crates/.".into()
+            if opts.blind_mapping {
+                "Gate C v2 EXTERNAL BLIND — expected_capability not fed to matcher.".into()
+            } else {
+                "Gate C EXTERNAL campaign — packages outside Loom product crates/.".into()
+            }
         } else {
             "Gate C pilot harness — monorepo fixtures; not full external Go.".into()
         },
         "AI/heuristic mapping never sets evidence pass (ADR-0010).".into(),
+        "not_wired() adapters never count as compile success.".into(),
         format!(
             "thresholds: extraction_recall≥0.8 mapping_accuracy≥0.8 compile_rate≥0.5 false_map=0"
         ),
@@ -493,22 +644,27 @@ pub fn run_gate_c(
             }
         ),
         format!(
-            "external_crates={} multi_domain={} cases={} full_external_go={}",
+            "external_crates={} blind={} multi_domain={} domains_hit={} cases={} full_external_go={}",
             opts.external_crates,
+            opts.blind_mapping,
             multi_domain,
+            domains_hit,
             cases.len(),
             full_external_go
         ),
     ];
     if opts.external_crates && !measured {
-        notes.push(
-            "Pass --human-minutes <N> with measured review time for full Gate C Go.".into(),
-        );
+        notes.push("Pass --human-minutes <N> with measured review time for full Gate C Go.".into());
     }
     if full_external_go {
         notes.push(
-            "Full Gate C external criteria met (metrics + multi-domain + measured human-minutes)."
-                .into(),
+            if opts.blind_mapping {
+                "Full Gate C v2 blind criteria met (metrics + multi-domain + wired compile + human-minutes)."
+                    .into()
+            } else {
+                "Full Gate C external criteria met (metrics + multi-domain + measured human-minutes)."
+                    .into()
+            },
         );
     }
 
@@ -542,13 +698,7 @@ fn kind_rank(k: MappingKind) -> u8 {
 
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() {
-                c
-            } else {
-                '_'
-            }
-        })
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
 }
 
@@ -595,7 +745,13 @@ mod tests {
                 .cases
                 .iter()
                 .filter_map(|c| c.compile.as_ref())
-                .map(|r| (&r.implementation_id, r.compile_ok, r.compile_log.as_ref().map(|s| s.chars().take(200).collect::<String>())))
+                .map(|r| (
+                    &r.implementation_id,
+                    r.compile_ok,
+                    r.compile_log
+                        .as_ref()
+                        .map(|s| s.chars().take(200).collect::<String>())
+                ))
                 .collect::<Vec<_>>()
         );
         assert!(report.pilot_go, "pilot_go false: {:?}", report.notes);

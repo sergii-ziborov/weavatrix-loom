@@ -235,10 +235,7 @@ pub fn compile_release(
         ));
     }
     let mut policy = CompilePolicy::release();
-    policy.implementations = verified
-        .iter()
-        .map(|v| v.implementation.clone())
-        .collect();
+    policy.implementations = verified.iter().map(|v| v.implementation.clone()).collect();
     // Ensure every non-IO instance maps to a verified id
     let verified_ids: BTreeSet<String> = verified.iter().map(|v| v.full_id()).collect();
     for inst in &project.instances {
@@ -568,10 +565,7 @@ fn resolve_implementations_explained(
 
     for instance in &project.instances {
         let cap = instance.capability.as_key();
-        let explicit = instance
-            .implementation
-            .clone()
-            .filter(|s| !s.is_empty());
+        let explicit = instance.implementation.clone().filter(|s| !s.is_empty());
 
         // Explainable resolve when we have a registry pool
         if !policy.implementations.is_empty() {
@@ -588,10 +582,7 @@ fn resolve_implementations_explained(
                     {
                         return Err(CompileError::PolicyRejected(
                             want.clone(),
-                            format!(
-                                "release policy forbids lifecycle `{}`",
-                                imp.status.as_str()
-                            ),
+                            format!("release policy forbids lifecycle `{}`", imp.status.as_str()),
                         ));
                     }
                     if policy.require_conformance_pass
@@ -607,9 +598,9 @@ fn resolve_implementations_explained(
                         .explanation
                         .push(format!("explicit instance selection `{want}`"));
                 } else {
-                    decision
-                        .explanation
-                        .push(format!("explicit `{want}` not in policy implementations pool"));
+                    decision.explanation.push(format!(
+                        "explicit `{want}` not in policy implementations pool"
+                    ));
                     decision.chosen = Some(want.clone());
                 }
             } else if decision.chosen.is_none() {
@@ -633,9 +624,7 @@ fn resolve_implementations_explained(
         // No pool: explicit or default
         let impl_id = explicit
             .or_else(|| default_implementation(&cap).map(str::to_string))
-            .ok_or_else(|| {
-                CompileError::UnsupportedImplementation("(none)".into(), cap.clone())
-            })?;
+            .ok_or_else(|| CompileError::UnsupportedImplementation("(none)".into(), cap.clone()))?;
         ensure_supported(&impl_id, &cap, sdk_emits)?;
 
         decisions.push(ResolveDecision {
@@ -704,7 +693,8 @@ mod tests {
         let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
         let project: Project = serde_json::from_str(text).unwrap();
         assert_eq!(project.schema_version, PROJECT_SCHEMA_VERSION);
-        let report = compile_with_policy(&project, &BTreeMap::new(), &CompilePolicy::dev()).unwrap();
+        let report =
+            compile_with_policy(&project, &BTreeMap::new(), &CompilePolicy::dev()).unwrap();
         let ws = &report.workspace;
         assert!(ws.files.iter().any(|f| f.relative_path == "src/main.rs"));
         assert!(ws
@@ -735,10 +725,7 @@ mod tests {
         let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
         let project: Project = serde_json::from_str(text).unwrap();
         let err = compile_release(&project, &[], &BTreeMap::new()).unwrap_err();
-        assert!(
-            err.to_string().contains("VerifiedImplementation"),
-            "{err}"
-        );
+        assert!(err.to_string().contains("VerifiedImplementation"), "{err}");
     }
 
     #[test]

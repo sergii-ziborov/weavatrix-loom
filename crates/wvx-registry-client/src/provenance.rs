@@ -54,10 +54,15 @@ pub struct HumanReview {
 
 pub fn provenance_path(registry_root: &Path, full_id: &str) -> PathBuf {
     let safe = full_id.replace(['/', '\\', ':'], "_");
-    registry_root.join("evidence").join(format!("{safe}.provenance.json"))
+    registry_root
+        .join("evidence")
+        .join(format!("{safe}.provenance.json"))
 }
 
-pub fn write_provenance(registry_root: &Path, record: &ProvenanceRecord) -> Result<PathBuf, RegistryError> {
+pub fn write_provenance(
+    registry_root: &Path,
+    record: &ProvenanceRecord,
+) -> Result<PathBuf, RegistryError> {
     let path = provenance_path(registry_root, &record.implementation_id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| RegistryError::Io(parent.to_path_buf(), e))?;
@@ -77,8 +82,7 @@ pub fn read_provenance(
         return Ok(None);
     }
     let text = fs::read_to_string(&path).map_err(|e| RegistryError::Io(path.clone(), e))?;
-    let rec = serde_json::from_str(&text)
-        .map_err(|e| RegistryError::Parse(path, e.to_string()))?;
+    let rec = serde_json::from_str(&text).map_err(|e| RegistryError::Parse(path, e.to_string()))?;
     Ok(Some(rec))
 }
 

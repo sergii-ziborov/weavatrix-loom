@@ -54,10 +54,7 @@ mod tests {
     fn equals_pair_path() {
         let samples: &[&[u8]] = &[b"", b"00ff", b"DeadBeef", b"616263"];
         for s in samples {
-            assert_eq!(
-                decode(s).unwrap(),
-                reference_hex_decode::decode(s).unwrap()
-            );
+            assert_eq!(decode(s).unwrap(), reference_hex_decode::decode(s).unwrap());
         }
     }
 }

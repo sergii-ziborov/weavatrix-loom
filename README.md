@@ -444,6 +444,8 @@ cargo run -p wvx-cli -- bench -o .lab/bench.json
 cargo run -p wvx-cli -- registry check
 cargo run -p wvx-cli -- registry truthful
 cargo run -p wvx-cli -- forge gate-c --external fixtures/gate-c-external --human-minutes 50 --check
+# Gate C v2 BLIND (12 packages, expected_capability not fed to matcher)
+cargo run -p wvx-cli -- forge gate-c --external fixtures/gate-c-external --blind --human-minutes 60 --check
 ```
 
 ### Intent → GraphPatch (thin Cortex bridge)

@@ -4,9 +4,7 @@
 //! Prefer **existing ontology** matches (FORGE-007) over inventing new capabilities.
 //! Never executes code, never writes admission — status is always `inventory_only`.
 
-use crate::capability_match::{
-    match_candidate, CapabilityMatch, MappingKind, OntologyCapability,
-};
+use crate::capability_match::{match_candidate, CapabilityMatch, MappingKind, OntologyCapability};
 use crate::extract::{extract_public_api, ApiCandidate, CandidateKind, ExtractReport};
 use crate::ForgeError;
 use serde::{Deserialize, Serialize};
@@ -115,8 +113,10 @@ pub fn draft_from_extract_with_ontology(
 
     let reused = drafts
         .iter()
-        .filter(|d| d.mapping_kind == MappingKind::ExactShape.as_str()
-            || d.mapping_kind == MappingKind::CompatibleShape.as_str())
+        .filter(|d| {
+            d.mapping_kind == MappingKind::ExactShape.as_str()
+                || d.mapping_kind == MappingKind::CompatibleShape.as_str()
+        })
         .count();
     let proposed = drafts
         .iter()
@@ -158,7 +158,10 @@ pub fn draft_from_extract_with_ontology(
 }
 
 /// Optionally write draft files under `out_dir/{impl_id}/`.
-pub fn write_draft_files(report: &DraftReport, out_dir: impl AsRef<Path>) -> Result<usize, ForgeError> {
+pub fn write_draft_files(
+    report: &DraftReport,
+    out_dir: impl AsRef<Path>,
+) -> Result<usize, ForgeError> {
     let out = out_dir.as_ref();
     fs::create_dir_all(out).map_err(|e| ForgeError::Io(out.to_path_buf(), e))?;
     let mut n = 0;
@@ -206,8 +209,7 @@ fn draft_one(
         format!("forge.{pkg_slug}.{mod_slug}.{fn_slug}@1")
     };
 
-    let mapping: CapabilityMatch =
-        match_candidate(&c.name, &c.signature, &c.shape, ontology);
+    let mapping: CapabilityMatch = match_candidate(&c.name, &c.signature, &c.shape, ontology);
 
     let inputs = ports_from_types(&c.shape.inputs, "in");
     let outputs = ports_from_types(&c.shape.outputs, "out");
@@ -245,15 +247,21 @@ fn draft_one(
         );
     }
     if mapping.kind == MappingKind::NewProposal {
-        notes.push("new capability proposal — human review required before public registry.".into());
+        notes
+            .push("new capability proposal — human review required before public registry.".into());
     }
-    if outputs.iter().any(|p| p.ty.contains("Result") || p.ty == "unit") {
+    if outputs
+        .iter()
+        .any(|p| p.ty.contains("Result") || p.ty == "unit")
+    {
         notes.push("Return type may need manual Result unwrap / mapping.".into());
     }
 
     let capability = if reuse {
         // Reference existing contract; ports from candidate shape for adapter sketch.
-        let existing = ontology.iter().find(|o| o.id == cap_id && o.version == cap_version);
+        let existing = ontology
+            .iter()
+            .find(|o| o.id == cap_id && o.version == cap_version);
         if let Some(ex) = existing {
             serde_json::json!({
                 "id": ex.id,
@@ -557,7 +565,11 @@ fn read_package_version(root: &Path) -> Option<String> {
             continue;
         }
         if in_package && t.starts_with("version") {
-            let rest = t.trim_start_matches("version").trim().trim_start_matches('=').trim();
+            let rest = t
+                .trim_start_matches("version")
+                .trim()
+                .trim_start_matches('=')
+                .trim();
             if rest.contains("workspace") {
                 return Some("workspace".into());
             }
@@ -580,7 +592,11 @@ fn read_package_license(root: &Path) -> Option<String> {
             continue;
         }
         if in_package && t.starts_with("license") {
-            let rest = t.trim_start_matches("license").trim().trim_start_matches('=').trim();
+            let rest = t
+                .trim_start_matches("license")
+                .trim()
+                .trim_start_matches('=')
+                .trim();
             let v = rest.trim_matches('"').trim_matches('\'');
             if !v.is_empty() && !v.starts_with('{') {
                 return Some(v.into());
@@ -664,11 +680,19 @@ mod tests {
             extractor: "ast".into(),
             module_path: None,
         };
-        let d = draft_one("wvx-adapter-external-demo", "0.1.0", Some("MIT"), &c, &ontology);
+        let d = draft_one(
+            "wvx-adapter-external-demo",
+            "0.1.0",
+            Some("MIT"),
+            &c,
+            &ontology,
+        );
         assert_eq!(d.mapping_kind, "exact_shape");
         assert_eq!(d.capability_id, "data.json.parse@1");
         assert!(d.capability_json.contains("data.json.parse"));
-        assert!(!d.capability_json.contains("wvx_adapter_external_demo.upper_parse"));
+        assert!(!d
+            .capability_json
+            .contains("wvx_adapter_external_demo.upper_parse"));
         assert!(d.implementation_json.contains("data.json.parse"));
     }
 }

@@ -189,7 +189,13 @@ fn score(imp: &Implementation, profile: &TargetProfile, policy: &ResolverPolicy)
         // Heuristic: known pure-Rust pilot packages
         if matches!(
             pkg,
-            "sha2" | "blake3" | "flate2" | "serde_json" | "json" | "wvx-adapters" | "wvx-adapter-external-demo"
+            "sha2"
+                | "blake3"
+                | "flate2"
+                | "serde_json"
+                | "json"
+                | "wvx-adapters"
+                | "wvx-adapter-external-demo"
         ) {
             s += 15;
         }
@@ -230,15 +236,19 @@ mod tests {
             },
             notes: None,
             sdk: None,
-        conformance_profile: None,
-        evidence_artifact: None,
+            conformance_profile: None,
+            evidence_artifact: None,
         }
     }
 
     #[test]
     fn prefers_conformant_and_explains() {
         let impls = vec![
-            imp("sha2.sha256-streaming", LifecycleStatus::Candidate, AxisFact::Pass),
+            imp(
+                "sha2.sha256-streaming",
+                LifecycleStatus::Candidate,
+                AxisFact::Pass,
+            ),
             imp("sha2.sha256", LifecycleStatus::Conformant, AxisFact::Pass),
         ];
         let d = resolve_implementation(

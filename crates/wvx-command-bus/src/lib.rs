@@ -5,50 +5,50 @@
 //! re-implement validation or graph rules.
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use thiserror::Error;
 use wvx_compiler_rust::{
-    compile_release, compile_to_rust_with_sdk, compile_with_policy, export_to_directory_with_policy,
-    ExportReport, GeneratedWorkspace,
+    compile_release, compile_to_rust_with_sdk, compile_with_policy,
+    export_to_directory_with_policy, ExportReport, GeneratedWorkspace,
 };
 
 // Re-export policy / preview types for hosts (CLI, HTTP).
+use std::collections::BTreeMap;
 pub use wvx_compiler_rust::{CompilePolicy, CompileReport};
-pub use wvx_project_graph::PatchPreview;
-pub use wvx_validator::ValidateOptions;
-use wvx_ir::SdkEmit;
+use wvx_conformance::{run_pilot_bench, BenchReport};
+use wvx_cortex::{propose_from_intent, CortexError, IntentProposeResult};
 use wvx_forge::{
     compile_adapters_batch, default_workspace_root, draft_adapters_with_ontology,
     draft_from_extract_with_ontology, extract_from_facts, extract_public_api, facts_from_extract,
     inventory_path, load_facts_file, match_candidates, parse_facts_json, run_gate_c_external,
-    run_gate_c_pilot, write_draft_files, write_facts_file, CompileBatchReport, DraftReport,
-    ExtractReport, ForgeError, GateCReport, InventoryReport, MatchReport, OntologyCapability,
-    OntologyPort, WeavatrixFactsBundle,
+    run_gate_c_external_v2, run_gate_c_pilot, write_draft_files, write_facts_file,
+    CompileBatchReport, DraftReport, ExtractReport, ForgeError, GateCReport, InventoryReport,
+    MatchReport, OntologyCapability, OntologyPort, WeavatrixFactsBundle,
 };
 use wvx_ir::Project;
+use wvx_ir::SdkEmit;
+use wvx_ir::{ResolveDecision, ResolverPolicy, TargetProfile};
+pub use wvx_project_graph::PatchPreview;
 use wvx_project_graph::{
     apply_graph_patch, commit_patch, preview_patch, propose_json_pipeline_patch_relative,
     GraphPatch, PatchApplyResult, PatchError,
 };
-use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
     admit_implementation, audit_truthful_registry, mint_and_write, promote_implementation,
     requalify_implementation, resolve_implementation, verify_artifact, verify_implementation,
-    ArtifactCheck, CapabilityHit, CaseResult, EvidenceArtifact, ImplementationHit,
-    InstallCandidateResult, LocalRegistry, MintRequest, PromoteRequest, PromoteResult,
-    RegistryError, RegistrySummary, RequalifyReport, TruthfulAuditReport, AdmitRequest,
-    AdmitResult, AdmissionReport, VerifiedImplementation,
+    AdmissionReport, AdmitRequest, AdmitResult, ArtifactCheck, CapabilityHit, CaseResult,
+    EvidenceArtifact, ImplementationHit, InstallCandidateResult, LocalRegistry, MintRequest,
+    PromoteRequest, PromoteResult, RegistryError, RegistrySummary, RequalifyReport,
+    TruthfulAuditReport, VerifiedImplementation,
 };
-use wvx_ir::{ResolveDecision, ResolverPolicy, TargetProfile};
-use std::collections::BTreeMap;
 use wvx_runtime::{
     apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
     RunResult, RuntimeError, WvxValueMap,
 };
 use wvx_types::WvxValue;
+pub use wvx_validator::ValidateOptions;
 use wvx_validator::{validate_project_with, ValidationReport};
-use wvx_cortex::{propose_from_intent, CortexError, IntentProposeResult};
 
 pub const PROTOCOL_VERSION: &str = "0.1";
 
@@ -127,7 +127,10 @@ impl<T> BusResponse<T> {
 }
 
 /// Fill missing capability contracts from a local registry (no-op when `None`).
-pub fn hydrate_project(project: &mut Project, registry: Option<&LocalRegistry>) -> Result<usize, BusError> {
+pub fn hydrate_project(
+    project: &mut Project,
+    registry: Option<&LocalRegistry>,
+) -> Result<usize, BusError> {
     match registry {
         Some(reg) => Ok(reg.hydrate_project_capabilities(project)?),
         None => Ok(0),
@@ -351,7 +354,9 @@ pub struct ImplementationInfo {
 }
 
 /// Registry root summary.
-pub fn registry_summary(registry: &LocalRegistry) -> Result<BusResponse<RegistrySummary>, BusError> {
+pub fn registry_summary(
+    registry: &LocalRegistry,
+) -> Result<BusResponse<RegistrySummary>, BusError> {
     Ok(BusResponse::ok(registry.summary()?))
 }
 
@@ -425,7 +430,9 @@ pub fn registry_requalify(
     registry: &LocalRegistry,
     full_id: &str,
 ) -> Result<BusResponse<RequalifyReport>, BusError> {
-    Ok(BusResponse::ok(requalify_implementation(registry, full_id)?))
+    Ok(BusResponse::ok(requalify_implementation(
+        registry, full_id,
+    )?))
 }
 
 /// Milestone 1 truthful registry audit (artifacts required for conformant+).
@@ -461,7 +468,9 @@ pub fn registry_mint_evidence(
         axes,
         notes,
         digest_ctx: Default::default(),
-        profile_id: profile_id.map(str::to_string).or(imp.conformance_profile.clone()),
+        profile_id: profile_id
+            .map(str::to_string)
+            .or(imp.conformance_profile.clone()),
     };
     let (art, path) = mint_and_write(registry.root(), &imp, &req)?;
     let mut resp = BusResponse::ok(art);
@@ -535,7 +544,10 @@ pub fn registry_verify_implementation(
             "implementation not found: {full_id}"
         )]));
     };
-    Ok(BusResponse::ok(verify_implementation(registry.root(), &imp)?))
+    Ok(BusResponse::ok(verify_implementation(
+        registry.root(),
+        &imp,
+    )?))
 }
 
 /// Release compile using only a verified implementation pool.
@@ -581,14 +593,14 @@ pub fn registry_inspect(
     key: &str,
 ) -> Result<BusResponse<serde_json::Value>, BusError> {
     if let Some(cap) = registry.find_capability_key(key)? {
-        return Ok(BusResponse::ok(serde_json::to_value(cap).map_err(|e| {
-            BusError::Io(e.to_string())
-        })?));
+        return Ok(BusResponse::ok(
+            serde_json::to_value(cap).map_err(|e| BusError::Io(e.to_string()))?,
+        ));
     }
     if let Some(imp) = registry.find_implementation(key)? {
-        return Ok(BusResponse::ok(serde_json::to_value(imp).map_err(|e| {
-            BusError::Io(e.to_string())
-        })?));
+        return Ok(BusResponse::ok(
+            serde_json::to_value(imp).map_err(|e| BusError::Io(e.to_string()))?,
+        ));
     }
     Ok(BusResponse::err(vec![format!("not found: {key}")]))
 }
@@ -660,9 +672,10 @@ pub fn forge_draft(
     let mut report = draft_adapters_with_ontology(path, name_filter, &ontology)?;
     if let Some(dir) = out_dir {
         match write_draft_files(&report, dir) {
-            Ok(n) => report
-                .notes
-                .push(format!("Wrote {n} draft package(s) under {}", dir.display())),
+            Ok(n) => report.notes.push(format!(
+                "Wrote {n} draft package(s) under {}",
+                dir.display()
+            )),
             Err(e) => return Err(BusError::Forge(e.to_string())),
         }
     }
@@ -771,8 +784,7 @@ pub fn forge_cargo_search(
             hits.len()
         ));
         notes.push(
-            "Pick a hit with a local path to Inventory, or clone/path the crate first."
-                .into(),
+            "Pick a hit with a local path to Inventory, or clone/path the crate first.".into(),
         );
     }
     Ok(BusResponse::ok(CargoSearchReport {
@@ -922,9 +934,10 @@ pub fn forge_draft_facts(
     let mut report = draft_from_extract_with_ontology(&extract, name_filter, root, &ontology)?;
     if let Some(dir) = out_dir {
         match write_draft_files(&report, dir) {
-            Ok(n) => report
-                .notes
-                .push(format!("Wrote {n} draft package(s) under {}", dir.display())),
+            Ok(n) => report.notes.push(format!(
+                "Wrote {n} draft package(s) under {}",
+                dir.display()
+            )),
             Err(e) => return Err(BusError::Forge(e.to_string())),
         }
     }
@@ -976,6 +989,25 @@ pub fn forge_gate_c_ex(
     run_compile: bool,
     human_minutes: Option<f64>,
 ) -> Result<BusResponse<GateCReport>, BusError> {
+    forge_gate_c_ex2(
+        workspace_root,
+        external_root,
+        registry,
+        run_compile,
+        human_minutes,
+        false,
+    )
+}
+
+/// Gate C with optional **v2 blind** external campaign.
+pub fn forge_gate_c_ex2(
+    workspace_root: Option<&Path>,
+    external_root: Option<&Path>,
+    registry: Option<&LocalRegistry>,
+    run_compile: bool,
+    human_minutes: Option<f64>,
+    blind_v2: bool,
+) -> Result<BusResponse<GateCReport>, BusError> {
     let ontology = ontology_from_registry(registry)?;
     let ontology_ref = if ontology.is_empty() {
         None
@@ -983,8 +1015,13 @@ pub fn forge_gate_c_ex(
         Some(ontology.as_slice())
     };
     let report = if let Some(ext) = external_root {
-        run_gate_c_external(ext, ontology_ref, run_compile, human_minutes)
-            .map_err(|e| BusError::Forge(e.to_string()))?
+        if blind_v2 {
+            run_gate_c_external_v2(ext, ontology_ref, run_compile, human_minutes)
+                .map_err(|e| BusError::Forge(e.to_string()))?
+        } else {
+            run_gate_c_external(ext, ontology_ref, run_compile, human_minutes)
+                .map_err(|e| BusError::Forge(e.to_string()))?
+        }
     } else {
         let root = workspace_root
             .map(Path::to_path_buf)

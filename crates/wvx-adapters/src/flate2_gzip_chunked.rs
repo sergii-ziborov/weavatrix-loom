@@ -10,7 +10,8 @@ const CHUNK: usize = 1024;
 pub fn compress(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
     for chunk in bytes.chunks(CHUNK) {
-        enc.write_all(chunk).map_err(|e| format!("gzip-write: {e}"))?;
+        enc.write_all(chunk)
+            .map_err(|e| format!("gzip-write: {e}"))?;
     }
     enc.finish().map_err(|e| format!("gzip-finish: {e}"))
 }

@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{
-    Fields, FnArg, Item, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, Pat, ReturnType,
-    Type, Visibility,
+    Fields, FnArg, Item, ItemEnum, ItemFn, ItemImpl, ItemStruct, ItemTrait, Pat, ReturnType, Type,
+    Visibility,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -355,7 +355,9 @@ fn shape_from_syn_sig(sig: &syn::Signature) -> CandidateShape {
                 if is_self_pat(&pat_ty.pat) {
                     continue;
                 }
-                shape.inputs.push(normalize_rust_type(&type_to_string(&pat_ty.ty)));
+                shape
+                    .inputs
+                    .push(normalize_rust_type(&type_to_string(&pat_ty.ty)));
             }
         }
     }
@@ -648,7 +650,9 @@ mod tests {
         let parse = report
             .candidates
             .iter()
-            .find(|c| c.name == "parse" && c.module_path.as_deref() == Some("serde_json_parse_owned"))
+            .find(|c| {
+                c.name == "parse" && c.module_path.as_deref() == Some("serde_json_parse_owned")
+            })
             .expect("serde_json_parse_owned::parse");
         assert_eq!(parse.extractor, "ast");
         assert!(parse.shape.inputs.iter().any(|i| i == "bytes"));

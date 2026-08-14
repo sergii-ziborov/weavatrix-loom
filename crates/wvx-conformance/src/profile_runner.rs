@@ -160,7 +160,11 @@ pub fn run_profile_doc(
                     case: format!("pos:{id}:eq"),
                     ok,
                     detail: if ok {
-                        Some(format!("{} impls bit-equal ({} bytes)", outputs.len(), reference.len()))
+                        Some(format!(
+                            "{} impls bit-equal ({} bytes)",
+                            outputs.len(),
+                            reference.len()
+                        ))
                     } else {
                         Some(format!(
                             "bit mismatch vs {} (lens {} vs {})",
@@ -292,10 +296,7 @@ fn to_case(
 }
 
 fn decode_input_b64(vec: &serde_json::Value) -> Result<Vec<u8>, String> {
-    let s = vec
-        .get("input_b64")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let s = vec.get("input_b64").and_then(|v| v.as_str()).unwrap_or("");
     decode_b64(s)
 }
 
@@ -333,7 +334,10 @@ fn execute_bytes_transform(
     if let Some(WvxValue::Json(v)) = out.get("value") {
         return serde_json::to_vec(v).map_err(|e| e.to_string());
     }
-    Err(format!("no bytes/digest/value output ports: {:?}", out.keys().collect::<Vec<_>>()))
+    Err(format!(
+        "no bytes/digest/value output ports: {:?}",
+        out.keys().collect::<Vec<_>>()
+    ))
 }
 
 #[cfg(test)]

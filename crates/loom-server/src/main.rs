@@ -92,10 +92,12 @@ async fn main() {
             .collect::<Vec<_>>()
     );
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {
-        tracing::error!("bind {addr}: {e}");
-        std::process::exit(1);
-    });
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("bind {addr}: {e}");
+            std::process::exit(1);
+        });
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -113,11 +115,7 @@ fn build_cors(origins: &[String]) -> CorsLayer {
         .collect();
     if parsed.is_empty() {
         return CorsLayer::new()
-            .allow_methods([
-                Method::GET,
-                Method::POST,
-                Method::OPTIONS,
-            ])
+            .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
             .allow_headers(tower_http::cors::Any);
     }
     CorsLayer::new()
@@ -131,9 +129,7 @@ fn open_registry() -> Result<LocalRegistry, String> {
         return LocalRegistry::open(PathBuf::from(path)).map_err(|e| e.to_string());
     }
     LocalRegistry::open_default().map_err(|e| {
-        format!(
-            "{e}\nSet WVX_REGISTRY or run from the weavatrix-loom repo root (registry-dev/)."
-        )
+        format!("{e}\nSet WVX_REGISTRY or run from the weavatrix-loom repo root (registry-dev/).")
     })
 }
 

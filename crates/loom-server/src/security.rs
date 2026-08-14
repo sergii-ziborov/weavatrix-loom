@@ -73,7 +73,9 @@ impl SecurityConfig {
         let Ok(canon) = path.canonicalize().or_else(|_| {
             // Allow non-existing targets if parent is under a root
             if let Some(parent) = path.parent() {
-                parent.canonicalize().map(|p| p.join(path.file_name().unwrap_or_default()))
+                parent
+                    .canonicalize()
+                    .map(|p| p.join(path.file_name().unwrap_or_default()))
             } else {
                 Err(std::io::Error::other("no parent"))
             }
@@ -108,10 +110,7 @@ pub async fn require_token(
     next: Next,
 ) -> Response {
     let path = req.uri().path();
-    if path == "/health"
-        || path == "/api/v1/protocol"
-        || path == "/api/v1/auth/bootstrap"
-    {
+    if path == "/health" || path == "/api/v1/protocol" || path == "/api/v1/auth/bootstrap" {
         return next.run(req).await;
     }
     let header_tok = req

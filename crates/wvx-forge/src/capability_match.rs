@@ -135,7 +135,8 @@ pub fn match_candidate(
         } else if types_compatible || config_augmented {
             score += 70;
             if config_augmented && !types_compatible {
-                rationale.push("config-augmented path_set shape (value ports + config args)".into());
+                rationale
+                    .push("config-augmented path_set shape (value ports + config args)".into());
             } else {
                 rationale.push("port type multiset compatible".into());
             }
@@ -174,55 +175,97 @@ pub fn match_candidate(
             rationale.push("candidate name appears in capability id".into());
         }
         // Strong multi-domain disambiguation for identical bytes→bytes shapes
-        if (name_l == "digest" || name_l.contains("sha256") || name_l.contains("hash"))
+        if (name_l == "digest"
+            || name_l.contains("sha256")
+            || name_l.contains("hash")
+            || name_l.contains("blake"))
             && cap.id.contains("hash")
         {
             score += 80;
             rationale.push("hash verb → data.hash.*".into());
             // Prefer sha256 for bare `digest` (blake3 wins only if name mentions blake)
             if name_l.contains("blake") && cap.id.contains("blake") {
-                score += 25;
+                score += 40;
                 rationale.push("blake name → blake3".into());
             } else if !name_l.contains("blake") && cap.id.contains("sha256") {
                 score += 25;
                 rationale.push("digest default → sha256".into());
             }
         }
-        if (name_l == "compress" || name_l == "gzip")
+        if (name_l == "compress" || name_l.contains("gzip"))
             && cap.id.contains("gzip")
             && !cap.id.contains("gunzip")
         {
             score += 80;
+            if name_l.contains("gzip") && !name_l.contains("gunzip") {
+                score += 40;
+            }
             rationale.push("compress verb → data.compress.gzip".into());
         }
-        if (name_l == "decompress" || name_l == "gunzip") && cap.id.contains("gunzip") {
+        if (name_l == "decompress" || name_l.contains("gunzip") || name_l.contains("decompress"))
+            && cap.id.contains("gunzip")
+        {
             score += 80;
+            if name_l.contains("gunzip") {
+                score += 40;
+            }
             rationale.push("decompress verb → data.compress.gunzip".into());
         }
+        // Avoid gzip package matching gunzip
+        if name_l.contains("gzip") && !name_l.contains("gunzip") && cap.id.contains("gunzip") {
+            score = score.saturating_sub(100);
+        }
+        // text transforms
+        if (name_l == "transform" || name_l.contains("upper") || name_l.contains("lower"))
+            && cap.id.contains("text")
+        {
+            if name_l.contains("upper") && cap.id.contains("uppercase") {
+                score += 90;
+                rationale.push("upper → data.text.*uppercase".into());
+            } else if name_l.contains("lower") && cap.id.contains("lowercase") {
+                score += 90;
+                rationale.push("lower → data.text.*lowercase".into());
+            } else if name_l == "transform" && cap.id.contains("uppercase") {
+                // package name often carries the hint via source; soft boost first unicode upper
+                score += 20;
+            }
+        }
         // Domain 4 — binary codecs (bytes→bytes encode/decode disambiguation)
-        if (name_l.contains("base64") || name_l == "encode")
+        // Prefer path/package hints (ext-hex-encode vs ext-base64).
+        if name_l.contains("hex") && name_l.contains("encode") && cap.id.contains("hex_encode") {
+            score += 100;
+            rationale.push("hex encode → data.codec.hex_encode".into());
+        }
+        if name_l.contains("hex") && name_l.contains("decode") && cap.id.contains("hex_decode") {
+            score += 100;
+            rationale.push("hex decode → data.codec.hex_decode".into());
+        }
+        if (name_l.contains("base64") || (name_l.contains("encode") && !name_l.contains("hex")))
             && cap.id.contains("base64_encode")
-            && !name_l.contains("hex")
             && !name_l.contains("decode")
         {
             score += 90;
             rationale.push("encode/base64 verb → data.codec.base64_encode".into());
         }
         if (name_l.contains("base64") && name_l.contains("decode"))
-            || (name_l == "decode" && blob_has_base64(signature))
+            || (name_l.contains("decode")
+                && !name_l.contains("hex")
+                && (blob_has_base64(signature) || name_l.contains("base64")))
         {
             if cap.id.contains("base64_decode") {
                 score += 90;
                 rationale.push("base64 decode → data.codec.base64_decode".into());
             }
         }
-        if name_l.contains("hex") && name_l.contains("encode") && cap.id.contains("hex_encode") {
-            score += 90;
-            rationale.push("hex encode → data.codec.hex_encode".into());
-        }
-        if name_l.contains("hex") && name_l.contains("decode") && cap.id.contains("hex_decode") {
-            score += 90;
-            rationale.push("hex decode → data.codec.hex_decode".into());
+        // Text: package path upper/lower
+        if name_l.contains("text") || name_l.contains("upper") || name_l.contains("lower") {
+            if name_l.contains("upper") && cap.id.contains("unicode_uppercase") {
+                score += 100;
+                rationale.push("upper package → unicode_uppercase".into());
+            } else if name_l.contains("lower") && cap.id.contains("unicode_lowercase") {
+                score += 100;
+                rationale.push("lower package → unicode_lowercase".into());
+            }
         }
 
         if score == 0 {
@@ -354,10 +397,7 @@ fn family_hint(name: &str, signature: &str) -> Option<&'static str> {
     {
         return Some("gunzip");
     }
-    if blob.contains("gzip")
-        || blob.contains("compress")
-        || name.eq_ignore_ascii_case("compress")
-    {
+    if blob.contains("gzip") || blob.contains("compress") || name.eq_ignore_ascii_case("compress") {
         return Some("gzip");
     }
     if blob.contains("sha256")
@@ -381,20 +421,31 @@ fn family_hint(name: &str, signature: &str) -> Option<&'static str> {
         }
         return Some("hex_encode");
     }
-    // bare `encode` in base64 crate context (ext-base64) → base64_encode
+    // bare encode/decode: prefer package/path hints
     if name.eq_ignore_ascii_case("encode") && !blob.contains("json") {
+        if blob.contains("hex") {
+            return Some("hex_encode");
+        }
         return Some("base64_encode");
     }
     if name.eq_ignore_ascii_case("decode") && !blob.contains("json") {
+        if blob.contains("hex") {
+            return Some("hex_decode");
+        }
         return Some("base64_decode");
+    }
+    if name.eq_ignore_ascii_case("transform") {
+        if blob.contains("upper") {
+            return Some("text");
+        }
+        if blob.contains("lower") {
+            return Some("text");
+        }
     }
     if blob.contains("parse") || blob.contains("from_str") || blob.contains("from_slice") {
         return Some("parse");
     }
-    if blob.contains("serialize")
-        || blob.contains("to_vec")
-        || blob.contains("to_string")
-    {
+    if blob.contains("serialize") || blob.contains("to_vec") || blob.contains("to_string") {
         return Some("serialize");
     }
     if blob.contains("path_set")
@@ -419,6 +470,7 @@ fn family_aliases(fam: &str) -> &'static [&'static str] {
         "base64_decode" => &["base64_decode", "base64", "codec"],
         "hex_encode" => &["hex_encode", "hex", "codec"],
         "hex_decode" => &["hex_decode", "hex", "codec"],
+        "text" => &["text", "uppercase", "lowercase", "unicode"],
         _ => &[],
     }
 }
@@ -434,9 +486,11 @@ fn normalize_type_token(ty: &str) -> String {
         .unwrap_or(&t)
         .trim();
     match t {
-        "json_value" | "json.value" | "value" | "serde_json::value" | "serde_json::value::value" => {
-            "json.value".into()
-        }
+        "json_value"
+        | "json.value"
+        | "value"
+        | "serde_json::value"
+        | "serde_json::value::value" => "json.value".into(),
         "bytes" | "&[u8]" | "vec<u8>" | "&vec<u8>" => "bytes".into(),
         "string" | "&str" | "&string" => "string".into(),
         "bool" => "bool".into(),
@@ -584,7 +638,12 @@ mod tests {
             outputs: vec!["json.value".into()],
             notes: vec![],
         };
-        let m = match_candidate("parse", "pub fn parse(bytes: &[u8]) -> Result<Value, E>", &shape, &pilot_ontology());
+        let m = match_candidate(
+            "parse",
+            "pub fn parse(bytes: &[u8]) -> Result<Value, E>",
+            &shape,
+            &pilot_ontology(),
+        );
         assert_eq!(m.kind, MappingKind::ExactShape);
         assert_eq!(m.capability_id, "data.json.parse");
         assert!(m.score >= 100);
@@ -614,7 +673,12 @@ mod tests {
             outputs: vec!["bool".into()],
             notes: vec![],
         };
-        let m = match_candidate("is_valid", "pub fn is_valid(s: &str) -> bool", &shape, &pilot_ontology());
+        let m = match_candidate(
+            "is_valid",
+            "pub fn is_valid(s: &str) -> bool",
+            &shape,
+            &pilot_ontology(),
+        );
         assert_eq!(m.kind, MappingKind::NewProposal);
     }
 
@@ -625,7 +689,12 @@ mod tests {
             outputs: vec!["i64".into()],
             notes: vec![],
         };
-        let m = match_candidate("parse_int", "pub fn parse_int(n: i64) -> i64", &shape, &pilot_ontology());
+        let m = match_candidate(
+            "parse_int",
+            "pub fn parse_int(n: i64) -> i64",
+            &shape,
+            &pilot_ontology(),
+        );
         // Name says parse but types don't match bytes→json — family or new.
         assert!(matches!(
             m.kind,

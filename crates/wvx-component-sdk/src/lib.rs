@@ -205,12 +205,7 @@ impl ErasedComponent for BytesToNamedBytes {
                     self.capability_key
                 ))
             }
-            None => {
-                return Err(format!(
-                    "{}: missing port `bytes`",
-                    self.capability_key
-                ))
-            }
+            None => return Err(format!("{}: missing port `bytes`", self.capability_key)),
         };
         let out_bytes = (self.f)(bytes)?;
         let mut out = WvxValueMap::new();
@@ -312,11 +307,7 @@ mod tests {
     fn template_render() {
         let mut m = BTreeMap::new();
         m.insert("bytes".into(), "input_bytes".into());
-        let s = render_emit_template(
-            "demo::parse({bytes}.as_slice())?",
-            &m,
-        )
-        .unwrap();
+        let s = render_emit_template("demo::parse({bytes}.as_slice())?", &m).unwrap();
         assert_eq!(s, "demo::parse(input_bytes.as_slice())?");
     }
 }

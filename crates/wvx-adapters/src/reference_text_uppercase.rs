@@ -15,7 +15,10 @@ mod tests {
     #[test]
     fn uppercases_ascii_and_unicode() {
         assert_eq!(transform(b"Hello").unwrap(), b"HELLO");
-        assert_eq!(transform("straße".as_bytes()).unwrap(), "STRASSE".as_bytes());
+        assert_eq!(
+            transform("straße".as_bytes()).unwrap(),
+            "STRASSE".as_bytes()
+        );
     }
 
     #[test]

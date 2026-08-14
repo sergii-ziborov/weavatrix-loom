@@ -61,13 +61,17 @@ pub fn register_pilot_plugins() {
                 serde_json_serialize::serialize,
             )
         });
-        register_plugin("wvx.reference.json-serialize@1", "data.json.serialize@1", || {
-            json_to_bytes_handler(
-                "wvx.reference.json-serialize@1",
-                "data.json.serialize@1",
-                reference_json_serialize::serialize,
-            )
-        });
+        register_plugin(
+            "wvx.reference.json-serialize@1",
+            "data.json.serialize@1",
+            || {
+                json_to_bytes_handler(
+                    "wvx.reference.json-serialize@1",
+                    "data.json.serialize@1",
+                    reference_json_serialize::serialize,
+                )
+            },
+        );
         register_plugin(
             "wvx.reference.json-serialize-pretty@1",
             "data.json.serialize@1",
@@ -187,7 +191,11 @@ pub fn register_pilot_plugins() {
 
         // Domain 3 — compression (gzip / gunzip); multi-impl paths
         register_plugin("flate2.gzip@1", "data.compress.gzip@1", || {
-            bytes_to_bytes_handler("flate2.gzip@1", "data.compress.gzip@1", flate2_gzip::compress)
+            bytes_to_bytes_handler(
+                "flate2.gzip@1",
+                "data.compress.gzip@1",
+                flate2_gzip::compress,
+            )
         });
         register_plugin("flate2.gzip-chunked@1", "data.compress.gzip@1", || {
             bytes_to_bytes_handler(

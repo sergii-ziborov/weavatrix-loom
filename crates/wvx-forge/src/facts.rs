@@ -9,9 +9,7 @@
 //! bundle is supplied it is the preferred candidate source. Loom does **not**
 //! embed Weavatrix; it only accepts this interchange document (file/HTTP).
 
-use crate::extract::{
-    ApiCandidate, CandidateKind, CandidateShape, ExtractReport,
-};
+use crate::extract::{ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 use crate::ForgeError;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -46,7 +44,8 @@ pub struct JsonFactsProvider {
 
 impl WeavatrixFactsProvider for JsonFactsProvider {
     fn load_facts(&self) -> Result<WeavatrixFactsBundle, ForgeError> {
-        parse_facts_json(&self.json).map_err(|e| ForgeError::Parse(std::path::PathBuf::from("<json>"), e))
+        parse_facts_json(&self.json)
+            .map_err(|e| ForgeError::Parse(std::path::PathBuf::from("<json>"), e))
     }
 }
 
@@ -153,11 +152,8 @@ pub fn validate_facts(bundle: &WeavatrixFactsBundle) -> Result<(), String> {
 
 /// Convert Weavatrix facts → Forge [`ExtractReport`] (candidate shapes for match/draft).
 pub fn extract_from_facts(bundle: &WeavatrixFactsBundle) -> ExtractReport {
-    let mut candidates: Vec<ApiCandidate> = bundle
-        .entities
-        .iter()
-        .map(entity_to_candidate)
-        .collect();
+    let mut candidates: Vec<ApiCandidate> =
+        bundle.entities.iter().map(entity_to_candidate).collect();
     candidates.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
 
     let status = if candidates.is_empty() {
@@ -178,9 +174,7 @@ pub fn extract_from_facts(bundle: &WeavatrixFactsBundle) -> ExtractReport {
         bundle.schema_version,
         candidates.len()
     ));
-    notes.push(
-        "ADR-0012: Weavatrix facts preferred over bootstrap AST when provided.".into(),
-    );
+    notes.push("ADR-0012: Weavatrix facts preferred over bootstrap AST when provided.".into());
 
     ExtractReport {
         root,

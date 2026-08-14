@@ -30,7 +30,9 @@ pub fn golden_fixture_bytes(
     impl_overrides: &BTreeMap<String, String>,
 ) -> Result<GoldenReport, String> {
     let text = fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../").join(fixture_rel),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../")
+            .join(fixture_rel),
     )
     .map_err(|e| e.to_string())?;
     let mut project: Project = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -38,10 +40,7 @@ pub fn golden_fixture_bytes(
 
     let reg = pilot_registry();
     let mut seed = wvx_runtime::WvxValueMap::new();
-    seed.insert(
-        "bytes".into(),
-        wvx_types::WvxValue::Bytes(input.to_vec()),
-    );
+    seed.insert("bytes".into(), wvx_types::WvxValue::Bytes(input.to_vec()));
     let dyn_result = run_project(&project, &reg, seed).map_err(|e| e.to_string())?;
     // Prefer sink `output.bytes`, then any `*.bytes` / `*.digest`
     let dyn_bytes = dyn_result
@@ -70,7 +69,10 @@ pub fn golden_fixture_bytes(
     let output = Command::new("cargo")
         .arg("run")
         .arg("--quiet")
-        .env("WVX_PIPELINE_INPUT", String::from_utf8_lossy(input).as_ref())
+        .env(
+            "WVX_PIPELINE_INPUT",
+            String::from_utf8_lossy(input).as_ref(),
+        )
         .current_dir(&dir)
         .output()
         .map_err(|e| e.to_string())?;

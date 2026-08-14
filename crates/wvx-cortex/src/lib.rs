@@ -10,13 +10,13 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::BTreeMap;
+use std::env;
 use thiserror::Error;
 use wvx_ir::{Capability, Project};
 use wvx_project_graph::{
     apply_graph_patch, propose_json_pipeline_patch_relative, GraphOp, GraphPatch,
 };
-use std::collections::BTreeMap;
-use std::env;
 
 #[derive(Debug, Error)]
 pub enum CortexError {
@@ -73,7 +73,8 @@ pub fn propose_from_intent(
             model: None,
         }
     } else if env::var("XAI_API_KEY").is_ok() {
-        let model = env::var("WVX_LLM_MODEL").unwrap_or_else(|_| "grok-4-1-fast-non-reasoning".into());
+        let model =
+            env::var("WVX_LLM_MODEL").unwrap_or_else(|_| "grok-4-1-fast-non-reasoning".into());
         let patch = llm_propose(intent, project, capabilities, &model)?;
         IntentProposeResult {
             patch,
@@ -260,8 +261,7 @@ fn heuristic_propose(
         }
         // else fall through to pilot relative
         let mut patch = propose_json_pipeline_patch_relative(project, capabilities);
-        patch.rationale =
-            format!("Heuristic: ensure pilot path_set (tag) for intent `{intent}`");
+        patch.rationale = format!("Heuristic: ensure pilot path_set (tag) for intent `{intent}`");
         return Some(patch);
     }
 
@@ -310,9 +310,8 @@ fn llm_propose(
     capabilities: &[Capability],
     model: &str,
 ) -> Result<GraphPatch, CortexError> {
-    let api_key = env::var("XAI_API_KEY").map_err(|_| {
-        CortexError::Llm("XAI_API_KEY not set".into())
-    })?;
+    let api_key =
+        env::var("XAI_API_KEY").map_err(|_| CortexError::Llm("XAI_API_KEY not set".into()))?;
     let base = env::var("XAI_BASE_URL").unwrap_or_else(|_| "https://api.x.ai/v1".into());
 
     let cap_summary: Vec<_> = capabilities
@@ -407,9 +406,7 @@ Rules:
         return Err(CortexError::Llm(format!("HTTP {status}: {text}")));
     }
 
-    let v: serde_json::Value = resp
-        .json()
-        .map_err(|e| CortexError::Llm(e.to_string()))?;
+    let v: serde_json::Value = resp.json().map_err(|e| CortexError::Llm(e.to_string()))?;
     let content = v
         .pointer("/choices/0/message/content")
         .and_then(|c| c.as_str())
@@ -466,7 +463,11 @@ mod tests {
         assert_eq!(r.source, ProposeSource::Heuristic);
         assert!(r.dry_run_ok, "{:?}", r.dry_run_errors);
         assert!(!r.patch.ops.is_empty());
-        assert!(r.patch.ops.iter().any(|o| matches!(o, GraphOp::AddInstance { .. })));
+        assert!(r
+            .patch
+            .ops
+            .iter()
+            .any(|o| matches!(o, GraphOp::AddInstance { .. })));
     }
 
     #[test]

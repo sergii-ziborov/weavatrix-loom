@@ -259,8 +259,8 @@ pub fn load_profile(
 ) -> Result<(ConformanceProfileDoc, Vec<u8>), RegistryError> {
     let path = profile_path(registry_root, profile_id);
     let bytes = fs::read(&path).map_err(|e| RegistryError::Io(path.clone(), e))?;
-    let doc: ConformanceProfileDoc = serde_json::from_slice(&bytes)
-        .map_err(|e| RegistryError::Parse(path, e.to_string()))?;
+    let doc: ConformanceProfileDoc =
+        serde_json::from_slice(&bytes).map_err(|e| RegistryError::Parse(path, e.to_string()))?;
     Ok((doc, bytes))
 }
 
@@ -454,7 +454,12 @@ pub fn capture_environment(runner_identity: &str) -> EvidenceEnvironment {
         .or_else(|_| std::env::var("CARGO_CFG_TARGET_TRIPLE"))
         .unwrap_or_else(|_| {
             // Best-effort host triple
-            format!("{}-{}-{}", std::env::consts::ARCH, std::env::consts::FAMILY, std::env::consts::OS)
+            format!(
+                "{}-{}-{}",
+                std::env::consts::ARCH,
+                std::env::consts::FAMILY,
+                std::env::consts::OS
+            )
         });
     let toolchain = std::process::Command::new("rustc")
         .arg("--version")
@@ -729,7 +734,8 @@ pub fn verify_artifact(registry_root: &Path, imp: &Implementation) -> ArtifactCh
                     }
                 }
 
-                let recomputed = compute_digests(registry_root, imp, Some(&doc), &DigestContext::default());
+                let recomputed =
+                    compute_digests(registry_root, imp, Some(&doc), &DigestContext::default());
                 // Hard-check digests that must match (subject, adapter, upstream, capability, profile)
                 check_digest(
                     &mut findings,
@@ -800,7 +806,10 @@ pub fn verify_artifact(registry_root: &Path, imp: &Implementation) -> ArtifactCh
     }
 
     let all_suites_pass = !art.suite_results.is_empty()
-        && art.suite_results.iter().all(|s| s.passed && s.cases_ok == s.cases_total);
+        && art
+            .suite_results
+            .iter()
+            .all(|s| s.passed && s.cases_ok == s.cases_total);
     if art.suite_results.is_empty() {
         findings.push("artifact has no suite_results".into());
     } else if !all_suites_pass {
@@ -1035,11 +1044,7 @@ mod tests {
         assert!(path.is_file());
 
         let check = verify_artifact(&root, &imp);
-        assert!(
-            check.ok,
-            "verify failed: {:?}",
-            check.findings
-        );
+        assert!(check.ok, "verify failed: {:?}", check.findings);
         assert_eq!(check.justified, "conformant");
         assert_eq!(check.schema_version, EVIDENCE_SCHEMA);
         let _ = fs::remove_file(&path);

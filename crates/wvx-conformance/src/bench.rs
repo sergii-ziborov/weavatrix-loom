@@ -62,15 +62,17 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
     ];
     for impl_id in parse_impls {
         cases.push(bench_parse(
-            &reg, impl_id, "object_tag", parse_input, iterations, warmup,
+            &reg,
+            impl_id,
+            "object_tag",
+            parse_input,
+            iterations,
+            warmup,
         ));
     }
 
     let sample = serde_json::json!({"hello":"world","n":1,"ok":true});
-    for impl_id in [
-        "serde-json.serialize@1",
-        "wvx.reference.json-serialize@1",
-    ] {
+    for impl_id in ["serde-json.serialize@1", "wvx.reference.json-serialize@1"] {
         cases.push(bench_serialize(
             &reg, impl_id, "object", &sample, iterations, warmup,
         ));
@@ -192,7 +194,10 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
             warmup,
         ));
     }
-    let hex_enc = match reg.resolve("data.codec.hex_encode@1", Some("wvx.reference.hex-encode@1")) {
+    let hex_enc = match reg.resolve(
+        "data.codec.hex_encode@1",
+        Some("wvx.reference.hex-encode@1"),
+    ) {
         Ok(h) => {
             let mut inputs = WvxValueMap::new();
             inputs.insert("bytes".into(), WvxValue::Bytes(codec_in.to_vec()));
@@ -223,10 +228,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
             ));
         }
     }
-    for impl_id in [
-        "base64.standard-encode@1",
-        "wvx.reference.base64-encode@1",
-    ] {
+    for impl_id in ["base64.standard-encode@1", "wvx.reference.base64-encode@1"] {
         cases.push(bench_bytes_ports(
             &reg,
             "data.codec.base64_encode@1",
@@ -256,10 +258,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         Err(_) => None,
     };
     if let Some(b64) = &b64_enc {
-        for impl_id in [
-            "base64.standard-decode@1",
-            "wvx.reference.base64-decode@1",
-        ] {
+        for impl_id in ["base64.standard-decode@1", "wvx.reference.base64-decode@1"] {
             cases.push(bench_bytes_ports(
                 &reg,
                 "data.codec.base64_decode@1",
@@ -337,16 +336,16 @@ fn bench_bytes_ports(
             Err(e) => return fail_case(cap, impl_id, case, iterations, warmup, e),
         }
     }
-    ok_case(cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns)
+    ok_case(
+        cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns,
+    )
 }
 
 fn capture_provenance(input: &[u8]) -> BenchProvenance {
     BenchProvenance {
         recorded_at_unix: unix_now(),
         loom_version: env!("CARGO_PKG_VERSION").into(),
-        rustc: option_env!("RUSTC_VERSION")
-            .unwrap_or("unknown")
-            .into(),
+        rustc: option_env!("RUSTC_VERSION").unwrap_or("unknown").into(),
         os: std::env::consts::OS.into(),
         arch: std::env::consts::ARCH.into(),
         input_fingerprint: fingerprint_bytes(input),
@@ -413,7 +412,9 @@ fn bench_parse(
             Err(e) => return fail_case(cap, impl_id, case, iterations, warmup, e),
         }
     }
-    ok_case(cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns)
+    ok_case(
+        cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns,
+    )
 }
 
 fn bench_serialize(
@@ -456,7 +457,9 @@ fn bench_serialize(
             Err(e) => return fail_case(cap, impl_id, case, iterations, warmup, e),
         }
     }
-    ok_case(cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns)
+    ok_case(
+        cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns,
+    )
 }
 
 fn bench_path_set(
@@ -514,7 +517,9 @@ fn bench_path_set(
             Err(e) => return fail_case(cap, impl_id, case, iterations, warmup, e),
         }
     }
-    ok_case(cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns)
+    ok_case(
+        cap, impl_id, case, iterations, warmup, sum_ns, min_ns, max_ns,
+    )
 }
 
 fn ok_case(
@@ -575,11 +580,7 @@ mod tests {
         assert!(
             report.ok,
             "bench failures: {:?}",
-            report
-                .cases
-                .iter()
-                .filter(|c| !c.ok)
-                .collect::<Vec<_>>()
+            report.cases.iter().filter(|c| !c.ok).collect::<Vec<_>>()
         );
         assert!(!report.cases.is_empty());
         assert!(report.cases.iter().all(|c| c.mean_ns > 0 || !c.ok));

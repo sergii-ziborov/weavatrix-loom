@@ -9,9 +9,7 @@ use std::path::{Path, PathBuf};
 use wvx_ir::{AxisFact, Implementation, LifecycleStatus};
 
 use crate::admission::{check_implementation, justified_status};
-use crate::provenance::{
-    provenance_from_impl, write_provenance, HumanReview, ProvenanceRecord,
-};
+use crate::provenance::{provenance_from_impl, write_provenance, HumanReview, ProvenanceRecord};
 use crate::RegistryError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,9 +60,7 @@ pub fn admit_implementation(
             justified: justified_status(&imp).as_str().into(),
             provenance_path: None,
             manifest_path: None,
-            findings: vec![
-                "human_ack too short — document the review (min 8 chars)".into(),
-            ],
+            findings: vec!["human_ack too short — document the review (min 8 chars)".into()],
             implementation: imp,
         });
     }
@@ -118,9 +114,7 @@ pub fn admit_implementation(
         findings.push("set evidence.build=pass (pilot adapter present)".into());
     }
     if imp.evidence.conformance != AxisFact::Pass {
-        findings.push(
-            "conformance is not pass — admit requires Gate A vectors first".into(),
-        );
+        findings.push("conformance is not pass — admit requires Gate A vectors first".into());
         return Ok(AdmitResult {
             ok: false,
             implementation_id: imp.full_id(),
@@ -327,8 +321,8 @@ mod tests {
             },
             notes: Some("test".into()),
             sdk: None,
-        conformance_profile: None,
-        evidence_artifact: None,
+            conformance_profile: None,
+            evidence_artifact: None,
         }
     }
 

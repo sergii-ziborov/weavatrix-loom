@@ -22,7 +22,7 @@ mod extract;
 mod facts;
 
 pub use capability_match::{
-    match_candidate, match_candidates, CapabilityMatch, CandidateMatchRow, MappingKind,
+    match_candidate, match_candidates, CandidateMatchRow, CapabilityMatch, MappingKind,
     MatchReport, OntologyCapability, OntologyPort,
 };
 pub use compile_adapter::{
@@ -34,8 +34,8 @@ pub use draft::{
 };
 pub use economics::{
     default_workspace_root, load_gate_c_expectations_file, pilot_gate_c_expectations,
-    pilot_ontology, run_gate_c, run_gate_c_external, run_gate_c_pilot, GateCCaseResult,
-    GateCOptions, GateCReport,
+    pilot_ontology, run_gate_c, run_gate_c_external, run_gate_c_external_v2, run_gate_c_pilot,
+    GateCCaseResult, GateCOptions, GateCReport,
 };
 pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 pub use facts::{
@@ -235,8 +235,7 @@ fn inventory_package(
         .map(|t| t.keys().cloned().collect())
         .unwrap_or_default();
 
-    let lib_present = path.join("src/lib.rs").is_file()
-        || doc.get("lib").is_some();
+    let lib_present = path.join("src/lib.rs").is_file() || doc.get("lib").is_some();
     let mut bins = Vec::new();
     if path.join("src/main.rs").is_file() {
         bins.push(name.clone());

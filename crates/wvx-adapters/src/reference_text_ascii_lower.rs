@@ -6,7 +6,13 @@
 pub fn transform(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(bytes
         .iter()
-        .map(|b| if (b'A'..=b'Z').contains(b) { b + 32 } else { *b })
+        .map(|b| {
+            if (b'A'..=b'Z').contains(b) {
+                b + 32
+            } else {
+                *b
+            }
+        })
         .collect())
 }
 

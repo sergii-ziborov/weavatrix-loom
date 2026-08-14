@@ -461,6 +461,7 @@ pub fn run_gate_c(
     let multi_domain = cases.iter().any(|c| {
         c.expected_capability.starts_with("data.hash.")
             || c.expected_capability.starts_with("data.compress.")
+            || c.expected_capability.starts_with("data.codec.")
     }) && cases
         .iter()
         .any(|c| c.expected_capability.starts_with("data.json."));

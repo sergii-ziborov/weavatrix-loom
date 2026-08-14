@@ -2,14 +2,16 @@
   "schema_version": "wvx.gate_c.external.v0.1",
   "external_crates": true,
   "notes": [
-    "Five external-style packages outside Loom product crates/.",
-    "Used for Full Gate C: extract + map + optional compile + human-minutes."
+    "Six external-style packages outside Loom product crates/.",
+    "Used for Full Gate C: extract + map + optional compile + human-minutes.",
+    "Domain 4 adds ext-base64 (standard Base64 encode)."
   ],
   "cases": [
     { "package_rel": "ext-json-parse", "fn_name": "parse", "expected_capability": "data.json.parse@1", "expect_compile": true },
     { "package_rel": "ext-json-serialize", "fn_name": "serialize", "expected_capability": "data.json.serialize@1", "expect_compile": true },
     { "package_rel": "ext-sha256", "fn_name": "digest", "expected_capability": "data.hash.sha256@1", "expect_compile": true },
     { "package_rel": "ext-gzip", "fn_name": "compress", "expected_capability": "data.compress.gzip@1", "expect_compile": true },
-    { "package_rel": "ext-gunzip", "fn_name": "decompress", "expected_capability": "data.compress.gunzip@1", "expect_compile": true }
+    { "package_rel": "ext-gunzip", "fn_name": "decompress", "expected_capability": "data.compress.gunzip@1", "expect_compile": true },
+    { "package_rel": "ext-base64", "fn_name": "encode", "expected_capability": "data.codec.base64_encode@1", "expect_compile": true }
   ]
 }

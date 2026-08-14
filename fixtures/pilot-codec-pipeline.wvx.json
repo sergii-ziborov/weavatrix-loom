@@ -1,0 +1,105 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "pilot-codec-pipeline",
+  "name": "Codec pilot pipeline (Domain 4 — hex + base64)",
+  "entrypoint": "input",
+  "metadata": {
+    "pilot": "true",
+    "family": "data.codec",
+    "domain": "4"
+  },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.codec.hex_encode",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.codec.base64_encode",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "io.output.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [],
+      "errors": [],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 56, "y": 140 }
+    },
+    {
+      "id": "hex",
+      "capability": { "id": "data.codec.hex_encode", "version": "1" },
+      "implementation": "wvx.reference.hex-encode@1",
+      "config": {},
+      "ui": { "x": 300, "y": 140 }
+    },
+    {
+      "id": "b64",
+      "capability": { "id": "data.codec.base64_encode", "version": "1" },
+      "implementation": "base64.standard-encode@1",
+      "config": {},
+      "ui": { "x": 560, "y": 140 }
+    },
+    {
+      "id": "output",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 820, "y": 140 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "hex", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "hex", "port": "bytes" },
+      "to": { "instance": "b64", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "b64", "port": "bytes" },
+      "to": { "instance": "output", "port": "bytes" }
+    }
+  ]
+}

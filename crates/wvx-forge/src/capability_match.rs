@@ -199,6 +199,31 @@ pub fn match_candidate(
             score += 80;
             rationale.push("decompress verb → data.compress.gunzip".into());
         }
+        // Domain 4 — binary codecs (bytes→bytes encode/decode disambiguation)
+        if (name_l.contains("base64") || name_l == "encode")
+            && cap.id.contains("base64_encode")
+            && !name_l.contains("hex")
+            && !name_l.contains("decode")
+        {
+            score += 90;
+            rationale.push("encode/base64 verb → data.codec.base64_encode".into());
+        }
+        if (name_l.contains("base64") && name_l.contains("decode"))
+            || (name_l == "decode" && blob_has_base64(signature))
+        {
+            if cap.id.contains("base64_decode") {
+                score += 90;
+                rationale.push("base64 decode → data.codec.base64_decode".into());
+            }
+        }
+        if name_l.contains("hex") && name_l.contains("encode") && cap.id.contains("hex_encode") {
+            score += 90;
+            rationale.push("hex encode → data.codec.hex_encode".into());
+        }
+        if name_l.contains("hex") && name_l.contains("decode") && cap.id.contains("hex_decode") {
+            score += 90;
+            rationale.push("hex decode → data.codec.hex_decode".into());
+        }
 
         if score == 0 {
             continue;
@@ -315,6 +340,10 @@ fn is_io_passthrough(cap: &OntologyCapability) -> bool {
     cap.id.starts_with("io.")
 }
 
+fn blob_has_base64(s: &str) -> bool {
+    s.to_ascii_lowercase().contains("base64")
+}
+
 fn family_hint(name: &str, signature: &str) -> Option<&'static str> {
     let blob = format!("{name} {signature}").to_ascii_lowercase();
     // Domain verbs first (before generic encode/parse) for multi-domain bytes→bytes.
@@ -339,13 +368,32 @@ fn family_hint(name: &str, signature: &str) -> Option<&'static str> {
     {
         return Some("hash");
     }
+    // Domain 4 codecs before generic encode→serialize
+    if blob.contains("base64") {
+        if blob.contains("decode") {
+            return Some("base64_decode");
+        }
+        return Some("base64_encode");
+    }
+    if blob.contains("hex") {
+        if blob.contains("decode") {
+            return Some("hex_decode");
+        }
+        return Some("hex_encode");
+    }
+    // bare `encode` in base64 crate context (ext-base64) → base64_encode
+    if name.eq_ignore_ascii_case("encode") && !blob.contains("json") {
+        return Some("base64_encode");
+    }
+    if name.eq_ignore_ascii_case("decode") && !blob.contains("json") {
+        return Some("base64_decode");
+    }
     if blob.contains("parse") || blob.contains("from_str") || blob.contains("from_slice") {
         return Some("parse");
     }
     if blob.contains("serialize")
         || blob.contains("to_vec")
         || blob.contains("to_string")
-        || blob.contains("encode")
     {
         return Some("serialize");
     }
@@ -367,6 +415,10 @@ fn family_aliases(fam: &str) -> &'static [&'static str] {
         "hash" => &["hash", "sha256", "blake3", "digest"],
         "gzip" => &["gzip", "compress"],
         "gunzip" => &["gunzip", "decompress"],
+        "base64_encode" => &["base64_encode", "base64", "codec"],
+        "base64_decode" => &["base64_decode", "base64", "codec"],
+        "hex_encode" => &["hex_encode", "hex", "codec"],
+        "hex_decode" => &["hex_decode", "hex", "codec"],
         _ => &[],
     }
 }

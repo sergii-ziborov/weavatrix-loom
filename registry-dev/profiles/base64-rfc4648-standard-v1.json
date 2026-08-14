@@ -1,0 +1,23 @@
+{
+  "id": "base64-rfc4648-standard-v1",
+  "version": "1",
+  "capability_key": "data.codec.base64_encode@1",
+  "title": "RFC 4648 standard Base64 encode/decode (shared vectors before conformant)",
+  "suite_digest": "sha256:pending-compute",
+  "preconditions": ["Arbitrary input bytes for encode; standard alphabet for decode"],
+  "guarantees": [
+    "STANDARD alphabet A-Za-z0-9+/ with = padding",
+    "Crate path and pure reference agree bit-for-bit",
+    "Empty input → empty output"
+  ],
+  "limitations": [
+    "URL-safe alphabet is a separate capability (not this profile)",
+    "Suite must be recorded in evidence artifact before status=conformant"
+  ],
+  "expected_error_families": ["invalid-base64"],
+  "vectors": [
+    { "id": "empty", "input_b64": "", "expect_ok": true, "expect_output_b64": "" },
+    { "id": "Man", "input_b64": "TWFu", "expect_ok": true }
+  ],
+  "negative_vectors": []
+}

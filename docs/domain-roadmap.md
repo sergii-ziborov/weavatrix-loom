@@ -65,14 +65,26 @@ bytes → gzip-bytes → bytes   (round-trip)
 Fixture: `fixtures/pilot-compress-pipeline.wvx.json`.  
 Compressed **byte equality** is not required across gzip impls; **gunzip equality** is.
 
-### Domain 4 — Binary codecs
+### Domain 4 — Binary codecs (pilot)
 
 ```text
-bytes ↔ encoded bytes / structured wire
+bytes → hex-ASCII → base64-ASCII
+bytes → hex → bytes   (round-trip identity)
 ```
 
-Examples: base64, hex, protobuf-like encode/decode. Natural place for **FerroSift**
-ops as Loom Implementations (not importing FerroSift into Loom core) — ADR-0012.
+| Capability | Multi-impl (equality) |
+|------------|------------------------|
+| `data.codec.hex_encode@1` | oneshot · chunked 64 B |
+| `data.codec.hex_decode@1` | nibble pair · 256-entry table |
+| `data.codec.base64_encode@1` | `base64` crate STANDARD · pure reference |
+| `data.codec.base64_decode@1` | `base64` crate STANDARD · pure reference |
+
+Fixtures: `fixtures/pilot-codec-pipeline.wvx.json`, `fixtures/pilot-codec-roundtrip.wvx.json`.  
+Gate C external: `fixtures/gate-c-external/ext-base64`.  
+Profiles: `hex-rfc-encode-v1`, `hex-rfc-decode-v1`, `base64-rfc4648-standard-v1` (candidate until suite artifacts).
+
+Further codecs (URL-safe base64, protobuf-like wire) stay out of core — **FerroSift**
+ops as Loom Implementations only (ADR-0012).
 
 ## What not to do now
 
@@ -84,8 +96,8 @@ ops as Loom Implementations (not importing FerroSift into Loom core) — ADR-001
 
 ## Gate C checklist
 
-- [x] 5+ external packages in `fixtures/gate-c-external` (JSON×2 + hash + gzip + gunzip)
-- [x] Multi-domain sample (JSON + hash + compress)
+- [x] 5+ external packages in `fixtures/gate-c-external` (JSON×2 + hash + gzip + gunzip + base64)
+- [x] Multi-domain sample (JSON + hash + compress + codec)
 - [x] Human minutes field (`--human-minutes`, measured override)
 - [x] Forge economics on external package tree (`forge gate-c --external … --check`)
 - [ ] Production marketplace / public Registry Go (still out of scope)

@@ -1,0 +1,13 @@
+{
+  "id": "data.codec.hex_decode",
+  "version": "1",
+  "kind": "transform",
+  "inputs": [
+    { "id": "bytes", "type": "bytes", "required": true }
+  ],
+  "outputs": [
+    { "id": "bytes", "type": "bytes", "required": true }
+  ],
+  "errors": ["invalid-hex"],
+  "effects": []
+}

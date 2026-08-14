@@ -13,12 +13,15 @@ use wvx_component_sdk::{
 };
 
 use crate::{
-    blake3_hash, flate2_gunzip, flate2_gunzip_chunked, flate2_gunzip_take, flate2_gzip,
-    flate2_gzip_chunked, flate2_gzip_oneshot, json_crate_parse, reference_json_parse,
-    reference_json_serialize, reference_json_serialize_pretty, reference_path_set,
-    reference_text_ascii_lower, reference_text_ascii_upper, reference_text_lowercase,
-    reference_text_uppercase, serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize,
-    sha2_sha256, sha2_sha256_chunked, sha2_sha256_streaming, sha2_sha256_update_all,
+    base64_standard_decode, base64_standard_encode, blake3_hash, flate2_gunzip,
+    flate2_gunzip_chunked, flate2_gunzip_take, flate2_gzip, flate2_gzip_chunked,
+    flate2_gzip_oneshot, json_crate_parse, reference_base64_decode, reference_base64_encode,
+    reference_hex_decode, reference_hex_decode_table, reference_hex_encode,
+    reference_hex_encode_chunked, reference_json_parse, reference_json_serialize,
+    reference_json_serialize_pretty, reference_path_set, reference_text_ascii_lower,
+    reference_text_ascii_upper, reference_text_lowercase, reference_text_uppercase,
+    serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize, sha2_sha256,
+    sha2_sha256_chunked, sha2_sha256_streaming, sha2_sha256_update_all,
 };
 
 /// Register all pilot transform implementations into the SDK plugin table.
@@ -221,5 +224,95 @@ pub fn register_pilot_plugins() {
                 flate2_gunzip_take::decompress,
             )
         });
+
+        // Domain 4 — binary codecs (hex + base64); multi-impl equality
+        register_plugin(
+            "wvx.reference.hex-encode@1",
+            "data.codec.hex_encode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.hex-encode@1",
+                    "data.codec.hex_encode@1",
+                    reference_hex_encode::encode,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.hex-encode-chunked@1",
+            "data.codec.hex_encode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.hex-encode-chunked@1",
+                    "data.codec.hex_encode@1",
+                    reference_hex_encode_chunked::encode,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.hex-decode@1",
+            "data.codec.hex_decode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.hex-decode@1",
+                    "data.codec.hex_decode@1",
+                    reference_hex_decode::decode,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.hex-decode-table@1",
+            "data.codec.hex_decode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.hex-decode-table@1",
+                    "data.codec.hex_decode@1",
+                    reference_hex_decode_table::decode,
+                )
+            },
+        );
+        register_plugin(
+            "base64.standard-encode@1",
+            "data.codec.base64_encode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "base64.standard-encode@1",
+                    "data.codec.base64_encode@1",
+                    base64_standard_encode::encode,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.base64-encode@1",
+            "data.codec.base64_encode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.base64-encode@1",
+                    "data.codec.base64_encode@1",
+                    reference_base64_encode::encode,
+                )
+            },
+        );
+        register_plugin(
+            "base64.standard-decode@1",
+            "data.codec.base64_decode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "base64.standard-decode@1",
+                    "data.codec.base64_decode@1",
+                    base64_standard_decode::decode,
+                )
+            },
+        );
+        register_plugin(
+            "wvx.reference.base64-decode@1",
+            "data.codec.base64_decode@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.base64-decode@1",
+                    "data.codec.base64_decode@1",
+                    reference_base64_decode::decode,
+                )
+            },
+        );
     });
 }

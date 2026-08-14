@@ -1,0 +1,31 @@
+{
+  "id": "wvx.reference.hex-encode",
+  "version": "1",
+  "capability": { "id": "data.codec.hex_encode", "version": "1" },
+  "source": {
+    "kind": "reference",
+    "package": "wvx-adapters",
+    "package_version": "0.1.1"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "Domain 4 hex multi-impl (oneshot). Candidate until hex-rfc-encode-v1 suite artifact.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::reference_hex_encode::encode({bytes}.as_slice())?"
+    }
+  },
+  "conformance_profile": "hex-rfc-encode-v1"
+}

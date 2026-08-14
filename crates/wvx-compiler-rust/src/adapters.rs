@@ -32,6 +32,14 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
         "flate2.gunzip@1" => Some("flate2_gunzip"),
         "flate2.gunzip-chunked@1" => Some("flate2_gunzip_chunked"),
         "flate2.gunzip-take@1" => Some("flate2_gunzip_take"),
+        "wvx.reference.hex-encode@1" => Some("reference_hex_encode"),
+        "wvx.reference.hex-encode-chunked@1" => Some("reference_hex_encode_chunked"),
+        "wvx.reference.hex-decode@1" => Some("reference_hex_decode"),
+        "wvx.reference.hex-decode-table@1" => Some("reference_hex_decode_table"),
+        "base64.standard-encode@1" => Some("base64_standard_encode"),
+        "wvx.reference.base64-encode@1" => Some("reference_base64_encode"),
+        "base64.standard-decode@1" => Some("base64_standard_decode"),
+        "wvx.reference.base64-decode@1" => Some("reference_base64_decode"),
         "wvx.reference.io-input-bytes@1" | "wvx.reference.io-output-bytes@1" => None,
         _ => None,
     }
@@ -77,6 +85,10 @@ pub fn default_implementation(capability_key: &str) -> Option<&'static str> {
         "data.hash.blake3@1" => Some("blake3.blake3@1"),
         "data.compress.gzip@1" => Some("flate2.gzip@1"),
         "data.compress.gunzip@1" => Some("flate2.gunzip@1"),
+        "data.codec.hex_encode@1" => Some("wvx.reference.hex-encode@1"),
+        "data.codec.hex_decode@1" => Some("wvx.reference.hex-decode@1"),
+        "data.codec.base64_encode@1" => Some("base64.standard-encode@1"),
+        "data.codec.base64_decode@1" => Some("base64.standard-decode@1"),
         _ => None,
     }
 }
@@ -107,6 +119,14 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
         "flate2.gunzip@1",
         "flate2.gunzip-chunked@1",
         "flate2.gunzip-take@1",
+        "wvx.reference.hex-encode@1",
+        "wvx.reference.hex-encode-chunked@1",
+        "wvx.reference.hex-decode@1",
+        "wvx.reference.hex-decode-table@1",
+        "base64.standard-encode@1",
+        "wvx.reference.base64-encode@1",
+        "base64.standard-decode@1",
+        "wvx.reference.base64-decode@1",
         "wvx.reference.io-input-bytes@1",
         "wvx.reference.io-output-bytes@1",
     ]
@@ -228,6 +248,46 @@ pub fn built_in_sdk_emit(implementation_id: &str) -> Option<SdkEmit> {
             "wvx-adapters",
             Some("crates/wvx-adapters"),
             "wvx_adapters::flate2_gunzip_take::decompress({bytes}.as_slice())?",
+        ),
+        "wvx.reference.hex-encode@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_hex_encode::encode({bytes}.as_slice())?",
+        ),
+        "wvx.reference.hex-encode-chunked@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_hex_encode_chunked::encode({bytes}.as_slice())?",
+        ),
+        "wvx.reference.hex-decode@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_hex_decode::decode({bytes}.as_slice())?",
+        ),
+        "wvx.reference.hex-decode-table@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_hex_decode_table::decode({bytes}.as_slice())?",
+        ),
+        "base64.standard-encode@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::base64_standard_encode::encode({bytes}.as_slice())?",
+        ),
+        "wvx.reference.base64-encode@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_base64_encode::encode({bytes}.as_slice())?",
+        ),
+        "base64.standard-decode@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::base64_standard_decode::decode({bytes}.as_slice())?",
+        ),
+        "wvx.reference.base64-decode@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::reference_base64_decode::decode({bytes}.as_slice())?",
         ),
         // path_set still needs config inlining — special template with {value} only;
         // config path/value are filled by emit_call_path_set.

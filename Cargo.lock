@@ -1771,6 +1771,7 @@ dependencies = [
 name = "wvx-adapters"
 version = "0.1.1"
 dependencies = [
+ "base64",
  "blake3",
  "flate2",
  "json",

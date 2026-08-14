@@ -1,0 +1,25 @@
+{
+  "id": "hex-rfc-decode-v1",
+  "version": "1",
+  "capability_key": "data.codec.hex_decode@1",
+  "title": "Hex decode mixed-case ASCII (shared vectors before conformant)",
+  "suite_digest": "sha256:pending-compute",
+  "preconditions": ["Even-length hex ASCII"],
+  "guarantees": [
+    "Accepts a-f and A-F",
+    "Odd length fails",
+    "All multi-impl backends agree bit-for-bit on suite"
+  ],
+  "limitations": [
+    "Whitespace not allowed",
+    "Suite must be recorded in evidence artifact before status=conformant"
+  ],
+  "expected_error_families": ["invalid-hex"],
+  "vectors": [
+    { "id": "empty", "input_b64": "", "expect_ok": true, "expect_output_b64": "" },
+    { "id": "abc-hex", "input_b64": "NjE2MjYz", "expect_ok": true }
+  ],
+  "negative_vectors": [
+    { "id": "odd", "input_b64": "YWI=", "expect_ok": false }
+  ]
+}

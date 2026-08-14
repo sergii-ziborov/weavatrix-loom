@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Pilot adapters for Weavatrix Loom (JSON, text, hash, …)"
+description = "Pilot adapters for Weavatrix Loom (JSON, text, hash, compress, codec, …)"
 publish = true
 keywords = ["weavatrix", "loom", "wvx"]
 categories = ["development-tools"]
@@ -28,6 +28,8 @@ sha2 = "0.10"
 blake3 = { version = "1.5", default-features = false, features = ["std", "pure"] }
 # Domain 3 — compression (gzip).
 flate2 = { version = "1", default-features = true }
+# Domain 4 — binary codecs (base64 multi-impl; hex is pure).
+base64 = "0.22"
 wvx-component-sdk = { workspace = true, optional = true }
 
 [lints]

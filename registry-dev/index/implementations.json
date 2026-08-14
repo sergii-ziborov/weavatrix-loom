@@ -1,54 +1,70 @@
 {
-    "data.compress.gunzip@1":  [
-                                   "flate2.gunzip@1",
-                                   "flate2.gunzip-chunked@1",
-                                   "flate2.gunzip-take@1"
-                               ],
-    "data.compress.gzip@1":  [
-                                 "flate2.gzip@1",
-                                 "flate2.gzip-chunked@1",
-                                 "flate2.gzip-oneshot@1"
-                             ],
-    "data.hash.blake3@1":  [
-                               "blake3.blake3@1"
-                           ],
-    "data.hash.sha256@1":  [
-                               "sha2.sha256@1",
-                               "sha2.sha256-chunked@1",
-                               "sha2.sha256-streaming@1",
-                               "sha2.sha256-update-all@1"
-                           ],
-    "data.json.parse@1":  [
-                              "external.demo.upper-parse@1",
-                              "json-crate.parse@1",
-                              "serde-json.parse-owned@1",
-                              "wvx.reference.json-parse@1"
-                          ],
-    "data.json.path_set@1":  [
-                                 "serde-json.pointer-set@1",
-                                 "wvx.reference.path-set@1"
-                             ],
-    "data.json.serialize@1":  [
-                                  "serde-json.serialize@1",
-                                  "wvx.reference.json-serialize@1",
-                                  "wvx.reference.json-serialize-pretty@1"
-                              ],
-    "data.text.ascii_lowercase@1":  [
-                                        "wvx.reference.text-ascii-lower@1"
-                                    ],
-    "data.text.ascii_uppercase@1":  [
-                                        "wvx.reference.text-ascii-upper@1"
-                                    ],
-    "data.text.unicode_lowercase@1":  [
-                                          "wvx.reference.text-lowercase@1"
-                                      ],
-    "data.text.unicode_uppercase@1":  [
-                                          "wvx.reference.text-uppercase@1"
-                                      ],
-    "io.input.bytes@1":  [
-                             "wvx.reference.io-input-bytes@1"
-                         ],
-    "io.output.bytes@1":  [
-                              "wvx.reference.io-output-bytes@1"
-                          ]
+  "data.codec.base64_decode@1": [
+    "base64.standard-decode@1",
+    "wvx.reference.base64-decode@1"
+  ],
+  "data.codec.base64_encode@1": [
+    "base64.standard-encode@1",
+    "wvx.reference.base64-encode@1"
+  ],
+  "data.codec.hex_decode@1": [
+    "wvx.reference.hex-decode@1",
+    "wvx.reference.hex-decode-table@1"
+  ],
+  "data.codec.hex_encode@1": [
+    "wvx.reference.hex-encode@1",
+    "wvx.reference.hex-encode-chunked@1"
+  ],
+  "data.compress.gunzip@1": [
+    "flate2.gunzip@1",
+    "flate2.gunzip-chunked@1",
+    "flate2.gunzip-take@1"
+  ],
+  "data.compress.gzip@1": [
+    "flate2.gzip@1",
+    "flate2.gzip-chunked@1",
+    "flate2.gzip-oneshot@1"
+  ],
+  "data.hash.blake3@1": [
+    "blake3.blake3@1"
+  ],
+  "data.hash.sha256@1": [
+    "sha2.sha256@1",
+    "sha2.sha256-chunked@1",
+    "sha2.sha256-streaming@1",
+    "sha2.sha256-update-all@1"
+  ],
+  "data.json.parse@1": [
+    "external.demo.upper-parse@1",
+    "json-crate.parse@1",
+    "serde-json.parse-owned@1",
+    "wvx.reference.json-parse@1"
+  ],
+  "data.json.path_set@1": [
+    "serde-json.pointer-set@1",
+    "wvx.reference.path-set@1"
+  ],
+  "data.json.serialize@1": [
+    "serde-json.serialize@1",
+    "wvx.reference.json-serialize@1",
+    "wvx.reference.json-serialize-pretty@1"
+  ],
+  "data.text.ascii_lowercase@1": [
+    "wvx.reference.text-ascii-lower@1"
+  ],
+  "data.text.ascii_uppercase@1": [
+    "wvx.reference.text-ascii-upper@1"
+  ],
+  "data.text.unicode_lowercase@1": [
+    "wvx.reference.text-lowercase@1"
+  ],
+  "data.text.unicode_uppercase@1": [
+    "wvx.reference.text-uppercase@1"
+  ],
+  "io.input.bytes@1": [
+    "wvx.reference.io-input-bytes@1"
+  ],
+  "io.output.bytes@1": [
+    "wvx.reference.io-output-bytes@1"
+  ]
 }

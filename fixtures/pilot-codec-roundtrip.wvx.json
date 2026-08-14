@@ -1,0 +1,106 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "pilot-codec-roundtrip",
+  "name": "Codec round-trip (hex encode → decode → identity)",
+  "entrypoint": "input",
+  "metadata": {
+    "pilot": "true",
+    "family": "data.codec",
+    "domain": "4",
+    "roundtrip": "hex"
+  },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.codec.hex_encode",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.codec.hex_decode",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": ["invalid-hex"],
+      "effects": []
+    },
+    {
+      "id": "io.output.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [],
+      "errors": [],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 56, "y": 140 }
+    },
+    {
+      "id": "enc",
+      "capability": { "id": "data.codec.hex_encode", "version": "1" },
+      "implementation": "wvx.reference.hex-encode@1",
+      "config": {},
+      "ui": { "x": 300, "y": 140 }
+    },
+    {
+      "id": "dec",
+      "capability": { "id": "data.codec.hex_decode", "version": "1" },
+      "implementation": "wvx.reference.hex-decode@1",
+      "config": {},
+      "ui": { "x": 560, "y": 140 }
+    },
+    {
+      "id": "output",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 820, "y": 140 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "enc", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "enc", "port": "bytes" },
+      "to": { "instance": "dec", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "dec", "port": "bytes" },
+      "to": { "instance": "output", "port": "bytes" }
+    }
+  ]
+}

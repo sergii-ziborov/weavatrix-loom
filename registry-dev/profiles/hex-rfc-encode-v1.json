@@ -1,0 +1,23 @@
+{
+  "id": "hex-rfc-encode-v1",
+  "version": "1",
+  "capability_key": "data.codec.hex_encode@1",
+  "title": "Lowercase hex encode (shared vectors before conformant)",
+  "suite_digest": "sha256:pending-compute",
+  "preconditions": ["Arbitrary input bytes"],
+  "guarantees": [
+    "Output is ASCII lowercase hex, 2 chars per input byte",
+    "Empty input → empty output",
+    "All multi-impl backends agree bit-for-bit on suite"
+  ],
+  "limitations": [
+    "Uppercase hex is out of scope for this capability",
+    "Suite must be recorded in evidence artifact before status=conformant"
+  ],
+  "expected_error_families": [],
+  "vectors": [
+    { "id": "empty", "input_b64": "", "expect_ok": true, "expect_output_b64": "" },
+    { "id": "abc", "input_b64": "YWJj", "expect_ok": true }
+  ],
+  "negative_vectors": []
+}

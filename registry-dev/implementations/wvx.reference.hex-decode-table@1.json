@@ -1,0 +1,31 @@
+{
+  "id": "wvx.reference.hex-decode-table",
+  "version": "1",
+  "capability": { "id": "data.codec.hex_decode", "version": "1" },
+  "source": {
+    "kind": "reference",
+    "package": "wvx-adapters",
+    "package_version": "0.1.1"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "Domain 4 hex multi-impl (256-entry lookup table).",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::reference_hex_decode_table::decode({bytes}.as_slice())?"
+    }
+  },
+  "conformance_profile": "hex-rfc-decode-v1"
+}

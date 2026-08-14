@@ -3,6 +3,8 @@
 //! Transform handlers register via `wvx-component-sdk` ([`register_pilot_plugins`]).
 //! Pure functions remain the export surface for the compiler / vendoring.
 
+pub mod base64_standard_decode;
+pub mod base64_standard_encode;
 pub mod blake3_hash;
 pub mod flate2_gunzip;
 pub mod flate2_gunzip_chunked;
@@ -11,6 +13,12 @@ pub mod flate2_gzip;
 pub mod flate2_gzip_chunked;
 pub mod flate2_gzip_oneshot;
 pub mod json_crate_parse;
+pub mod reference_base64_decode;
+pub mod reference_base64_encode;
+pub mod reference_hex_decode;
+pub mod reference_hex_decode_table;
+pub mod reference_hex_encode;
+pub mod reference_hex_encode_chunked;
 pub mod reference_json_parse;
 pub mod reference_json_serialize;
 pub mod reference_json_serialize_pretty;
@@ -63,4 +71,13 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("flate2.gunzip@1", "flate2_gunzip"),
     ("flate2.gunzip-chunked@1", "flate2_gunzip_chunked"),
     ("flate2.gunzip-take@1", "flate2_gunzip_take"),
+    // Domain 4 — binary codecs (hex + base64 multi-impl)
+    ("wvx.reference.hex-encode@1", "reference_hex_encode"),
+    ("wvx.reference.hex-encode-chunked@1", "reference_hex_encode_chunked"),
+    ("wvx.reference.hex-decode@1", "reference_hex_decode"),
+    ("wvx.reference.hex-decode-table@1", "reference_hex_decode_table"),
+    ("base64.standard-encode@1", "base64_standard_encode"),
+    ("wvx.reference.base64-encode@1", "reference_base64_encode"),
+    ("base64.standard-decode@1", "base64_standard_decode"),
+    ("wvx.reference.base64-decode@1", "reference_base64_decode"),
 ];

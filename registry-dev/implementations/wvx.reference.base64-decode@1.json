@@ -1,0 +1,31 @@
+{
+  "id": "wvx.reference.base64-decode",
+  "version": "1",
+  "capability": { "id": "data.codec.base64_decode", "version": "1" },
+  "source": {
+    "kind": "reference",
+    "package": "wvx-adapters",
+    "package_version": "0.1.1"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "Domain 4 pure Base64 decode; must bit-equal base64.standard-decode@1.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::reference_base64_decode::decode({bytes}.as_slice())?"
+    }
+  },
+  "conformance_profile": "base64-rfc4648-standard-v1"
+}

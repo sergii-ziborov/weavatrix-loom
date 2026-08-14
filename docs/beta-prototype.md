@@ -73,7 +73,7 @@ npm run alpha:check   # test + build (+ check:api if server up)
 |---|------|-----|
 | **M1** | **Truthful Registry** ([truthful-registry.md](truthful-registry.md)) | No false conformant claims; profiles + evidence artifacts + CI |
 | **M2** | **Safe Semantic Core** | Validator passes, GraphPatch preview/commit, compiler policy — **landed** |
-| Then | Domain 4 codecs / deeper suites | After M1–M2 |
+| Then | Domain 4 codecs / deeper suites | **Domain 4 pilot landed** (hex + base64 multi-impl) |
 
 ### M2 Safe Semantic Core (landed)
 
@@ -84,6 +84,21 @@ npm run alpha:check   # test + build (+ check:api if server up)
 | **Compiler** | `CompilePolicy::dev()` / `::release()` — no candidates in release, trusted emit subset, SHA-256 digests (`weavatrix.digests.json`), optional `Cargo.lock`, TargetProfile + ResolveDecision explanations (`weavatrix.resolution.json`, lockfile `[resolution]`). CLI: `wvx export-rust … --release`. |
 
 **Do not** expand domains while registry status strings overclaim.
+
+### Domain 4 — Binary codecs (pilot)
+
+| Capability | Multi-impl |
+|------------|------------|
+| `data.codec.hex_encode@1` | oneshot · chunked |
+| `data.codec.hex_decode@1` | nibble · table |
+| `data.codec.base64_encode@1` | crate STANDARD · pure |
+| `data.codec.base64_decode@1` | crate STANDARD · pure |
+
+```powershell
+cargo run -p wvx-cli -- validate fixtures/pilot-codec-pipeline.wvx.json
+cargo run -p wvx-cli -- run fixtures/pilot-codec-roundtrip.wvx.json --input-json "hello"
+cargo run -p wvx-cli -- export-rust fixtures/pilot-codec-pipeline.wvx.json -o $env:TEMP\loom-codec --check
+```
 
 ### Library expansion (beta+)
 

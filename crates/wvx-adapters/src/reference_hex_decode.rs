@@ -7,7 +7,7 @@ fn nibble(c: u8) -> Result<u8, String> {
         b'0'..=b'9' => Ok(c - b'0'),
         b'a'..=b'f' => Ok(c - b'a' + 10),
         b'A'..=b'F' => Ok(c - b'A' + 10),
-        _ => Err(format!("invalid hex digit 0x{c:02x}")),
+        _ => Err(format!("invalid-hex: invalid digit 0x{c:02x}")),
     }
 }
 
@@ -15,7 +15,7 @@ fn nibble(c: u8) -> Result<u8, String> {
 pub fn decode(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if bytes.len() % 2 != 0 {
         return Err(format!(
-            "hex length must be even (got {})",
+            "invalid-hex: length must be even (got {})",
             bytes.len()
         ));
     }

@@ -91,7 +91,7 @@ Usage:
   wvx patch intent <text> [--project <file>]   heuristic or LLM (XAI_API_KEY) → GraphPatch
   wvx patch preview <project.wvx.json> [--patch <patch.json>]  ghost apply (no revision bump)
   wvx patch apply|commit <project.wvx.json> [--patch <patch.json>]  atomic commit if valid
-  wvx conformance [--golden]
+  wvx conformance [--golden] [--profiles] [--profile <id>]
   wvx bench [--iterations N] [--warmup N] [-o file.json]   Gate E pilot microbench
   wvx version
 
@@ -110,8 +110,10 @@ Export options:
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
 
-  wvx conformance               pilot vectors + negative parse/path_set error codes
-  wvx conformance --golden      also dynamic≡static export combos (invokes cargo)
+  wvx conformance               pilot + multi-impl equality + profile suites
+  wvx conformance --profiles    multi-domain profile runner only
+  wvx conformance --profile id  single profile from registry-dev/profiles
+  wvx conformance --golden      JSON combos + multi-domain dynamic≡static
   wvx bench                     Gate E pilot microbench (benchmark evidence axis)
   wvx registry admit            Gate E human admit (fail-closed; --apply writes manifest)
 
@@ -174,7 +176,61 @@ fn cmd_bench(args: &[String]) -> ExitCode {
 
 fn cmd_conformance(args: &[String]) -> ExitCode {
     let golden = args.iter().any(|a| a == "--golden");
-    let report = wvx_conformance::run_pilot_conformance();
+    let profiles_only = args.iter().any(|a| a == "--profiles");
+    let mut profile_id: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--profile" {
+            profile_id = args.get(i + 1).cloned();
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+
+    wvx_adapters::register_pilot_plugins();
+    let handlers = wvx_component_sdk::registry_with_pilot_and_plugins();
+    let reg_root = std::path::PathBuf::from("registry-dev");
+
+    if let Some(pid) = profile_id {
+        match wvx_conformance::run_profile_conformance(&reg_root, &handlers, &pid) {
+            Ok(r) => {
+                println!(
+                    "profile {}: {} · {} impls · {} cases · {}",
+                    r.profile_id,
+                    r.capability_key,
+                    r.implementations.len(),
+                    r.cases.len(),
+                    if r.ok { "PASS" } else { "FAIL" }
+                );
+                for c in &r.cases {
+                    let mark = if c.ok { "ok" } else { "FAIL" };
+                    println!(
+                        "  [{mark}] {} / {} / {}",
+                        c.capability, c.implementation, c.case
+                    );
+                    if let Some(d) = &c.detail {
+                        println!("         {d}");
+                    }
+                }
+                return if r.ok {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::FAILURE
+                };
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let report = if profiles_only {
+        wvx_conformance::run_multi_domain_profiles(&reg_root, &handlers)
+    } else {
+        wvx_conformance::run_pilot_conformance()
+    };
     let failed = report.cases.iter().filter(|c| !c.ok).count();
     println!(
         "conformance: {} cases, {} failed",
@@ -196,7 +252,7 @@ fn cmd_conformance(args: &[String]) -> ExitCode {
     }
 
     if golden {
-        println!("golden dynamic≡static (compact combos)…");
+        println!("golden dynamic≡static (JSON compact combos)…");
         let goldens = wvx_conformance::run_all_goldens(br#"{"hello":"world"}"#);
         let mut all_ok = true;
         for g in &goldens {
@@ -210,6 +266,18 @@ fn cmd_conformance(args: &[String]) -> ExitCode {
             }
             if g.ok {
                 println!("         json={}", g.dynamic_json);
+            }
+            all_ok &= g.ok;
+        }
+        if !all_ok {
+            return ExitCode::FAILURE;
+        }
+        println!("golden multi-domain (hash/codec/text)…");
+        for (name, g) in wvx_conformance::run_domain_goldens() {
+            let mark = if g.ok { "ok" } else { "FAIL" };
+            println!("  [{mark}] domain={name} impl={}", g.parse_impl);
+            if let Some(d) = &g.detail {
+                println!("         {d}");
             }
             all_ok &= g.ok;
         }

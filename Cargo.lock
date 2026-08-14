@@ -1786,7 +1786,9 @@ version = "0.1.1"
 dependencies = [
  "serde_json",
  "wvx-adapter-external-demo",
+ "wvx-adapters",
  "wvx-command-bus",
+ "wvx-component-sdk",
  "wvx-conformance",
  "wvx-forge",
  "wvx-ir",
@@ -1845,6 +1847,7 @@ dependencies = [
 name = "wvx-conformance"
 version = "0.1.1"
 dependencies = [
+ "base64",
  "serde",
  "serde_json",
  "thiserror",
@@ -1852,6 +1855,7 @@ dependencies = [
  "wvx-compiler-rust",
  "wvx-component-sdk",
  "wvx-ir",
+ "wvx-registry-client",
  "wvx-runtime",
  "wvx-types",
 ]

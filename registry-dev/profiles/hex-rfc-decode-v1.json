@@ -20,6 +20,6 @@
     { "id": "abc-hex", "input_b64": "NjE2MjYz", "expect_ok": true }
   ],
   "negative_vectors": [
-    { "id": "odd", "input_b64": "YWI=", "expect_ok": false }
+    { "id": "odd", "input_b64": "YWJj", "expect_error_family": "invalid-hex" }
   ]
 }

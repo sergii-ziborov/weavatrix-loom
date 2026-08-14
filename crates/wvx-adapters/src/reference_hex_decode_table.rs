@@ -24,7 +24,7 @@ static TABLE: [i8; 256] = build_table();
 pub fn decode(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if bytes.len() % 2 != 0 {
         return Err(format!(
-            "hex length must be even (got {})",
+            "invalid-hex: length must be even (got {})",
             bytes.len()
         ));
     }
@@ -34,10 +34,10 @@ pub fn decode(bytes: &[u8]) -> Result<Vec<u8>, String> {
         let hi = TABLE[bytes[i] as usize];
         let lo = TABLE[bytes[i + 1] as usize];
         if hi < 0 {
-            return Err(format!("invalid hex digit 0x{:02x}", bytes[i]));
+            return Err(format!("invalid-hex: invalid digit 0x{:02x}", bytes[i]));
         }
         if lo < 0 {
-            return Err(format!("invalid hex digit 0x{:02x}", bytes[i + 1]));
+            return Err(format!("invalid-hex: invalid digit 0x{:02x}", bytes[i + 1]));
         }
         out.push(((hi as u8) << 4) | (lo as u8));
         i += 2;

@@ -14,6 +14,7 @@ categories = ["development-tools"]
 readme = "README.md"
 
 [dependencies]
+base64 = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -23,6 +24,7 @@ wvx-runtime = { workspace = true }
 wvx-compiler-rust = { workspace = true }
 wvx-component-sdk = { workspace = true }
 wvx-adapters = { workspace = true }
+wvx-registry-client = { workspace = true }
 
 [lints]
 workspace = true

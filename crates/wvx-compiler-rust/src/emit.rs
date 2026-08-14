@@ -101,6 +101,7 @@ pub fn main_rs() -> String {
 mod generated_pipeline;
 
 use std::env;
+use std::io::{self, Write};
 
 fn main() {
     let input = env::var("WVX_PIPELINE_INPUT")
@@ -109,7 +110,10 @@ fn main() {
         .unwrap_or_else(|_| br#"{"hello":"world"}"#.to_vec());
 
     match generated_pipeline::run_pipeline(&input) {
-        Ok(bytes) => print!("{}", String::from_utf8_lossy(&bytes)),
+        // Raw bytes so binary domains (hash digests, gzip) round-trip in golden tests.
+        Ok(bytes) => {
+            let _ = io::stdout().write_all(&bytes);
+        }
         Err(err) => {
             eprintln!("pipeline error: {err}");
             std::process::exit(1);

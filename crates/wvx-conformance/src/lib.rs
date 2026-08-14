@@ -10,10 +10,18 @@
 //! `invalid-syntax`, `invalid-unicode`, `depth-limit` (depth not enforced in pilot).
 //!
 //! Gate E pilot microbench: [`bench`].
+//! Profile-driven runner: [`profile_runner`].
+//! Multi-domain golden: [`domain_golden`].
 
 pub mod bench;
+pub mod domain_golden;
+pub mod profile_runner;
 
 pub use bench::{run_pilot_bench, BenchProvenance, BenchReport};
+pub use domain_golden::{golden_fixture_bytes, run_domain_goldens};
+pub use profile_runner::{
+    run_multi_domain_profiles, run_profile_conformance, run_profile_doc, ProfileRunReport,
+};
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -298,6 +306,13 @@ pub fn run_pilot_conformance() -> ConformanceReport {
 
     // --- multi-domain multi-impl equality (competitors must agree bit-for-bit) ---
     cases.extend(run_multi_impl_equality(&reg));
+
+    // --- profile-driven multi-domain suites (when registry-dev is present) ---
+    let registry_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
+    if registry_root.is_dir() {
+        let profile_report = profile_runner::run_multi_domain_profiles(&registry_root, &reg);
+        cases.extend(profile_report.cases);
+    }
 
     let ok = cases.iter().all(|c| c.ok);
     ConformanceReport { ok, cases }

@@ -25,6 +25,8 @@ wvx-runtime = { workspace = true }
 wvx-types = { workspace = true }
 wvx-ir = { workspace = true }
 wvx-adapter-external-demo = { workspace = true, features = ["host"] }
+wvx-adapters = { workspace = true, features = ["host"] }
+wvx-component-sdk = { workspace = true }
 
 [lints]
 workspace = true

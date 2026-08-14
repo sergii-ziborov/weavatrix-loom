@@ -17,6 +17,7 @@ members = [
     "crates/wvx-adapter-external-demo",
     "crates/wvx-conformance",
     "crates/wvx-cortex",
+    "crates/wvx-schema-contract",
     "crates/loom-server",
 ]
 default-members = [

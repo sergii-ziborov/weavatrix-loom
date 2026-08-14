@@ -11,6 +11,23 @@ JSON Schema (draft 2020-12) for WVX wire documents.
 | [`wvx.evidence_artifact.v0.1.json`](wvx.evidence_artifact.v0.1.json) | Evidence artifact (legacy) |
 | [`wvx.evidence_artifact.v0.2.json`](wvx.evidence_artifact.v0.2.json) | Evidence artifact v0.2 (digests + environment + case_results) |
 
+## Contract tests
+
+Hand-authored schemas are guarded by **`wvx-schema-contract`**:
+
+```bash
+cargo test -p wvx-schema-contract
+```
+
+Checks:
+
+1. Schema `required` fields present on pilot fixtures + registry samples  
+2. Serde roundtrip for `Project`, `Implementation`, `GraphPatch`, `EvidenceArtifact`  
+3. Constants (`wvx.project.v0.1`, `wvx.evidence.v0.2`) stay aligned with schema `const`
+
+Full schemars generation can replace hand schemas later; until then these tests
+fail closed when wire contracts drift.
+
 ## Source of truth
 
 1. **Runtime/IR:** Rust types in `crates/wvx-ir` and `crates/wvx-types` (serde).

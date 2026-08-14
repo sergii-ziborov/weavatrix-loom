@@ -1,0 +1,24 @@
+[package]
+name = "wvx-schema-contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "JSON Schema contract checks + Rust type roundtrips for Loom wire formats"
+publish = false
+readme = "README.md"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+wvx-ir = { workspace = true }
+wvx-project-graph = { workspace = true }
+wvx-registry-client = { workspace = true }
+wvx-types = { workspace = true }
+
+[lints]
+workspace = true

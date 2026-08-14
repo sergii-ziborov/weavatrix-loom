@@ -38,6 +38,9 @@ jobs:
       - name: Test workspace (excludes long golden matrix — see gates job)
         run: cargo test --workspace --lib --bins --tests -- --nocapture --skip golden
 
+      - name: Schema contract roundtrips (IR ↔ fixtures ↔ schemas)
+        run: cargo test -p wvx-schema-contract -- --nocapture
+
   gates:
     name: Gates A/D (conformance + golden)
     runs-on: ubuntu-latest
@@ -117,9 +120,11 @@ jobs:
           test -f schemas/wvx.conformance_profile.v0.1.json
           test -f schemas/wvx.evidence_artifact.v0.1.json
           test -f schemas/wvx.evidence_artifact.v0.2.json
+          test -f deny.toml
           test -f docs/truthful-registry.md
           test -f docs/adr/README.md
           test -f docs/domain-roadmap.md
+          test -d crates/wvx-schema-contract
 
           test -f docs/go-no-go-a-d-pilot-json.md
           test -f docs/go-no-go-e-pilot.md

@@ -190,17 +190,29 @@ embed it.
 | `wvx-adapter-external-demo` | External fixture (`upper_parse`) — demo only |
 | `wvx-forge` | Thin Forge: bootstrap inventory + **semantic match/draft** (**lib**; deep code facts → Weavatrix; ADR-0012) |
 | `wvx-conformance` | Pilot + **profile-driven** suites + multi-domain golden (**lib**) |
+| `wvx-schema-contract` | JSON Schema required-fields + Rust serde roundtrips (**test crate**) |
 | `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) (**lib** bridge) |
 | `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) (**product host**) |
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) on push/PR to `main`:
+GitHub Actions on push/PR to `main`:
 
-1. `cargo check --workspace` + `cargo test --workspace`
-2. **Gates A/D:** `wvx conformance` + `cargo test -p wvx-conformance` (includes golden export)
-3. Smoke run with `json-crate.parse@1`
-4. Presence checks for schemas / ADRs / pilot fixture
+| Workflow | Checks |
+| --- | --- |
+| **ci.yml** | `fmt`, `clippy -D warnings`, `check`, `test` (skip long golden), **schema contracts** |
+| **ci.yml gates** | conformance, golden, truthful, promote artifacts, Gate C v1 + **v2 blind** |
+| **security.yml** | **cargo-deny** (licenses/sources) + **cargo-audit** (advisories) |
+
+Local:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test -p wvx-schema-contract
+cargo deny check          # needs cargo-deny installed
+cargo audit               # needs cargo-audit installed
+```
 
 ## Quick start (alpha)
 
@@ -428,7 +440,7 @@ cargo test -p wvx-conformance
 | **M1** Truthful Registry | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — artifacts, truthful CI |
 | **M2** Safe Semantic Core | [beta-prototype.md](docs/beta-prototype.md) | **Landed** — validator passes, preview/commit, CompilePolicy |
 | **Trust** Evidence v0.2 + promote | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — mint/verify/promote, `compile_release` |
-| **P1** Profile runner + multi-domain golden | this section | **In progress** |
+| **P1** Profile runner + multi-domain golden + Gate C v2 + schema contracts + CI | this section | **Landed** |
 
 Go/No-Go evidence:
 

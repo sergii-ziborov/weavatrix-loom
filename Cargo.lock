@@ -1942,6 +1942,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "wvx-schema-contract"
+version = "0.1.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wvx-ir",
+ "wvx-project-graph",
+ "wvx-registry-client",
+ "wvx-types",
+]
+
+[[package]]
 name = "wvx-types"
 version = "0.1.1"
 dependencies = [

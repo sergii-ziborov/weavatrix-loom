@@ -1920,6 +1920,7 @@ version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "wvx-ir",
 ]

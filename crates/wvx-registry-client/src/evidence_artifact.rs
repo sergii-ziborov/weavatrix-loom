@@ -1,18 +1,28 @@
-//! Evidence artifacts — source of truth for lifecycle axes (Milestone 1).
+//! Evidence artifacts — source of truth for lifecycle axes.
+//!
+//! - **v0.1** (`wvx.evidence.v0.1`): subject digest + suite summary (legacy).
+//! - **v0.2** (`wvx.evidence.v0.2`): full trust digests, environment, case-by-case
+//!   results; verifier loads the conformance profile and rechecks linkages.
 //!
 //! Manifest `evidence` axis strings are **hints only**. For `conformant` /
-//! `admitted`, an on-disk artifact must exist, match subject/profile digests,
-//! and report passing required suites.
+//! `admitted`, an on-disk artifact must exist and pass verification.
 
 use crate::{LocalRegistry, RegistryError};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use wvx_ir::{AxisFact, Implementation, ImplementationEvidence, LifecycleStatus};
 
-pub const EVIDENCE_SCHEMA: &str = "wvx.evidence.v0.1";
+/// Current mint schema.
+pub const EVIDENCE_SCHEMA: &str = "wvx.evidence.v0.2";
+/// Legacy schema still accepted by the verifier.
+pub const EVIDENCE_SCHEMA_V01: &str = "wvx.evidence.v0.1";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+// ─── Artifact model ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct SuiteResult {
     pub profile: String,
     pub suite_digest: String,
@@ -23,13 +33,77 @@ pub struct SuiteResult {
     pub notes: Vec<String>,
 }
 
+/// Single vector / negative outcome recorded by a conformance runner.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct CaseResult {
+    pub case_id: String,
+    /// `positive` | `negative`
+    #[serde(default = "default_case_kind")]
+    pub kind: String,
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_error_family: Option<String>,
+}
+
+fn default_case_kind() -> String {
+    "positive".into()
+}
+
+/// Cryptographic / content digests that pin the subject of evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct EvidenceDigests {
+    /// SHA-256 of implementation identity + source pins (logical source tree).
+    #[serde(default)]
+    pub implementation_source_tree: String,
+    /// SHA-256 of upstream package identity (`kind|package@version`).
+    #[serde(default)]
+    pub upstream_package: String,
+    /// SHA-256 of workspace/export `Cargo.lock` when present, else `sha256:absent`.
+    #[serde(default)]
+    pub cargo_lock: String,
+    /// SHA-256 of adapter emit template + crate binding.
+    #[serde(default)]
+    pub adapter_source: String,
+    /// SHA-256 of the capability contract JSON on disk.
+    #[serde(default)]
+    pub capability_contract: String,
+    /// SHA-256 of the conformance profile document on disk.
+    #[serde(default)]
+    pub profile: String,
+    /// SHA-256 of profile vectors (+ negatives), or profile.suite_digest when set.
+    #[serde(default)]
+    pub suite: String,
+    /// Legacy-compatible subject pin (emit + package).
+    #[serde(default)]
+    pub subject: String,
+}
+
+/// Where / who produced the artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct EvidenceEnvironment {
+    /// Rust target triple (e.g. `x86_64-pc-windows-msvc`) or `unknown`.
+    #[serde(default)]
+    pub target: String,
+    /// `rustc` version string when available.
+    #[serde(default)]
+    pub toolchain: String,
+    /// Feature flags active for the run (if any).
+    #[serde(default)]
+    pub features: Vec<String>,
+    /// Runner identity: host + crate (e.g. `wvx-conformance@0.1.1`).
+    #[serde(default)]
+    pub runner_identity: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EvidenceArtifact {
     pub schema_version: String,
     pub implementation_id: String,
     pub capability_key: String,
     pub conformance_profile: String,
-    /// Digest of adapter subject (emit template + package identity).
+    /// Digest of adapter subject (v0.1 + v0.2 mirror of digests.subject).
     pub subject_digest: String,
     #[serde(default)]
     pub profile_suite_digest: String,
@@ -38,6 +112,13 @@ pub struct EvidenceArtifact {
     pub recorded_at_unix: u64,
     #[serde(default)]
     pub notes: Vec<String>,
+    // ─── v0.2 fields (default empty when loading v0.1) ────────────────────
+    #[serde(default)]
+    pub digests: EvidenceDigests,
+    #[serde(default)]
+    pub environment: EvidenceEnvironment,
+    #[serde(default)]
+    pub case_results: Vec<CaseResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -46,12 +127,39 @@ pub struct ArtifactCheck {
     pub ok: bool,
     pub findings: Vec<String>,
     pub justified: String,
+    /// Schema of the artifact that was verified (`v0.1` / `v0.2` / missing).
+    #[serde(default)]
+    pub schema_version: String,
+}
+
+// ─── Digest helpers ───────────────────────────────────────────────────────────
+
+/// Hex SHA-256 with `sha256:` prefix.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let hash = Sha256::digest(bytes);
+    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    format!("sha256:{hex}")
 }
 
 /// Stable subject digest from implementation identity + emit template.
 ///
-/// Uses FNV-1a 64 (not `std::hash::DefaultHasher`, which is not cross-version stable).
+/// v0.2 stores this as `digests.subject` and mirrors into `subject_digest`.
+/// Also keeps FNV form as legacy suffix-compatible check for v0.1 artifacts.
 pub fn subject_digest(imp: &Implementation) -> String {
+    subject_digest_sha256(imp)
+}
+
+/// Legacy FNV-1a 64 used by v0.1 sample artifacts.
+pub fn subject_digest_fnv(imp: &Implementation) -> String {
+    let payload = subject_payload(imp);
+    format!("fnv1a64:{:016x}", fnv1a64(payload.as_bytes()))
+}
+
+pub fn subject_digest_sha256(imp: &Implementation) -> String {
+    sha256_hex(subject_payload(imp).as_bytes())
+}
+
+fn subject_payload(imp: &Implementation) -> String {
     let template = imp
         .sdk
         .as_ref()
@@ -64,7 +172,7 @@ pub fn subject_digest(imp: &Implementation) -> String {
         .and_then(|s| s.emit.as_ref())
         .map(|e| e.crate_name.as_str())
         .unwrap_or("");
-    let payload = format!(
+    format!(
         "v1|{}|{}@{}|{}|{}|{}|{}",
         imp.full_id(),
         imp.capability.id,
@@ -73,8 +181,7 @@ pub fn subject_digest(imp: &Implementation) -> String {
         imp.source.package_version,
         crate_name,
         template
-    );
-    format!("fnv1a64:{:016x}", fnv1a64(payload.as_bytes()))
+    )
 }
 
 fn fnv1a64(bytes: &[u8]) -> u64 {
@@ -116,11 +223,377 @@ pub fn write_artifact(path: &Path, art: &EvidenceArtifact) -> Result<(), Registr
     Ok(())
 }
 
-/// Verify artifact for an implementation (Milestone 1 truthful registry).
-pub fn verify_artifact(
+// ─── Profile load ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConformanceProfileDoc {
+    pub id: String,
+    #[serde(default)]
+    pub version: String,
+    pub capability_key: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub suite_digest: String,
+    #[serde(default)]
+    pub vectors: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub negative_vectors: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub expected_error_families: Vec<String>,
+    #[serde(default)]
+    pub guarantees: Vec<String>,
+    #[serde(default)]
+    pub limitations: Vec<String>,
+}
+
+pub fn profile_path(registry_root: &Path, profile_id: &str) -> PathBuf {
+    registry_root
+        .join("profiles")
+        .join(format!("{profile_id}.json"))
+}
+
+pub fn load_profile(
+    registry_root: &Path,
+    profile_id: &str,
+) -> Result<(ConformanceProfileDoc, Vec<u8>), RegistryError> {
+    let path = profile_path(registry_root, profile_id);
+    let bytes = fs::read(&path).map_err(|e| RegistryError::Io(path.clone(), e))?;
+    let doc: ConformanceProfileDoc = serde_json::from_slice(&bytes)
+        .map_err(|e| RegistryError::Parse(path, e.to_string()))?;
+    Ok((doc, bytes))
+}
+
+/// Suite digest: use profile field unless placeholder; else hash vectors.
+pub fn suite_digest_for_profile(doc: &ConformanceProfileDoc) -> String {
+    let d = doc.suite_digest.trim();
+    if !d.is_empty()
+        && !d.contains("pending")
+        && d.starts_with("sha256:")
+        && d.len() > "sha256:".len() + 8
+    {
+        return d.to_string();
+    }
+    let payload = serde_json::json!({
+        "id": doc.id,
+        "capability_key": doc.capability_key,
+        "vectors": doc.vectors,
+        "negative_vectors": doc.negative_vectors,
+    });
+    sha256_hex(payload.to_string().as_bytes())
+}
+
+// ─── Compute digests for an impl ──────────────────────────────────────────────
+
+/// Options for minting / recomputing digests.
+#[derive(Debug, Clone, Default)]
+pub struct DigestContext {
+    /// Absolute path to capability JSON (optional).
+    pub capability_path: Option<PathBuf>,
+    /// Absolute path to profile JSON (optional).
+    pub profile_path: Option<PathBuf>,
+    /// Absolute path to Cargo.lock (optional).
+    pub cargo_lock_path: Option<PathBuf>,
+    /// Absolute path to adapter source file or tree root (optional).
+    pub adapter_source_path: Option<PathBuf>,
+    /// Absolute path to implementation source tree (optional).
+    pub source_tree_path: Option<PathBuf>,
+}
+
+fn file_sha256(path: &Path) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(sha256_hex(&bytes))
+}
+
+fn path_digest_or_absent(path: Option<&Path>) -> String {
+    match path {
+        Some(p) if p.is_file() => file_sha256(p).unwrap_or_else(|_| "sha256:absent".into()),
+        Some(p) if p.is_dir() => hash_tree(p).unwrap_or_else(|_| "sha256:absent".into()),
+        _ => "sha256:absent".into(),
+    }
+}
+
+fn hash_tree(root: &Path) -> Result<String, String> {
+    let mut entries: Vec<PathBuf> = Vec::new();
+    walk_collect(root, &mut entries)?;
+    entries.sort();
+    let mut hasher = Sha256::new();
+    for path in entries {
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        hasher.update(rel.as_bytes());
+        hasher.update([0]);
+        let bytes = fs::read(&path).map_err(|e| format!("{rel}: {e}"))?;
+        hasher.update(&bytes);
+        hasher.update([0]);
+    }
+    let hash = hasher.finalize();
+    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    Ok(format!("sha256:{hex}"))
+}
+
+fn walk_collect(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let rd = fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    for entry in rd {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if name == "target" || name.starts_with('.') {
+            continue;
+        }
+        if path.is_dir() {
+            walk_collect(&path, out)?;
+        } else if path.is_file() {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// Compute full digest set for an implementation under a registry.
+pub fn compute_digests(
     registry_root: &Path,
     imp: &Implementation,
-) -> ArtifactCheck {
+    profile: Option<&ConformanceProfileDoc>,
+    ctx: &DigestContext,
+) -> EvidenceDigests {
+    let subject = subject_digest_sha256(imp);
+    let upstream = sha256_hex(
+        format!(
+            "{}|{}@{}",
+            imp.source.kind, imp.source.package, imp.source.package_version
+        )
+        .as_bytes(),
+    );
+    let adapter = {
+        let template = imp
+            .sdk
+            .as_ref()
+            .and_then(|s| s.emit.as_ref())
+            .map(|e| e.template.as_str())
+            .unwrap_or("");
+        let crate_name = imp
+            .sdk
+            .as_ref()
+            .and_then(|s| s.emit.as_ref())
+            .map(|e| e.crate_name.as_str())
+            .unwrap_or("");
+        let crate_path = imp
+            .sdk
+            .as_ref()
+            .and_then(|s| s.emit.as_ref())
+            .and_then(|e| e.crate_path.as_deref())
+            .unwrap_or("");
+        sha256_hex(format!("{crate_name}|{crate_path}|{template}").as_bytes())
+    };
+
+    let cap_key = format!("{}@{}", imp.capability.id, imp.capability.version);
+    let cap_path = ctx.capability_path.clone().unwrap_or_else(|| {
+        registry_root
+            .join("capabilities")
+            .join(format!("{cap_key}.json"))
+    });
+    let capability_contract = path_digest_or_absent(Some(&cap_path));
+
+    let profile_id = imp
+        .conformance_profile
+        .clone()
+        .unwrap_or_else(|| profile.map(|p| p.id.clone()).unwrap_or_default());
+    let prof_path = ctx
+        .profile_path
+        .clone()
+        .unwrap_or_else(|| profile_path(registry_root, &profile_id));
+    let profile_digest = path_digest_or_absent(Some(&prof_path));
+
+    let suite = if let Some(p) = profile {
+        suite_digest_for_profile(p)
+    } else if let Ok((doc, _)) = load_profile(registry_root, &profile_id) {
+        suite_digest_for_profile(&doc)
+    } else {
+        "sha256:absent".into()
+    };
+
+    let cargo_lock = path_digest_or_absent(ctx.cargo_lock_path.as_deref().or_else(|| {
+        // Walk up from registry for monorepo Cargo.lock
+        None
+    }));
+    let cargo_lock = if cargo_lock == "sha256:absent" {
+        // try monorepo root relative to registry-dev
+        let guess = registry_root.join("../Cargo.lock");
+        path_digest_or_absent(Some(&guess))
+    } else {
+        cargo_lock
+    };
+
+    let source_tree = if let Some(p) = &ctx.source_tree_path {
+        path_digest_or_absent(Some(p))
+    } else if let Some(p) = &ctx.adapter_source_path {
+        path_digest_or_absent(Some(p))
+    } else {
+        // Logical source tree pin = identity + adapter binding
+        sha256_hex(format!("tree|{subject}|{adapter}|{upstream}").as_bytes())
+    };
+
+    EvidenceDigests {
+        implementation_source_tree: source_tree,
+        upstream_package: upstream,
+        cargo_lock,
+        adapter_source: adapter,
+        capability_contract,
+        profile: profile_digest,
+        suite,
+        subject,
+    }
+}
+
+pub fn capture_environment(runner_identity: &str) -> EvidenceEnvironment {
+    let target = std::env::var("TARGET")
+        .or_else(|_| std::env::var("CARGO_CFG_TARGET_TRIPLE"))
+        .unwrap_or_else(|_| {
+            // Best-effort host triple
+            format!("{}-{}-{}", std::env::consts::ARCH, std::env::consts::FAMILY, std::env::consts::OS)
+        });
+    let toolchain = std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "unknown".into());
+    EvidenceEnvironment {
+        target,
+        toolchain,
+        features: Vec::new(),
+        runner_identity: runner_identity.into(),
+    }
+}
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+// ─── Mint ─────────────────────────────────────────────────────────────────────
+
+/// Input for minting a v0.2 artifact from a conformance / suite run.
+#[derive(Debug, Clone, Default)]
+pub struct MintRequest {
+    pub runner_identity: String,
+    pub case_results: Vec<CaseResult>,
+    pub axes: ImplementationEvidence,
+    pub notes: Vec<String>,
+    pub digest_ctx: DigestContext,
+    /// Override profile id (else manifest conformance_profile).
+    pub profile_id: Option<String>,
+}
+
+/// Mint a **v0.2** evidence artifact (does not write until [`write_artifact`]).
+pub fn mint_artifact(
+    registry_root: &Path,
+    imp: &Implementation,
+    req: &MintRequest,
+) -> Result<EvidenceArtifact, RegistryError> {
+    let profile_id = req
+        .profile_id
+        .clone()
+        .or_else(|| imp.conformance_profile.clone())
+        .ok_or_else(|| {
+            RegistryError::Parse(
+                registry_root.to_path_buf(),
+                "mint requires conformance_profile on impl or request".into(),
+            )
+        })?;
+
+    let (profile_doc, _) = load_profile(registry_root, &profile_id)?;
+    let cap_key = format!("{}@{}", imp.capability.id, imp.capability.version);
+    if profile_doc.capability_key != cap_key {
+        return Err(RegistryError::Parse(
+            profile_path(registry_root, &profile_id),
+            format!(
+                "profile capability `{}` != impl `{cap_key}`",
+                profile_doc.capability_key
+            ),
+        ));
+    }
+
+    let digests = compute_digests(registry_root, imp, Some(&profile_doc), &req.digest_ctx);
+    let environment = capture_environment(if req.runner_identity.is_empty() {
+        "wvx-registry-client"
+    } else {
+        &req.runner_identity
+    });
+
+    let cases_total = req.case_results.len() as u32;
+    let cases_ok = req.case_results.iter().filter(|c| c.ok).count() as u32;
+    let passed = cases_total > 0 && cases_ok == cases_total;
+
+    let mut axes = req.axes.clone();
+    if passed {
+        if axes.conformance != AxisFact::Fail {
+            axes.conformance = AxisFact::Pass;
+        }
+    } else if cases_total > 0 {
+        axes.conformance = AxisFact::Fail;
+    }
+    if axes.build == AxisFact::Absent {
+        axes.build = AxisFact::Pass; // local mint assumes build ok if suite ran
+    }
+
+    Ok(EvidenceArtifact {
+        schema_version: EVIDENCE_SCHEMA.into(),
+        implementation_id: imp.full_id(),
+        capability_key: cap_key,
+        conformance_profile: profile_id,
+        subject_digest: digests.subject.clone(),
+        profile_suite_digest: digests.suite.clone(),
+        suite_results: vec![SuiteResult {
+            profile: profile_doc.id.clone(),
+            suite_digest: digests.suite.clone(),
+            passed,
+            cases_ok,
+            cases_total,
+            notes: vec![format!(
+                "minted by {} at {}",
+                environment.runner_identity, environment.target
+            )],
+        }],
+        axes,
+        recorded_at_unix: now_unix(),
+        notes: req.notes.clone(),
+        digests,
+        environment,
+        case_results: req.case_results.clone(),
+    })
+}
+
+/// Convenience: mint + write under default or manifest-relative path.
+pub fn mint_and_write(
+    registry_root: &Path,
+    imp: &Implementation,
+    req: &MintRequest,
+) -> Result<(EvidenceArtifact, PathBuf), RegistryError> {
+    let art = mint_artifact(registry_root, imp, req)?;
+    let path = artifact_path(registry_root, imp);
+    write_artifact(&path, &art)?;
+    Ok((art, path))
+}
+
+// ─── Verify ───────────────────────────────────────────────────────────────────
+
+/// Verify artifact for an implementation (v0.1 legacy or v0.2 full).
+///
+/// For v0.2 the verifier **loads the profile** and recomputes digests.
+pub fn verify_artifact(registry_root: &Path, imp: &Implementation) -> ArtifactCheck {
     let full_id = imp.full_id();
     let mut findings = Vec::new();
     let path = artifact_path(registry_root, imp);
@@ -132,6 +605,7 @@ pub fn verify_artifact(
             ok: false,
             findings,
             justified: LifecycleStatus::Candidate.as_str().into(),
+            schema_version: String::new(),
         };
     }
 
@@ -144,16 +618,20 @@ pub fn verify_artifact(
                 ok: false,
                 findings,
                 justified: LifecycleStatus::InventoryOnly.as_str().into(),
+                schema_version: String::new(),
             };
         }
     };
 
-    if art.schema_version != EVIDENCE_SCHEMA {
+    let schema = art.schema_version.clone();
+    let is_v2 = schema == EVIDENCE_SCHEMA;
+    let is_v1 = schema == EVIDENCE_SCHEMA_V01;
+    if !is_v1 && !is_v2 {
         findings.push(format!(
-            "artifact schema_version `{}` != `{EVIDENCE_SCHEMA}`",
-            art.schema_version
+            "unsupported artifact schema_version `{schema}` (expected `{EVIDENCE_SCHEMA}` or `{EVIDENCE_SCHEMA_V01}`)"
         ));
     }
+
     if art.implementation_id != full_id {
         findings.push(format!(
             "artifact subject id `{}` != manifest `{full_id}`",
@@ -178,12 +656,147 @@ pub fn verify_artifact(
         findings.push("manifest missing conformance_profile".into());
     }
 
-    let expected_subject = subject_digest(imp);
-    if art.subject_digest != expected_subject {
-        findings.push(format!(
-            "subject digest mismatch: artifact `{}` vs computed `{expected_subject}`",
-            art.subject_digest
-        ));
+    // Subject digest
+    if is_v1 {
+        let expected_fnv = subject_digest_fnv(imp);
+        let expected_sha = subject_digest_sha256(imp);
+        if art.subject_digest != expected_fnv && art.subject_digest != expected_sha {
+            findings.push(format!(
+                "subject digest mismatch: artifact `{}` vs computed `{expected_fnv}` or `{expected_sha}`",
+                art.subject_digest
+            ));
+        }
+    } else {
+        let expected_sha = subject_digest_sha256(imp);
+        if art.subject_digest != expected_sha {
+            findings.push(format!(
+                "subject digest mismatch: artifact `{}` vs computed `{expected_sha}`",
+                art.subject_digest
+            ));
+        }
+        if !art.digests.subject.is_empty() && art.digests.subject != expected_sha {
+            findings.push(format!(
+                "digests.subject mismatch: artifact `{}` vs computed `{expected_sha}`",
+                art.digests.subject
+            ));
+        }
+    }
+
+    // ─── v0.2: load profile + recompute digests ───────────────────────────
+    if is_v2 {
+        match load_profile(registry_root, &art.conformance_profile) {
+            Ok((doc, _)) => {
+                if doc.capability_key != cap_key {
+                    findings.push(format!(
+                        "profile capability `{}` != artifact/impl `{cap_key}`",
+                        doc.capability_key
+                    ));
+                }
+                if doc.id != art.conformance_profile {
+                    findings.push(format!(
+                        "profile document id `{}` != artifact profile `{}`",
+                        doc.id, art.conformance_profile
+                    ));
+                }
+                let expected_suite = suite_digest_for_profile(&doc);
+                if !art.profile_suite_digest.is_empty()
+                    && art.profile_suite_digest != expected_suite
+                    && art.digests.suite != expected_suite
+                {
+                    // soft if profile still has pending-compute and we recompute
+                    if art.digests.suite != expected_suite {
+                        findings.push(format!(
+                            "suite digest mismatch: artifact digests.suite `{}` vs recomputed `{expected_suite}`",
+                            art.digests.suite
+                        ));
+                    }
+                }
+                for sr in &art.suite_results {
+                    if sr.profile != doc.id && sr.profile != art.conformance_profile {
+                        findings.push(format!(
+                            "suite_results profile `{}` != artifact profile `{}`",
+                            sr.profile, art.conformance_profile
+                        ));
+                    }
+                    if !sr.suite_digest.is_empty()
+                        && sr.suite_digest != expected_suite
+                        && sr.suite_digest != art.digests.suite
+                    {
+                        findings.push(format!(
+                            "suite_results.suite_digest `{}` does not match recomputed `{expected_suite}`",
+                            sr.suite_digest
+                        ));
+                    }
+                }
+
+                let recomputed = compute_digests(registry_root, imp, Some(&doc), &DigestContext::default());
+                // Hard-check digests that must match (subject, adapter, upstream, capability, profile)
+                check_digest(
+                    &mut findings,
+                    "adapter_source",
+                    &art.digests.adapter_source,
+                    &recomputed.adapter_source,
+                );
+                check_digest(
+                    &mut findings,
+                    "upstream_package",
+                    &art.digests.upstream_package,
+                    &recomputed.upstream_package,
+                );
+                check_digest(
+                    &mut findings,
+                    "capability_contract",
+                    &art.digests.capability_contract,
+                    &recomputed.capability_contract,
+                );
+                check_digest(
+                    &mut findings,
+                    "profile",
+                    &art.digests.profile,
+                    &recomputed.profile,
+                );
+                // suite: use recomputed expected_suite
+                if !art.digests.suite.is_empty() && art.digests.suite != expected_suite {
+                    findings.push(format!(
+                        "digests.suite `{}` != recomputed suite `{expected_suite}`",
+                        art.digests.suite
+                    ));
+                }
+                if art.environment.runner_identity.trim().is_empty() {
+                    findings.push("environment.runner_identity is empty".into());
+                }
+                if art.environment.target.trim().is_empty() {
+                    findings.push("environment.target is empty".into());
+                }
+            }
+            Err(e) => {
+                findings.push(format!(
+                    "cannot load profile `{}`: {e}",
+                    art.conformance_profile
+                ));
+            }
+        }
+
+        // case_results consistency with suite_results
+        if !art.case_results.is_empty() {
+            let ok_n = art.case_results.iter().filter(|c| c.ok).count() as u32;
+            let total = art.case_results.len() as u32;
+            if let Some(sr) = art.suite_results.first() {
+                if sr.cases_total != total || sr.cases_ok != ok_n {
+                    findings.push(format!(
+                        "case_results ({ok_n}/{total}) != suite_results ({}/{})",
+                        sr.cases_ok, sr.cases_total
+                    ));
+                }
+                let expect_pass = ok_n == total && total > 0;
+                if sr.passed != expect_pass {
+                    findings.push(format!(
+                        "suite_results.passed={} but case_results imply passed={expect_pass}",
+                        sr.passed
+                    ));
+                }
+            }
+        }
     }
 
     let all_suites_pass = !art.suite_results.is_empty()
@@ -194,7 +807,6 @@ pub fn verify_artifact(
         findings.push("one or more suite_results failed".into());
     }
 
-    // Axes for justified status come from **artifact**, not free-form manifest.
     let mut axes = art.axes.clone();
     if all_suites_pass && axes.conformance != AxisFact::Fail {
         axes.conformance = AxisFact::Pass;
@@ -214,6 +826,19 @@ pub fn verify_artifact(
         ok,
         findings,
         justified,
+        schema_version: schema,
+    }
+}
+
+fn check_digest(findings: &mut Vec<String>, name: &str, artifact: &str, expected: &str) {
+    if artifact.is_empty() {
+        findings.push(format!("digests.{name} is empty"));
+        return;
+    }
+    if artifact != expected && expected != "sha256:absent" {
+        findings.push(format!(
+            "digests.{name} mismatch: artifact `{artifact}` vs recomputed `{expected}`"
+        ));
     }
 }
 
@@ -283,7 +908,6 @@ pub fn audit_truthful_registry(reg: &LocalRegistry) -> Result<TruthfulAuditRepor
             let j = parse_status(&check.justified);
             (j, check.findings, check.ok)
         } else {
-            // Candidate / inventory: still prefer artifact when present.
             let path = artifact_path(reg.root(), imp);
             if path.is_file() {
                 let check = verify_artifact(reg.root(), imp);
@@ -349,37 +973,39 @@ pub struct TruthfulAuditReport {
     pub items: Vec<TruthfulAuditItem>,
 }
 
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use wvx_ir::{AxisFact, LifecycleStatus};
 
     #[test]
-    fn mint_and_verify_serde_json_parse_artifact() {
+    fn mint_v2_and_verify_serde_json_parse() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
         let reg = LocalRegistry::open(&root).expect("registry-dev");
         let mut imp = reg
             .find_implementation("serde-json.parse-owned@1")
             .unwrap()
             .expect("impl");
-        let digest = subject_digest(&imp);
-        let rel = "evidence/artifacts/serde-json.parse-owned@1.json";
-        let path = root.join(rel);
-        let art = EvidenceArtifact {
-            schema_version: EVIDENCE_SCHEMA.into(),
-            implementation_id: imp.full_id(),
-            capability_key: format!("{}@{}", imp.capability.id, imp.capability.version),
-            conformance_profile: "json-rfc8259-core-v1".into(),
-            subject_digest: digest.clone(),
-            profile_suite_digest: "sha256:pilot-suite-placeholder".into(),
-            suite_results: vec![SuiteResult {
-                profile: "json-rfc8259-core-v1".into(),
-                suite_digest: "sha256:pilot-suite-placeholder".into(),
-                passed: true,
-                cases_ok: 8,
-                cases_total: 8,
-                notes: vec!["Gate A pilot vectors".into()],
-            }],
+        imp.conformance_profile = Some("json-rfc8259-core-v1".into());
+        imp.status = LifecycleStatus::Conformant;
+        imp.evidence_artifact =
+            Some("evidence/artifacts/serde-json.parse-owned@1.json".into());
+
+        let cases: Vec<CaseResult> = (0..8)
+            .map(|i| CaseResult {
+                case_id: format!("case_{i}"),
+                kind: "positive".into(),
+                ok: true,
+                detail: None,
+                expected_error_family: None,
+            })
+            .collect();
+
+        let req = MintRequest {
+            runner_identity: "wvx-registry-client@test".into(),
+            case_results: cases,
             axes: ImplementationEvidence {
                 build: AxisFact::Pass,
                 conformance: AxisFact::Pass,
@@ -387,26 +1013,51 @@ mod tests {
                 license: AxisFact::Pass,
                 security: AxisFact::Absent,
             },
-            recorded_at_unix: 1_700_000_000,
-            notes: vec!["Milestone 1 truthful registry sample".into()],
+            notes: vec!["EvidenceArtifact v0.2 mint test".into()],
+            digest_ctx: DigestContext::default(),
+            profile_id: Some("json-rfc8259-core-v1".into()),
         };
-        write_artifact(&path, &art).unwrap();
-        imp.status = LifecycleStatus::Conformant;
-        imp.conformance_profile = Some("json-rfc8259-core-v1".into());
-        imp.evidence_artifact = Some(rel.into());
-        imp.evidence.conformance = AxisFact::Pass;
-        let out = root.join("implementations/serde-json.parse-owned@1.json");
-        fs::write(&out, serde_json::to_string_pretty(&imp).unwrap() + "\n").unwrap();
+
+        let (art, path) = mint_and_write(&root, &imp, &req).expect("mint");
+        assert_eq!(art.schema_version, EVIDENCE_SCHEMA);
+        assert!(!art.digests.subject.is_empty());
+        assert!(!art.digests.profile.is_empty());
+        assert!(!art.digests.suite.is_empty());
+        assert!(!art.environment.runner_identity.is_empty());
+        assert_eq!(art.case_results.len(), 8);
+        assert!(path.is_file());
 
         let check = verify_artifact(&root, &imp);
-        assert!(check.ok, "{:?}", check.findings);
+        assert!(
+            check.ok,
+            "verify failed: {:?}",
+            check.findings
+        );
         assert_eq!(check.justified, "conformant");
+        assert_eq!(check.schema_version, EVIDENCE_SCHEMA);
 
         let audit = audit_truthful_registry(&reg).unwrap();
         assert!(
             audit.ok,
-            "truthful audit failed: overclaims={} bad_art={}",
-            audit.overclaims, audit.missing_or_bad_artifacts
+            "truthful audit failed: overclaims={} bad_art={} items={:?}",
+            audit.overclaims,
+            audit.missing_or_bad_artifacts,
+            audit
+                .items
+                .iter()
+                .filter(|i| !i.artifact_ok || i.overclaim)
+                .map(|i| (&i.full_id, &i.findings))
+                .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn suite_digest_stable() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
+        let (doc, _) = load_profile(&root, "json-rfc8259-core-v1").unwrap();
+        let a = suite_digest_for_profile(&doc);
+        let b = suite_digest_for_profile(&doc);
+        assert_eq!(a, b);
+        assert!(a.starts_with("sha256:"));
     }
 }

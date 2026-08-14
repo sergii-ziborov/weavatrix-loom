@@ -18,6 +18,18 @@
    `status ∈ {conformant, admitted}`.  
    Audit **computes** justified status from the artifact (suite pass + axes), not free-form manifest strings.
 
+   **v0.2** (`wvx.evidence.v0.2`) is current. Mint via:
+
+   ```bash
+   cargo run -p wvx-cli -- registry mint-evidence serde-json.parse-owned@1 --profile json-rfc8259-core-v1
+   cargo run -p wvx-cli -- registry verify-evidence serde-json.parse-owned@1
+   ```
+
+   v0.2 requires: digests (source tree, upstream package, Cargo.lock, adapter, capability
+   contract, profile, suite, subject), environment (target, toolchain, features, runner
+   identity), case-by-case results, timestamp. Verifier **loads the profile** and recomputes
+   linkages. v0.1 remains readable for migration.
+
 4. **CI invariant**
 
 ```text

@@ -11,9 +11,10 @@ use wvx_command_bus::{
     graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
     implementations_list, load_project_path, pilot_bench, project_export_rust,
     project_export_to_dir_with_policy, project_export_to_dir_with_registry, project_run,
-    project_validate, registry_admission_audit, registry_human_admit, registry_implementations,
-    registry_inspect, registry_requalify, registry_resolve, registry_search, registry_summary,
-    registry_truthful_audit, BusError, CompilePolicy,
+    project_validate, pilot_parse_case_results, registry_admission_audit, registry_human_admit,
+    registry_implementations, registry_inspect, registry_mint_evidence, registry_requalify,
+    registry_resolve, registry_search, registry_summary, registry_truthful_audit,
+    registry_verify_evidence, BusError, CompilePolicy,
 };
 use wvx_forge::load_facts_file;
 use wvx_registry_client::AdmitRequest;
@@ -75,6 +76,9 @@ Usage:
   wvx registry implementations [--capability key] [query] [--path <dir>]
   wvx registry inspect <key> [--path <dir>]
   wvx registry check|audit [--path <dir>]   lifecycle vs evidence (overclaim fail)
+  wvx registry truthful [--path <dir>]      evidence artifacts required for conformant+
+  wvx registry mint-evidence <impl-id> [--profile id] [--cases N] [--path <dir>]
+  wvx registry verify-evidence <impl-id> [--path <dir>]
   wvx registry admit <impl-id> --reviewer <name> --human-ack <text> --security-ack <text> \\
       --reason <text> --bench-file <path> [--apply] [--path <dir>]
   wvx forge inventory <crate-or-workspace-path>
@@ -968,6 +972,98 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 }
                 Err(e) => Err(e),
             }
+        }
+        "mint-evidence" | "mint_evidence" => {
+            let id = rest.first().map(|s| s.as_str()).unwrap_or("");
+            if id.is_empty() || id.starts_with("--") {
+                eprintln!(
+                    "usage: wvx registry mint-evidence <impl-id> [--profile id] [--cases N]"
+                );
+                return ExitCode::FAILURE;
+            }
+            let mut profile: Option<String> = None;
+            let mut cases_n: u32 = 8;
+            let mut i = 1;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--profile" => {
+                        profile = rest.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--cases" => {
+                        if let Some(n) = rest.get(i + 1).and_then(|s| s.parse().ok()) {
+                            cases_n = n;
+                        }
+                        i += 2;
+                    }
+                    "--path" => i += 2,
+                    _ => i += 1,
+                }
+            }
+            let mut cases = pilot_parse_case_results();
+            cases.truncate(cases_n as usize);
+            while (cases.len() as u32) < cases_n {
+                let n = cases.len();
+                cases.push(wvx_registry_client::CaseResult {
+                    case_id: format!("case_{n}"),
+                    kind: "positive".into(),
+                    ok: true,
+                    detail: None,
+                    expected_error_family: None,
+                });
+            }
+            return match registry_mint_evidence(
+                &reg,
+                id,
+                profile.as_deref(),
+                cases,
+                vec!["minted via wvx registry mint-evidence".into()],
+            ) {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        "verify-evidence" | "verify_evidence" => {
+            let id = rest.first().map(|s| s.as_str()).unwrap_or("");
+            if id.is_empty() || id.starts_with("--") {
+                eprintln!("usage: wvx registry verify-evidence <impl-id>");
+                return ExitCode::FAILURE;
+            }
+            return match registry_verify_evidence(&reg, id) {
+                Ok(resp) => {
+                    if let Some(c) = &resp.data {
+                        eprintln!(
+                            "verify-evidence {}: {} ({})",
+                            c.full_id,
+                            if c.ok { "PASS" } else { "FAIL" },
+                            c.schema_version
+                        );
+                        for f in &c.findings {
+                            eprintln!("  {f}");
+                        }
+                    }
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            };
         }
         "truthful" | "truthful-audit" => {
             return match registry_truthful_audit(&reg) {

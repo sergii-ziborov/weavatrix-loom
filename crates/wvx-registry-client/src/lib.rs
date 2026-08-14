@@ -22,9 +22,12 @@ pub use admission::{
 };
 pub use admit::{admit_implementation, AdmitRequest, AdmitResult};
 pub use evidence_artifact::{
-    audit_truthful_registry, default_artifact_relpath, subject_digest, verify_artifact,
-    write_artifact, ArtifactCheck, EvidenceArtifact, SuiteResult, TruthfulAuditReport,
-    EVIDENCE_SCHEMA,
+    audit_truthful_registry, capture_environment, compute_digests, default_artifact_relpath,
+    load_artifact, load_profile, mint_and_write, mint_artifact, sha256_hex, subject_digest,
+    subject_digest_fnv, subject_digest_sha256, suite_digest_for_profile, verify_artifact,
+    write_artifact, ArtifactCheck, CaseResult, ConformanceProfileDoc, DigestContext,
+    EvidenceArtifact, EvidenceDigests, EvidenceEnvironment, MintRequest, SuiteResult,
+    TruthfulAuditItem, TruthfulAuditReport, EVIDENCE_SCHEMA, EVIDENCE_SCHEMA_V01,
 };
 pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,

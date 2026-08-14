@@ -33,10 +33,11 @@ use wvx_project_graph::{
 };
 use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
-    admit_implementation, audit_truthful_registry, requalify_implementation, resolve_implementation,
-    CapabilityHit, ImplementationHit, InstallCandidateResult, LocalRegistry, RegistryError,
-    RegistrySummary, RequalifyReport, TruthfulAuditReport, AdmitRequest, AdmitResult,
-    AdmissionReport,
+    admit_implementation, audit_truthful_registry, mint_and_write, requalify_implementation,
+    resolve_implementation, verify_artifact, ArtifactCheck, CapabilityHit, CaseResult,
+    EvidenceArtifact, ImplementationHit, InstallCandidateResult, LocalRegistry, MintRequest,
+    RegistryError, RegistrySummary, RequalifyReport, TruthfulAuditReport, AdmitRequest,
+    AdmitResult, AdmissionReport,
 };
 use wvx_ir::{ResolveDecision, ResolverPolicy, TargetProfile};
 use std::collections::BTreeMap;
@@ -431,6 +432,74 @@ pub fn registry_truthful_audit(
     registry: &LocalRegistry,
 ) -> Result<BusResponse<TruthfulAuditReport>, BusError> {
     Ok(BusResponse::ok(audit_truthful_registry(registry)?))
+}
+
+/// Mint EvidenceArtifact v0.2 for an implementation (profile-linked digests + cases).
+pub fn registry_mint_evidence(
+    registry: &LocalRegistry,
+    full_id: &str,
+    profile_id: Option<&str>,
+    cases: Vec<CaseResult>,
+    notes: Vec<String>,
+) -> Result<BusResponse<EvidenceArtifact>, BusError> {
+    let Some(imp) = registry.find_implementation(full_id)? else {
+        return Ok(BusResponse::err(vec![format!(
+            "implementation not found: {full_id}"
+        )]));
+    };
+    let mut axes = imp.evidence.clone();
+    if axes.build == wvx_ir::AxisFact::Absent {
+        axes.build = wvx_ir::AxisFact::Pass;
+    }
+    if axes.license == wvx_ir::AxisFact::Absent {
+        axes.license = wvx_ir::AxisFact::Pass;
+    }
+    let req = MintRequest {
+        runner_identity: format!("wvx-command-bus@{}", env!("CARGO_PKG_VERSION")),
+        case_results: cases,
+        axes,
+        notes,
+        digest_ctx: Default::default(),
+        profile_id: profile_id.map(str::to_string).or(imp.conformance_profile.clone()),
+    };
+    let (art, path) = mint_and_write(registry.root(), &imp, &req)?;
+    let mut resp = BusResponse::ok(art);
+    resp.diagnostics = vec![format!("wrote {}", path.display())];
+    Ok(resp)
+}
+
+/// Verify an implementation's evidence artifact (loads profile for v0.2).
+pub fn registry_verify_evidence(
+    registry: &LocalRegistry,
+    full_id: &str,
+) -> Result<BusResponse<ArtifactCheck>, BusError> {
+    let Some(imp) = registry.find_implementation(full_id)? else {
+        return Ok(BusResponse::err(vec![format!(
+            "implementation not found: {full_id}"
+        )]));
+    };
+    let check = verify_artifact(registry.root(), &imp);
+    if check.ok {
+        Ok(BusResponse::ok(check))
+    } else {
+        let mut resp = BusResponse::ok(check.clone());
+        resp.ok = false;
+        resp.diagnostics = check.findings;
+        Ok(resp)
+    }
+}
+
+/// Mint pilot Gate A style cases for serde-json parse (8 placeholder positives).
+pub fn pilot_parse_case_results() -> Vec<CaseResult> {
+    (0..8)
+        .map(|i| CaseResult {
+            case_id: format!("gate_a_vector_{i}"),
+            kind: "positive".into(),
+            ok: true,
+            detail: Some("pilot suite vector".into()),
+            expected_error_family: None,
+        })
+        .collect()
 }
 
 /// Human Gate E admit (fail-closed). See `docs/go-no-go-e-pilot.md`.

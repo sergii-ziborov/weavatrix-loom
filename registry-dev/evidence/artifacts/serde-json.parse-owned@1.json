@@ -1,19 +1,19 @@
 {
-  "schema_version": "wvx.evidence.v0.1",
+  "schema_version": "wvx.evidence.v0.2",
   "implementation_id": "serde-json.parse-owned@1",
   "capability_key": "data.json.parse@1",
   "conformance_profile": "json-rfc8259-core-v1",
-  "subject_digest": "fnv1a64:45d83b8e533342f9",
-  "profile_suite_digest": "sha256:pilot-suite-placeholder",
+  "subject_digest": "sha256:48f4d594e27df850903a9991ab49aaa024cb55e03c931ae4627e7c2e372f228d",
+  "profile_suite_digest": "sha256:eb8c9242e52983c0ab27a42d10e40ec2c5cea942bae4e9fdff31030c6fe26771",
   "suite_results": [
     {
       "profile": "json-rfc8259-core-v1",
-      "suite_digest": "sha256:pilot-suite-placeholder",
+      "suite_digest": "sha256:eb8c9242e52983c0ab27a42d10e40ec2c5cea942bae4e9fdff31030c6fe26771",
       "passed": true,
       "cases_ok": 8,
       "cases_total": 8,
       "notes": [
-        "Gate A pilot vectors"
+        "minted by wvx-command-bus@0.1.1 at x86_64-windows-windows"
       ]
     }
   ],
@@ -24,8 +24,74 @@
     "license": "pass",
     "security": "absent"
   },
-  "recorded_at_unix": 1700000000,
+  "recorded_at_unix": 1786737040,
   "notes": [
-    "Milestone 1 truthful registry sample"
+    "minted via wvx registry mint-evidence"
+  ],
+  "digests": {
+    "implementation_source_tree": "sha256:957fdcb910bb1fd5be5041a28fa640036ff6aab933d3ca012be3cdd542d25914",
+    "upstream_package": "sha256:0a33461efd27d682a927289704d7f5f8850173cf80f41fe1122c9593cdf69543",
+    "cargo_lock": "sha256:46ff9d1e8523c907ef2a48f08ef703f6d99f3119b3a97dff2856a8e7018dc252",
+    "adapter_source": "sha256:9b1d1659831131591af3a0f33e2a8c49df00b4ad6a16fefd944548e2f63c7470",
+    "capability_contract": "sha256:b4b695a92af716d1041852ac8134ef6ec17def659c30c50feb7ee18e2980f713",
+    "profile": "sha256:a7a205654f2cd275abda9e620a4c69738dd486cb6b9dd9198d4d900fa0527b4e",
+    "suite": "sha256:eb8c9242e52983c0ab27a42d10e40ec2c5cea942bae4e9fdff31030c6fe26771",
+    "subject": "sha256:48f4d594e27df850903a9991ab49aaa024cb55e03c931ae4627e7c2e372f228d"
+  },
+  "environment": {
+    "target": "x86_64-windows-windows",
+    "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "features": [],
+    "runner_identity": "wvx-command-bus@0.1.1"
+  },
+  "case_results": [
+    {
+      "case_id": "gate_a_vector_0",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    },
+    {
+      "case_id": "gate_a_vector_1",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    },
+    {
+      "case_id": "gate_a_vector_2",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    },
+    {
+      "case_id": "gate_a_vector_3",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    },
+    {
+      "case_id": "gate_a_vector_4",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    },
+    {
+      "case_id": "gate_a_vector_5",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    },
+    {
+      "case_id": "gate_a_vector_6",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    },
+    {
+      "case_id": "gate_a_vector_7",
+      "kind": "positive",
+      "ok": true,
+      "detail": "pilot suite vector"
+    }
   ]
 }

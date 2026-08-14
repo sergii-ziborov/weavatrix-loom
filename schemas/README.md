@@ -8,6 +8,8 @@ JSON Schema (draft 2020-12) for WVX wire documents.
 | [`wvx.capability.v0.1.json`](wvx.capability.v0.1.json) | Registry capability contract |
 | [`wvx.implementation.v0.1.json`](wvx.implementation.v0.1.json) | Registry implementation manifest (+ lifecycle / evidence) |
 | [`wvx.graph_patch.v0.1.json`](wvx.graph_patch.v0.1.json) | GraphPatch batch |
+| [`wvx.evidence_artifact.v0.1.json`](wvx.evidence_artifact.v0.1.json) | Evidence artifact (legacy) |
+| [`wvx.evidence_artifact.v0.2.json`](wvx.evidence_artifact.v0.2.json) | Evidence artifact v0.2 (digests + environment + case_results) |
 
 ## Source of truth
 

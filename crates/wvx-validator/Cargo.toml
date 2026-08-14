@@ -18,5 +18,8 @@ serde = { workspace = true }
 wvx-ir = { workspace = true }
 wvx-types = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

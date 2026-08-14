@@ -72,8 +72,16 @@ npm run alpha:check   # test + build (+ check:api if server up)
 | # | Work | Why |
 |---|------|-----|
 | **M1** | **Truthful Registry** ([truthful-registry.md](truthful-registry.md)) | No false conformant claims; profiles + evidence artifacts + CI |
-| **M2** | **Safe Semantic Core** | Validator passes, GraphPatch preview/commit, compiler policy |
+| **M2** | **Safe Semantic Core** | Validator passes, GraphPatch preview/commit, compiler policy — **landed** |
 | Then | Domain 4 codecs / deeper suites | After M1–M2 |
+
+### M2 Safe Semantic Core (landed)
+
+| Surface | What |
+|---------|------|
+| **Validator** | Ordered passes: schema · unique caps/ports/instances · entrypoint · bindings (types + cardinality) · cycles · impl compat · config · outputs · compiler_profile · policy. `ValidateOptions` / `ValidateOptions::release()`. |
+| **GraphPatch** | `preview_patch` (ghost, no revision bump) · `commit_patch` (atomic, revision only if valid) · `base_revision` (PATCH-001). HTTP: `/graph/preview_patch`, `/graph/commit_patch`. CLI: `wvx patch preview|commit`. |
+| **Compiler** | `CompilePolicy::dev()` / `::release()` — no candidates in release, trusted emit subset, SHA-256 digests (`weavatrix.digests.json`), optional `Cargo.lock`, TargetProfile + ResolveDecision explanations (`weavatrix.resolution.json`, lockfile `[resolution]`). CLI: `wvx export-rust … --release`. |
 
 **Do not** expand domains while registry status strings overclaim.
 

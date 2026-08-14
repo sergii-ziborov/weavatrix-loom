@@ -9,8 +9,14 @@ use thiserror::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use wvx_compiler_rust::{
-    compile_to_rust_with_sdk, export_to_directory_with_sdk, ExportReport, GeneratedWorkspace,
+    compile_to_rust_with_sdk, compile_with_policy, export_to_directory_with_policy, ExportReport,
+    GeneratedWorkspace,
 };
+
+// Re-export policy / preview types for hosts (CLI, HTTP).
+pub use wvx_compiler_rust::{CompilePolicy, CompileReport};
+pub use wvx_project_graph::PatchPreview;
+pub use wvx_validator::ValidateOptions;
 use wvx_ir::SdkEmit;
 use wvx_forge::{
     compile_adapters_batch, default_workspace_root, draft_adapters_with_ontology,
@@ -22,8 +28,8 @@ use wvx_forge::{
 };
 use wvx_ir::Project;
 use wvx_project_graph::{
-    apply_graph_patch, propose_json_pipeline_patch_relative, GraphPatch, PatchApplyResult,
-    PatchError,
+    apply_graph_patch, commit_patch, preview_patch, propose_json_pipeline_patch_relative,
+    GraphPatch, PatchApplyResult, PatchError,
 };
 use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
@@ -39,7 +45,7 @@ use wvx_runtime::{
     RunResult, RuntimeError, WvxValueMap,
 };
 use wvx_types::WvxValue;
-use wvx_validator::{validate_project, ValidationReport};
+use wvx_validator::{validate_project_with, ValidationReport};
 use wvx_cortex::{propose_from_intent, CortexError, IntentProposeResult};
 
 pub const PROTOCOL_VERSION: &str = "0.1";
@@ -136,11 +142,27 @@ pub fn project_validate_hydrated(
     project: &Project,
     registry: Option<&LocalRegistry>,
 ) -> BusResponse<ValidationReport> {
+    project_validate_with_options(project, registry, ValidateOptions::structural())
+}
+
+/// Validate with explicit options (release policy, known implementations, …).
+pub fn project_validate_with_options(
+    project: &Project,
+    registry: Option<&LocalRegistry>,
+    mut opts: ValidateOptions,
+) -> BusResponse<ValidationReport> {
     let mut project = project.clone();
     if let Err(e) = hydrate_project(&mut project, registry) {
         return BusResponse::err(vec![format!("registry hydrate failed: {e}")]);
     }
-    let report = validate_project(&project);
+    if opts.implementations.is_empty() {
+        if let Some(reg) = registry {
+            if let Ok(impls) = reg.list_implementations() {
+                opts.implementations = impls;
+            }
+        }
+    }
+    let report = validate_project_with(&project, &opts);
     if report.is_ok() {
         BusResponse::ok(report)
     } else {
@@ -170,6 +192,28 @@ pub fn project_export_rust_hydrated(
     }
 }
 
+/// Compile with explicit policy; returns digests + resolution explanations.
+pub fn project_export_rust_with_policy(
+    project: &Project,
+    registry: Option<&LocalRegistry>,
+    mut policy: CompilePolicy,
+) -> Result<BusResponse<CompileReport>, BusError> {
+    let mut project = project.clone();
+    hydrate_project(&mut project, registry)?;
+    if policy.implementations.is_empty() {
+        if let Some(reg) = registry {
+            if let Ok(impls) = reg.list_implementations() {
+                policy.implementations = impls;
+            }
+        }
+    }
+    let sdk = sdk_emits_from_registry(registry);
+    match compile_with_policy(&project, &sdk, &policy) {
+        Ok(report) => Ok(BusResponse::ok(report)),
+        Err(e) => Err(BusError::Compile(e.to_string())),
+    }
+}
+
 /// Export a project to a directory; optionally `cargo check` and run.
 pub fn project_export_to_dir(
     project: &Project,
@@ -188,10 +232,36 @@ pub fn project_export_to_dir_with_registry(
     run_input: Option<&[u8]>,
     registry: Option<&LocalRegistry>,
 ) -> Result<BusResponse<ExportReport>, BusError> {
+    project_export_to_dir_with_policy(
+        project,
+        out_dir,
+        check,
+        run_input,
+        registry,
+        CompilePolicy::dev(),
+    )
+}
+
+/// Export with full compile policy (release/dev, digests, optional Cargo.lock).
+pub fn project_export_to_dir_with_policy(
+    project: &Project,
+    out_dir: &Path,
+    check: bool,
+    run_input: Option<&[u8]>,
+    registry: Option<&LocalRegistry>,
+    mut policy: CompilePolicy,
+) -> Result<BusResponse<ExportReport>, BusError> {
     let mut project = project.clone();
     let _ = hydrate_project(&mut project, registry);
+    if policy.implementations.is_empty() {
+        if let Some(reg) = registry {
+            if let Ok(impls) = reg.list_implementations() {
+                policy.implementations = impls;
+            }
+        }
+    }
     let sdk = sdk_emits_from_registry(registry);
-    match export_to_directory_with_sdk(&project, out_dir, check, run_input, &sdk) {
+    match export_to_directory_with_policy(&project, out_dir, check, run_input, &sdk, &policy) {
         Ok(report) => Ok(BusResponse::ok(report)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }
@@ -883,14 +953,35 @@ pub fn graph_propose_intent(
     Ok(resp)
 }
 
-/// Validate a patch against a project (does not persist).
+/// Preview a patch (ghost apply, revision not advanced).
+pub fn graph_preview_patch(
+    project: &Project,
+    patch: &GraphPatch,
+) -> Result<BusResponse<PatchPreview>, BusError> {
+    let preview = preview_patch(project, patch)?;
+    if preview.is_valid() {
+        Ok(BusResponse::ok(preview))
+    } else {
+        let messages = preview
+            .validation
+            .errors()
+            .map(|d| d.message.clone())
+            .collect();
+        let mut r = BusResponse::err(messages);
+        r.data = Some(preview);
+        Ok(r)
+    }
+}
+
+/// Validate a patch against a project (ghost; does not advance revision).
 pub fn graph_validate_patch(
     project: &Project,
     patch: &GraphPatch,
 ) -> Result<BusResponse<PatchApplyResult>, BusError> {
-    let result = apply_graph_patch(project, patch)?;
-    let mut resp = if result.validation.is_ok() {
-        BusResponse::ok(result)
+    let preview = preview_patch(project, patch)?;
+    let result = preview.into_apply_result();
+    if result.validation.is_ok() {
+        Ok(BusResponse::ok(result))
     } else {
         let messages = result
             .validation
@@ -899,18 +990,69 @@ pub fn graph_validate_patch(
             .collect();
         let mut r = BusResponse::err(messages);
         r.data = Some(result);
-        r
-    };
-    let _ = &mut resp;
-    Ok(resp)
+        Ok(r)
+    }
+}
+
+/// Atomic commit: advances revision only when validation passes.
+pub fn graph_commit_patch(
+    project: &Project,
+    patch: &GraphPatch,
+) -> Result<BusResponse<PatchApplyResult>, BusError> {
+    match commit_patch(project, patch) {
+        Ok(result) => Ok(BusResponse::ok(result)),
+        Err(PatchError::ValidationFailed {
+            error_count,
+            preview,
+        }) => {
+            let messages: Vec<String> = preview
+                .validation
+                .errors()
+                .map(|d| d.message.clone())
+                .collect();
+            let mut msgs = messages;
+            if msgs.is_empty() {
+                msgs.push(format!(
+                    "patch validation failed ({error_count} error(s)); revision not advanced"
+                ));
+            }
+            let mut r = BusResponse::err(msgs);
+            r.data = Some(preview.into_apply_result());
+            Ok(r)
+        }
+        Err(e) => Err(BusError::Patch(e.to_string())),
+    }
 }
 
 /// Apply a patch and return the new project (caller persists).
+///
+/// Authoritative path uses [`graph_commit_patch`] (revision advances only when valid).
+/// Soft legacy soft-apply remains available via [`apply_graph_patch`] for hosts that need it.
 pub fn graph_apply_patch(
     project: &Project,
     patch: &GraphPatch,
 ) -> Result<BusResponse<PatchApplyResult>, BusError> {
-    graph_validate_patch(project, patch)
+    graph_commit_patch(project, patch)
+}
+
+/// Soft apply (always bumps revision; returns invalid projects for UI ghost). Prefer commit.
+pub fn graph_soft_apply_patch(
+    project: &Project,
+    patch: &GraphPatch,
+) -> Result<BusResponse<PatchApplyResult>, BusError> {
+    let result = apply_graph_patch(project, patch)?;
+    if result.validation.is_ok() {
+        Ok(BusResponse::ok(result))
+    } else {
+        let messages = result
+            .validation
+            .errors()
+            .map(|d| d.message.clone())
+            .collect();
+        let mut r = BusResponse::err(messages);
+        r.data = Some(result);
+        Ok(r)
+    }
 }
 
 #[cfg(test)]

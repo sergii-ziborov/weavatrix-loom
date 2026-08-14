@@ -55,16 +55,42 @@ path = "src/lib.rs"
     )
 }
 
-pub fn lockfile(project: &Project, resolved: &BTreeMap<String, String>) -> String {
+/// Lockfile with policy id + optional resolution notes (Milestone 2).
+pub fn lockfile_with_meta(
+    project: &Project,
+    resolved: &BTreeMap<String, String>,
+    policy: &crate::CompilePolicy,
+    resolutions: &[wvx_ir::ResolveDecision],
+) -> String {
     let mut out = String::new();
     writeln!(out, "# WVX lockfile — exact implementations used for this export").ok();
     writeln!(out, "schema = {:?}", project.schema_version).ok();
     writeln!(out, "project = {:?}", project.id).ok();
     writeln!(out, "name = {:?}", project.name).ok();
+    writeln!(out, "revision = {}", project.revision).ok();
+    writeln!(out, "policy = {:?}", policy.id).ok();
+    writeln!(out, "profile = {:?}", policy.target_profile.id).ok();
+    writeln!(out, "allow_candidate = {}", policy.allow_candidate).ok();
     writeln!(out).ok();
     writeln!(out, "[instances]").ok();
     for (id, impl_id) in resolved {
         writeln!(out, "{id} = {impl_id:?}").ok();
+    }
+    if !resolutions.is_empty() {
+        writeln!(out).ok();
+        writeln!(out, "[resolution]").ok();
+        for d in resolutions {
+            let chosen = d.chosen.as_deref().unwrap_or("(none)");
+            writeln!(
+                out,
+                "# {} → {}  (policy={}, profile={})",
+                d.capability_key, chosen, d.policy_id, d.profile_id
+            )
+            .ok();
+            for line in &d.explanation {
+                writeln!(out, "#   {line}").ok();
+            }
+        }
     }
     out
 }

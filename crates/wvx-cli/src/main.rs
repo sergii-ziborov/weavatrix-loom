@@ -8,11 +8,12 @@ use std::process::ExitCode;
 use wvx_command_bus::{
     forge_compile, forge_draft, forge_draft_facts, forge_export_facts, forge_extract,
     forge_facts_file, forge_gate_c_ex, forge_inventory, forge_match, forge_match_facts,
-    graph_apply_patch, graph_propose_intent, graph_propose_patch, implementations_list,
-    load_project_path, pilot_bench, project_export_rust, project_export_to_dir_with_registry,
-    project_run, project_validate, registry_admission_audit, registry_human_admit,
-    registry_implementations, registry_inspect, registry_requalify, registry_resolve,
-    registry_search, registry_summary, registry_truthful_audit, BusError,
+    graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
+    implementations_list, load_project_path, pilot_bench, project_export_rust,
+    project_export_to_dir_with_policy, project_export_to_dir_with_registry, project_run,
+    project_validate, registry_admission_audit, registry_human_admit, registry_implementations,
+    registry_inspect, registry_requalify, registry_resolve, registry_search, registry_summary,
+    registry_truthful_audit, BusError, CompilePolicy,
 };
 use wvx_forge::load_facts_file;
 use wvx_registry_client::AdmitRequest;
@@ -81,7 +82,8 @@ Usage:
   wvx forge draft <crate-path> [--name <substr>] [-o <dir>]   static adapter drafts
   wvx patch propose [project.wvx.json]   relative if project given; full pilot if omitted
   wvx patch intent <text> [--project <file>]   heuristic or LLM (XAI_API_KEY) → GraphPatch
-  wvx patch apply <project.wvx.json> [--patch <patch.json>]
+  wvx patch preview <project.wvx.json> [--patch <patch.json>]  ghost apply (no revision bump)
+  wvx patch apply|commit <project.wvx.json> [--patch <patch.json>]  atomic commit if valid
   wvx conformance [--golden]
   wvx bench [--iterations N] [--warmup N] [-o file.json]   Gate E pilot microbench
   wvx version
@@ -96,6 +98,7 @@ Export options:
   -o, --out <dir>               write Cargo package to directory
   --check                       run cargo check after write
   --run                         cargo run after check (uses same input as run)
+  --release                     CompilePolicy::release (no candidates; digests + Cargo.lock)
 
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
@@ -642,7 +645,7 @@ fn cmd_forge(args: &[String]) -> ExitCode {
 
 fn cmd_patch(args: &[String]) -> ExitCode {
     if args.is_empty() {
-        eprintln!("usage: wvx patch <propose|apply> ...");
+        eprintln!("usage: wvx patch <propose|preview|apply|commit|intent> ...");
         return ExitCode::FAILURE;
     }
     match args[0].as_str() {
@@ -790,6 +793,83 @@ fn cmd_patch(args: &[String]) -> ExitCode {
                     ExitCode::FAILURE
                 }
             }
+        }
+        "preview" => {
+            let project_path = args.get(1);
+            let Some(project_path) = project_path else {
+                eprintln!("usage: wvx patch preview <project.wvx.json> [--patch file]");
+                return ExitCode::FAILURE;
+            };
+            let mut patch: Option<GraphPatch> = None;
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--patch" {
+                    match args.get(i + 1) {
+                        Some(p) => match fs::read_to_string(p) {
+                            Ok(s) => match serde_json::from_str(&s) {
+                                Ok(pg) => patch = Some(pg),
+                                Err(e) => {
+                                    eprintln!("patch json: {e}");
+                                    return ExitCode::FAILURE;
+                                }
+                            },
+                            Err(e) => {
+                                eprintln!("{e}");
+                                return ExitCode::FAILURE;
+                            }
+                        },
+                        None => {
+                            eprintln!("--patch requires a file");
+                            return ExitCode::FAILURE;
+                        }
+                    };
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            let project = match load_project_path(project_path.as_ref()) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let patch = match patch {
+                Some(p) => p,
+                None => {
+                    match graph_propose_patch(
+                        LocalRegistry::open_default().ok().as_ref(),
+                        Some(&project),
+                    ) {
+                        Ok(r) => r.data.expect("patch"),
+                        Err(e) => {
+                            eprintln!("{e}");
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                }
+            };
+            match graph_preview_patch(&project, &patch) {
+                Ok(resp) => {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "commit" => {
+            // Same path as apply (authoritative commit).
+            let mut rest = args.to_vec();
+            rest[0] = "apply".into();
+            cmd_patch(&rest)
         }
         other => {
             eprintln!("unknown patch subcommand: {other}");
@@ -1249,7 +1329,7 @@ fn parse_run_options(flags: &[String]) -> Result<(Vec<u8>, BTreeMap<String, Stri
 fn cmd_export(args: &[String]) -> ExitCode {
     let Some(path) = args.first() else {
         eprintln!(
-            "usage: wvx export-rust <project.wvx.json> [-o dir] [--check] [--run] [--impl id=impl]"
+            "usage: wvx export-rust <project.wvx.json> [-o dir] [--check] [--run] [--release] [--impl id=impl]"
         );
         return ExitCode::FAILURE;
     };
@@ -1257,6 +1337,7 @@ fn cmd_export(args: &[String]) -> ExitCode {
     let mut out_dir: Option<PathBuf> = None;
     let mut check = false;
     let mut do_run = false;
+    let mut release = false;
     let mut overrides = BTreeMap::new();
     let mut input = br#"{"hello":"world"}"#.to_vec();
     let mut i = 1;
@@ -1284,6 +1365,10 @@ fn cmd_export(args: &[String]) -> ExitCode {
             "--run" => {
                 do_run = true;
                 check = true;
+                i += 1;
+            }
+            "--release" => {
+                release = true;
                 i += 1;
             }
             "--impl" => {
@@ -1332,16 +1417,34 @@ fn cmd_export(args: &[String]) -> ExitCode {
     };
     wvx_runtime::apply_implementation_overrides(&mut project, &overrides);
 
+    let policy = if release {
+        CompilePolicy::release()
+    } else {
+        CompilePolicy::dev()
+    };
+
     if let Some(dir) = out_dir {
         let run_input = if do_run { Some(input.as_slice()) } else { None };
         let reg = LocalRegistry::open_default().ok();
-        match project_export_to_dir_with_registry(
-            &project,
-            &dir,
-            check,
-            run_input,
-            reg.as_ref(),
-        ) {
+        let result = if release {
+            project_export_to_dir_with_policy(
+                &project,
+                &dir,
+                check,
+                run_input,
+                reg.as_ref(),
+                policy,
+            )
+        } else {
+            project_export_to_dir_with_registry(
+                &project,
+                &dir,
+                check,
+                run_input,
+                reg.as_ref(),
+            )
+        };
+        match result {
             Ok(resp) => {
                 println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                 if let Some(data) = &resp.data {

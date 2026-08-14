@@ -3,8 +3,9 @@
 mod patch;
 
 pub use patch::{
-    apply_graph_patch, propose_json_pipeline_patch, propose_json_pipeline_patch_relative,
-    validate_graph_patch, GraphOp, GraphPatch, PatchApplyResult, PatchError,
+    apply_graph_patch, commit_patch, preview_patch, propose_json_pipeline_patch,
+    propose_json_pipeline_patch_relative, validate_graph_patch, GraphOp, GraphPatch,
+    PatchApplyResult, PatchError, PatchPreview,
 };
 
 use thiserror::Error;

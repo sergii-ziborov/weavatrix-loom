@@ -61,9 +61,42 @@ pub struct PatchApplyResult {
     pub project: Project,
     pub validation: ValidationReport,
     pub applied_ops: usize,
-    /// Project revision after apply (bumped on success).
+    /// Project revision after apply (bumped on successful commit).
     #[serde(default)]
     pub revision: u64,
+    /// True when this result came from an authoritative commit (revision advanced).
+    #[serde(default)]
+    pub committed: bool,
+}
+
+/// Ghost apply for Studio/AI review: ops applied, revision **not** advanced.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatchPreview {
+    pub project: Project,
+    pub validation: ValidationReport,
+    pub applied_ops: usize,
+    /// Base project revision (unchanged by preview).
+    pub base_revision: u64,
+    /// Revision that would be assigned on a successful commit.
+    pub would_be_revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch_id: Option<String>,
+}
+
+impl PatchPreview {
+    pub fn is_valid(&self) -> bool {
+        self.validation.is_ok()
+    }
+
+    pub fn into_apply_result(self) -> PatchApplyResult {
+        PatchApplyResult {
+            revision: self.base_revision,
+            project: self.project,
+            validation: self.validation,
+            applied_ops: self.applied_ops,
+            committed: false,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -74,16 +107,15 @@ pub enum PatchError {
     Op { index: usize, message: String },
     #[error("revision mismatch: patch base_revision={expected}, project.revision={actual}")]
     RevisionMismatch { expected: u64, actual: u64 },
+    /// Commit refused because the ghost project failed validation.
+    #[error("patch validation failed ({error_count} error(s)); revision not advanced")]
+    ValidationFailed {
+        error_count: usize,
+        preview: PatchPreview,
+    },
 }
 
-/// Apply ops in order to a clone; returns project + validation.
-///
-/// When `patch.base_revision` is `Some(r)`, requires `project.revision == r`.
-/// On success, `project.revision` is incremented.
-pub fn apply_graph_patch(
-    project: &Project,
-    patch: &GraphPatch,
-) -> Result<PatchApplyResult, PatchError> {
+fn check_base_revision(project: &Project, patch: &GraphPatch) -> Result<(), PatchError> {
     if let Some(expected) = patch.base_revision {
         if project.revision != expected {
             return Err(PatchError::RevisionMismatch {
@@ -92,6 +124,10 @@ pub fn apply_graph_patch(
             });
         }
     }
+    Ok(())
+}
+
+fn apply_ops(project: &Project, patch: &GraphPatch) -> Result<Project, PatchError> {
     let mut p = project.clone();
     for (index, op) in patch.ops.iter().enumerate() {
         apply_one(&mut p, op).map_err(|e| PatchError::Op {
@@ -99,6 +135,65 @@ pub fn apply_graph_patch(
             message: e.to_string(),
         })?;
     }
+    Ok(p)
+}
+
+/// Preview a patch: apply ops on a clone, validate, **do not** bump revision.
+///
+/// Use this for Studio ghost state and AI dry-run. Authoritative write = [`commit_patch`].
+pub fn preview_patch(project: &Project, patch: &GraphPatch) -> Result<PatchPreview, PatchError> {
+    check_base_revision(project, patch)?;
+    let p = apply_ops(project, patch)?;
+    let validation = validate_project(&p);
+    let base = project.revision;
+    Ok(PatchPreview {
+        project: p,
+        validation,
+        applied_ops: patch.ops.len(),
+        base_revision: base,
+        would_be_revision: base.saturating_add(1),
+        patch_id: patch.patch_id.clone(),
+    })
+}
+
+/// Atomic revision-aware commit: only advances `project.revision` when validation passes.
+///
+/// Requires `patch.base_revision` to match when set (PATCH-001). On validation failure
+/// returns [`PatchError::ValidationFailed`] with a preview (revision unchanged).
+pub fn commit_patch(
+    project: &Project,
+    patch: &GraphPatch,
+) -> Result<PatchApplyResult, PatchError> {
+    let preview = preview_patch(project, patch)?;
+    if !preview.validation.is_ok() {
+        let error_count = preview.validation.errors().count();
+        return Err(PatchError::ValidationFailed {
+            error_count,
+            preview,
+        });
+    }
+    let mut p = preview.project;
+    p.bump_revision();
+    let revision = p.revision;
+    Ok(PatchApplyResult {
+        project: p,
+        validation: preview.validation,
+        applied_ops: preview.applied_ops,
+        revision,
+        committed: true,
+    })
+}
+
+/// Soft apply for backward compatibility: always bumps revision and returns
+/// the project even when validation fails (UI may show errors + state).
+///
+/// Prefer [`preview_patch`] + [`commit_patch`] for new code.
+pub fn apply_graph_patch(
+    project: &Project,
+    patch: &GraphPatch,
+) -> Result<PatchApplyResult, PatchError> {
+    check_base_revision(project, patch)?;
+    let mut p = apply_ops(project, patch)?;
     p.bump_revision();
     let validation = validate_project(&p);
     let revision = p.revision;
@@ -107,16 +202,16 @@ pub fn apply_graph_patch(
         validation,
         applied_ops: patch.ops.len(),
         revision,
+        committed: false,
     })
 }
 
-/// Validate without returning the mutated project as success if invalid —
-/// still returns the applied project so UI can show ghost state.
+/// Ghost validate (no revision bump). Alias of [`preview_patch`] shaped as apply result.
 pub fn validate_graph_patch(
     project: &Project,
     patch: &GraphPatch,
 ) -> Result<PatchApplyResult, PatchError> {
-    apply_graph_patch(project, patch)
+    Ok(preview_patch(project, patch)?.into_apply_result())
 }
 
 fn apply_one(project: &mut Project, op: &GraphOp) -> Result<(), GraphError> {
@@ -598,5 +693,96 @@ mod tests {
                 to
             } if from.instance == "parse" && to.instance == "path_set"
         ));
+    }
+
+    #[test]
+    fn preview_does_not_bump_revision() {
+        let mut project = Project::new("empty", "Empty");
+        project.schema_version = PROJECT_SCHEMA_VERSION.into();
+        project.revision = 3;
+        let patch = propose_json_pipeline_patch(&[]);
+        let preview = preview_patch(&project, &patch).unwrap();
+        assert!(preview.is_valid(), "{:?}", preview.validation.diagnostics);
+        assert_eq!(preview.base_revision, 3);
+        assert_eq!(preview.would_be_revision, 4);
+        assert_eq!(preview.project.revision, 3); // ghost keeps base
+        assert_eq!(project.revision, 3);
+    }
+
+    #[test]
+    fn commit_bumps_revision_when_valid() {
+        let mut project = Project::new("empty", "Empty");
+        project.schema_version = PROJECT_SCHEMA_VERSION.into();
+        project.revision = 1;
+        let mut patch = propose_json_pipeline_patch(&[]);
+        patch.base_revision = Some(1);
+        let committed = commit_patch(&project, &patch).unwrap();
+        assert!(committed.committed);
+        assert_eq!(committed.revision, 2);
+        assert_eq!(committed.project.revision, 2);
+        assert!(committed.validation.is_ok());
+    }
+
+    #[test]
+    fn commit_rejects_revision_mismatch() {
+        let mut project = Project::new("empty", "Empty");
+        project.schema_version = PROJECT_SCHEMA_VERSION.into();
+        project.revision = 5;
+        let mut patch = propose_json_pipeline_patch(&[]);
+        patch.base_revision = Some(1);
+        let err = commit_patch(&project, &patch).unwrap_err();
+        assert!(matches!(
+            err,
+            PatchError::RevisionMismatch {
+                expected: 1,
+                actual: 5
+            }
+        ));
+    }
+
+    #[test]
+    fn commit_refuses_invalid_graph() {
+        let mut project = Project::new("p", "P");
+        project.schema_version = PROJECT_SCHEMA_VERSION.into();
+        // Connect unknown instances → op error; use missing required binding instead
+        let patch = GraphPatch {
+            ops: vec![GraphOp::AddInstance {
+                instance: Instance {
+                    id: "parse".into(),
+                    capability: CapabilityRef::new("data.json.parse", "1"),
+                    implementation: None,
+                    config: BTreeMap::new(),
+                    ui: None,
+                },
+                capability: Some(Capability {
+                    id: "data.json.parse".into(),
+                    version: "1".into(),
+                    kind: "transform".into(),
+                    inputs: vec![wvx_ir::PortSpec {
+                        id: "bytes".into(),
+                        ty: wvx_types::TypeRef::Bytes,
+                        required: true,
+                    }],
+                    outputs: vec![wvx_ir::PortSpec {
+                        id: "value".into(),
+                        ty: wvx_types::TypeRef::JsonValue,
+                        required: true,
+                    }],
+                    errors: vec![],
+                    effects: vec![],
+                }),
+            }],
+            rationale: "invalid: unbound required input".into(),
+            ..Default::default()
+        };
+        let err = commit_patch(&project, &patch).unwrap_err();
+        match err {
+            PatchError::ValidationFailed { error_count, preview } => {
+                assert!(error_count > 0);
+                assert!(!preview.is_valid());
+                assert_eq!(preview.base_revision, 0);
+            }
+            other => panic!("expected ValidationFailed, got {other}"),
+        }
     }
 }

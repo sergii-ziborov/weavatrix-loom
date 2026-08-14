@@ -11,11 +11,11 @@ use serde::Deserialize;
 use wvx_command_bus::{
     forge_cargo_search, forge_compile, forge_draft, forge_draft_facts, forge_export_facts,
     forge_extract, forge_facts_to_extract, forge_gate_c, forge_inventory, forge_match,
-    forge_match_facts, forge_register_candidates, graph_apply_patch, graph_propose_patch,
+    forge_match_facts, forge_register_candidates, graph_apply_patch, graph_commit_patch,
+    graph_preview_patch, graph_propose_intent, graph_propose_patch, graph_validate_patch,
     implementations_list, project_export_rust_hydrated, project_run_hydrated,
-    project_validate_hydrated, graph_propose_intent, registry_admission_audit,
-    registry_implementations, registry_inspect, registry_search, registry_summary, BusError,
-    BusResponse, PROTOCOL_VERSION,
+    project_validate_hydrated, registry_admission_audit, registry_implementations,
+    registry_inspect, registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
 };
 use wvx_forge::WeavatrixFactsBundle;
 use wvx_ir::Project;
@@ -53,7 +53,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/forge/workspace-roots", get(forge_workspace_roots))
         .route("/api/v1/graph/propose_patch", post(propose_patch))
         .route("/api/v1/graph/propose_intent", post(propose_intent))
+        .route("/api/v1/graph/preview_patch", post(preview_patch_handler))
         .route("/api/v1/graph/validate_patch", post(validate_patch))
+        .route("/api/v1/graph/commit_patch", post(commit_patch_handler))
         .route("/api/v1/graph/apply_patch", post(apply_patch))
         .with_state(state)
 }
@@ -709,14 +711,29 @@ struct PatchBody {
     patch: GraphPatch,
 }
 
+async fn preview_patch_handler(Json(body): Json<PatchBody>) -> Response {
+    match graph_preview_patch(&body.project, &body.patch) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
 async fn validate_patch(Json(body): Json<PatchBody>) -> Response {
-    match graph_apply_patch(&body.project, &body.patch) {
+    match graph_validate_patch(&body.project, &body.patch) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+async fn commit_patch_handler(Json(body): Json<PatchBody>) -> Response {
+    match graph_commit_patch(&body.project, &body.patch) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
 }
 
 async fn apply_patch(Json(body): Json<PatchBody>) -> Response {
+    // Authoritative: commit (revision advances only when valid).
     match graph_apply_patch(&body.project, &body.patch) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),

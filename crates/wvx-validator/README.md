@@ -34,7 +34,10 @@ Normative boundaries: [ADR-0012](https://github.com/sergii-ziborov/weavatrix-loo
 ## Example
 
 ```rust
-use wvx_validator::validate_project;
+use wvx_validator::{validate_project, validate_project_with, ValidateOptions};
+
+// M2: ordered passes (schema, unique, bindings, cycles, impl, config, outputs, profile, policy)
+// let report = validate_project_with(&project, &ValidateOptions::release());
 ```
 
 See the monorepo README and `docs/crate-surface.md` for the full crate map and host entry points.

@@ -16,10 +16,12 @@ readme = "README.md"
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = "0.10"
 thiserror = { workspace = true }
 wvx-ir = { workspace = true }
 wvx-types = { workspace = true }
 wvx-validator = { workspace = true }
+wvx-registry-client = { workspace = true }
 
 [dev-dependencies]
 # integration tests invoke cargo

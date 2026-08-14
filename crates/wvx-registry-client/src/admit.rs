@@ -327,6 +327,8 @@ mod tests {
             },
             notes: Some("test".into()),
             sdk: None,
+        conformance_profile: None,
+        evidence_artifact: None,
         }
     }
 

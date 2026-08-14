@@ -65,8 +65,14 @@ pub fn default_implementation(capability_key: &str) -> Option<&'static str> {
         "data.json.parse@1" => Some("serde-json.parse-owned@1"),
         "data.json.serialize@1" => Some("serde-json.serialize@1"),
         "data.json.path_set@1" => Some("wvx.reference.path-set@1"),
-        "data.text.uppercase@1" => Some("wvx.reference.text-uppercase@1"),
-        "data.text.lowercase@1" => Some("wvx.reference.text-lowercase@1"),
+        "data.text.unicode_uppercase@1" | "data.text.uppercase@1" => {
+            Some("wvx.reference.text-uppercase@1")
+        }
+        "data.text.unicode_lowercase@1" | "data.text.lowercase@1" => {
+            Some("wvx.reference.text-lowercase@1")
+        }
+        "data.text.ascii_uppercase@1" => Some("wvx.reference.text-ascii-upper@1"),
+        "data.text.ascii_lowercase@1" => Some("wvx.reference.text-ascii-lower@1"),
         "data.hash.sha256@1" => Some("sha2.sha256@1"),
         "data.hash.blake3@1" => Some("blake3.blake3@1"),
         "data.compress.gzip@1" => Some("flate2.gzip@1"),

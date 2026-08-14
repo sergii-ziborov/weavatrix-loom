@@ -193,6 +193,8 @@ mod tests {
             },
             notes: None,
             sdk: None,
+        conformance_profile: None,
+        evidence_artifact: None,
         }
     }
 

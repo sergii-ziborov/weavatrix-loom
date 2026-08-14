@@ -16,12 +16,11 @@
                 },
     "status":  "candidate",
     "evidence":  {
-                     "build":  "pass",
                      "conformance":  "absent",
                      "benchmark":  "absent",
-                     "license":  "pass",
-                     "security":  "absent"
+                     "security":  "absent",
+                     "build":  "pass",
+                     "license":  "pass"
                  },
-    "notes":  "Pilot seed/sink; no multi-impl conformance suite. Not production admission."
+    "notes":  "I/O sink. Candidate."
 }
-

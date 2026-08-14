@@ -274,6 +274,13 @@ pub struct Implementation {
     /// Gate F SDK binding (emit template + crate dep). Absent = legacy pilot map.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sdk: Option<SdkBinding>,
+    /// Versioned conformance profile id (e.g. `json-rfc8259-core-v1`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conformance_profile: Option<String>,
+    /// Relative path under registry root to evidence artifact JSON
+    /// (e.g. `evidence/artifacts/serde-json.parse-owned@1.json`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_artifact: Option<String>,
 }
 
 /// Manifest-driven adapter binding for core-independent extensibility (ADR-0011).

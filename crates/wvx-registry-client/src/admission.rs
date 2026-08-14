@@ -107,19 +107,73 @@ pub struct AdmissionReport {
 }
 
 /// Check one implementation: overclaim → not ok; underclaim → ok with warning.
+///
+/// When `registry_root` is set and declared status ≥ conformant, justification
+/// is derived from the **evidence artifact** (Milestone 1 truthful registry).
 pub fn check_implementation(imp: &Implementation) -> ImplementationAdmission {
+    check_implementation_at(imp, None)
+}
+
+/// Like [`check_implementation`], optionally verifying on-disk evidence artifacts.
+pub fn check_implementation_at(
+    imp: &Implementation,
+    registry_root: Option<&std::path::Path>,
+) -> ImplementationAdmission {
     let declared = imp.status;
-    let justified = justified_status(imp);
+    let needs_artifact = matches!(
+        declared,
+        LifecycleStatus::Conformant | LifecycleStatus::Admitted
+    );
+
+    let (justified, mut findings) = if needs_artifact {
+        if let Some(root) = registry_root {
+            let check = crate::evidence_artifact::verify_artifact(root, imp);
+            let j = match check.justified.as_str() {
+                "admitted" => LifecycleStatus::Admitted,
+                "conformant" => LifecycleStatus::Conformant,
+                "candidate" => LifecycleStatus::Candidate,
+                _ => LifecycleStatus::InventoryOnly,
+            };
+            let mut f: Vec<AdmissionFinding> = check
+                .findings
+                .into_iter()
+                .map(|m| AdmissionFinding {
+                    code: "evidence_artifact".into(),
+                    severity: "error".into(),
+                    message: m,
+                })
+                .collect();
+            if !check.ok {
+                f.push(AdmissionFinding {
+                    code: "artifact_required".into(),
+                    severity: "error".into(),
+                    message: "status ≥ conformant requires a valid evidence artifact".into(),
+                });
+            }
+            (j, f)
+        } else {
+            (
+                justified_status(imp),
+                vec![AdmissionFinding {
+                    code: "artifact_path_unknown".into(),
+                    severity: "warning".into(),
+                    message: "conformant+ without registry root — cannot verify artifact".into(),
+                }],
+            )
+        }
+    } else {
+        (justified_status(imp), Vec::new())
+    };
+
     let overclaim = status_rank(declared) > status_rank(justified);
     let underclaim = status_rank(declared) < status_rank(justified);
-    let mut findings = Vec::new();
 
     if overclaim {
         findings.push(AdmissionFinding {
             code: "overclaim".into(),
             severity: "error".into(),
             message: format!(
-                "declared `{}` exceeds justified `{}` given evidence/adapter",
+                "declared `{}` exceeds justified `{}` given evidence artifact/axes",
                 declared.as_str(),
                 justified.as_str()
             ),
@@ -168,7 +222,18 @@ pub fn check_implementation(imp: &Implementation) -> ImplementationAdmission {
 
 /// Audit every implementation in a list (typically a full registry dump).
 pub fn audit_implementations(impls: &[Implementation]) -> AdmissionReport {
-    let items: Vec<_> = impls.iter().map(check_implementation).collect();
+    audit_implementations_at(impls, None)
+}
+
+/// Audit with registry root so evidence artifacts are verified (truthful registry).
+pub fn audit_implementations_at(
+    impls: &[Implementation],
+    registry_root: Option<&std::path::Path>,
+) -> AdmissionReport {
+    let items: Vec<_> = impls
+        .iter()
+        .map(|i| check_implementation_at(i, registry_root))
+        .collect();
     let overclaims = items.iter().filter(|i| i.overclaim).count();
     let underclaims = items.iter().filter(|i| i.underclaim).count();
     let ok = overclaims == 0;
@@ -205,6 +270,8 @@ mod tests {
             evidence: ImplementationEvidence::default(),
             notes: None,
             sdk: None,
+        conformance_profile: None,
+        evidence_artifact: None,
         }
     }
 

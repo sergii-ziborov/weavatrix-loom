@@ -64,6 +64,9 @@ jobs:
       - name: Registry admission audit (overclaim check)
         run: cargo run -p wvx-cli --quiet -- registry check
 
+      - name: Truthful registry invariant (conformant+ needs evidence artifacts)
+        run: cargo run -p wvx-cli --quiet -- registry truthful
+
       - name: Gate E pilot microbench (execution pass/fail)
         run: cargo run -p wvx-cli --quiet -- bench --iterations 50 --warmup 5
 
@@ -87,7 +90,11 @@ jobs:
           test -f schemas/wvx.capability.v0.1.json
           test -f schemas/wvx.implementation.v0.1.json
           test -f schemas/wvx.graph_patch.v0.1.json
+          test -f schemas/wvx.conformance_profile.v0.1.json
+          test -f schemas/wvx.evidence_artifact.v0.1.json
+          test -f docs/truthful-registry.md
           test -f docs/adr/README.md
+
           test -f docs/go-no-go-a-d-pilot-json.md
           test -f docs/go-no-go-e-pilot.md
           test -f docs/go-no-go-f-pilot.md

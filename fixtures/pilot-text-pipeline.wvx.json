@@ -1,11 +1,12 @@
 {
   "schema_version": "wvx.project.v0.1",
   "id": "pilot-text-pipeline",
-  "name": "Text pilot pipeline",
+  "name": "Text pilot pipeline (Unicode)",
   "entrypoint": "input",
   "metadata": {
     "pilot": "true",
-    "family": "data.text"
+    "family": "data.text",
+    "note": "Unicode capabilities only; ASCII is a separate capability family"
   },
   "capabilities": [
     {
@@ -13,35 +14,25 @@
       "version": "1",
       "kind": "io",
       "inputs": [],
-      "outputs": [
-        { "id": "bytes", "type": "bytes", "required": true }
-      ],
+      "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
       "errors": [],
       "effects": []
     },
     {
-      "id": "data.text.uppercase",
+      "id": "data.text.unicode_uppercase",
       "version": "1",
       "kind": "transform",
-      "inputs": [
-        { "id": "bytes", "type": "bytes", "required": true }
-      ],
-      "outputs": [
-        { "id": "bytes", "type": "bytes", "required": true }
-      ],
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
       "errors": ["invalid-unicode"],
       "effects": []
     },
     {
-      "id": "data.text.lowercase",
+      "id": "data.text.unicode_lowercase",
       "version": "1",
       "kind": "transform",
-      "inputs": [
-        { "id": "bytes", "type": "bytes", "required": true }
-      ],
-      "outputs": [
-        { "id": "bytes", "type": "bytes", "required": true }
-      ],
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
       "errors": ["invalid-unicode"],
       "effects": []
     },
@@ -49,9 +40,7 @@
       "id": "io.output.bytes",
       "version": "1",
       "kind": "io",
-      "inputs": [
-        { "id": "bytes", "type": "bytes", "required": true }
-      ],
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
       "outputs": [],
       "errors": [],
       "effects": []
@@ -67,14 +56,14 @@
     },
     {
       "id": "upper",
-      "capability": { "id": "data.text.uppercase", "version": "1" },
+      "capability": { "id": "data.text.unicode_uppercase", "version": "1" },
       "implementation": "wvx.reference.text-uppercase@1",
       "config": {},
       "ui": { "x": 280, "y": 140 }
     },
     {
       "id": "lower",
-      "capability": { "id": "data.text.lowercase", "version": "1" },
+      "capability": { "id": "data.text.unicode_lowercase", "version": "1" },
       "implementation": "wvx.reference.text-lowercase@1",
       "config": {},
       "ui": { "x": 520, "y": 140 }

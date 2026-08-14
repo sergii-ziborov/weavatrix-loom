@@ -1,0 +1,21 @@
+{
+  "id": "ascii-uppercase-v1",
+  "version": "1",
+  "capability_key": "data.text.ascii_uppercase@1",
+  "title": "ASCII A–Z uppercase only; non-ASCII bytes unchanged",
+  "suite_digest": "sha256:pending-compute",
+  "preconditions": ["Arbitrary bytes (no UTF-8 required)"],
+  "guarantees": [
+    "a–z → A–Z",
+    "All other bytes unchanged (including high-bit UTF-8 sequences)"
+  ],
+  "limitations": [
+    "Not Unicode case mapping",
+    "Must not claim data.text.unicode_uppercase@1"
+  ],
+  "expected_error_families": [],
+  "vectors": [
+    { "id": "hello", "input_b64": "aGVsbG8=", "expect_ok": true }
+  ],
+  "negative_vectors": []
+}

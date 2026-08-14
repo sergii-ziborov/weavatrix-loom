@@ -1,0 +1,9 @@
+{
+  "id": "data.text.unicode_lowercase",
+  "version": "1",
+  "kind": "transform",
+  "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+  "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+  "errors": ["invalid-unicode"],
+  "effects": []
+}

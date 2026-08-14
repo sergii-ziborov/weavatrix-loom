@@ -1,33 +1,34 @@
 {
-  "id": "wvx.reference.json-parse",
-  "version": "1",
-  "capability": {
-    "id": "data.json.parse",
-    "version": "1"
-  },
-  "source": {
-    "kind": "pilot-reference",
-    "package": "wvx-adapters",
-    "package_version": "0.1.0"
-  },
-  "adapter": {
-    "crate_name": "wvx-adapters",
-    "execution": "native-rust"
-  },
-  "status": "conformant",
-  "evidence": {
-    "build": "pass",
-    "conformance": "pass",
-    "benchmark": "absent",
-    "license": "pass",
-    "security": "absent"
-  },
-  "notes": "JSON pilot; Gate A vectors pass. SDK plugin + emit. Not production admission.",
-  "sdk": {
-    "emit": {
-      "crate_name": "wvx-adapters",
-      "crate_path": "crates/wvx-adapters",
-      "template": "wvx_adapters::reference_json_parse::parse({bytes}.as_slice())?"
-    }
-  }
+    "id":  "wvx.reference.json-parse",
+    "version":  "1",
+    "capability":  {
+                       "id":  "data.json.parse",
+                       "version":  "1"
+                   },
+    "source":  {
+                   "kind":  "pilot-reference",
+                   "package":  "wvx-adapters",
+                   "package_version":  "0.1.0"
+               },
+    "adapter":  {
+                    "crate_name":  "wvx-adapters",
+                    "execution":  "native-rust"
+                },
+    "status":  "candidate",
+    "evidence":  {
+                     "conformance":  "absent",
+                     "benchmark":  "absent",
+                     "security":  "absent",
+                     "build":  "pass",
+                     "license":  "pass"
+                 },
+    "notes":  "Reference recursive-descent. NOT full RFC8259. Use json-subset-pilot-v1 only. Candidate until suite artifact.",
+    "sdk":  {
+                "emit":  {
+                             "crate_name":  "wvx-adapters",
+                             "crate_path":  "crates/wvx-adapters",
+                             "template":  "wvx_adapters::reference_json_parse::parse({bytes}.as_slice())?"
+                         }
+            },
+    "conformance_profile":  "json-subset-pilot-v1"
 }

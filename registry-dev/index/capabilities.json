@@ -1,13 +1,17 @@
 [
-  "data.compress.gunzip@1",
-  "data.compress.gzip@1",
-  "data.hash.blake3@1",
-  "data.hash.sha256@1",
-  "data.json.parse@1",
-  "data.json.path_set@1",
-  "data.json.serialize@1",
-  "data.text.lowercase@1",
-  "data.text.uppercase@1",
-  "io.input.bytes@1",
-  "io.output.bytes@1"
+    "data.compress.gunzip@1",
+    "data.compress.gzip@1",
+    "data.hash.blake3@1",
+    "data.hash.sha256@1",
+    "data.json.parse@1",
+    "data.json.path_set@1",
+    "data.json.serialize@1",
+    "data.text.ascii_lowercase@1",
+    "data.text.ascii_uppercase@1",
+    "data.text.lowercase@1",
+    "data.text.unicode_lowercase@1",
+    "data.text.unicode_uppercase@1",
+    "data.text.uppercase@1",
+    "io.input.bytes@1",
+    "io.output.bytes@1"
 ]

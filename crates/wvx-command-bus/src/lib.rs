@@ -27,9 +27,10 @@ use wvx_project_graph::{
 };
 use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
-    admit_implementation, requalify_implementation, resolve_implementation, CapabilityHit,
-    ImplementationHit, InstallCandidateResult, LocalRegistry, RegistryError, RegistrySummary,
-    RequalifyReport, AdmitRequest, AdmitResult, AdmissionReport,
+    admit_implementation, audit_truthful_registry, requalify_implementation, resolve_implementation,
+    CapabilityHit, ImplementationHit, InstallCandidateResult, LocalRegistry, RegistryError,
+    RegistrySummary, RequalifyReport, TruthfulAuditReport, AdmitRequest, AdmitResult,
+    AdmissionReport,
 };
 use wvx_ir::{ResolveDecision, ResolverPolicy, TargetProfile};
 use std::collections::BTreeMap;
@@ -353,6 +354,13 @@ pub fn registry_requalify(
     full_id: &str,
 ) -> Result<BusResponse<RequalifyReport>, BusError> {
     Ok(BusResponse::ok(requalify_implementation(registry, full_id)?))
+}
+
+/// Milestone 1 truthful registry audit (artifacts required for conformant+).
+pub fn registry_truthful_audit(
+    registry: &LocalRegistry,
+) -> Result<BusResponse<TruthfulAuditReport>, BusError> {
+    Ok(BusResponse::ok(audit_truthful_registry(registry)?))
 }
 
 /// Human Gate E admit (fail-closed). See `docs/go-no-go-e-pilot.md`.

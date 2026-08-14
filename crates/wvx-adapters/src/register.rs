@@ -93,47 +93,48 @@ pub fn register_pilot_plugins() {
             )
         });
 
-        // data.text.* — second capability family (bytes → bytes)
+        // Unicode text (separate from ASCII byte transforms — Milestone 1)
         register_plugin(
             "wvx.reference.text-uppercase@1",
-            "data.text.uppercase@1",
+            "data.text.unicode_uppercase@1",
             || {
                 bytes_to_bytes_handler(
                     "wvx.reference.text-uppercase@1",
-                    "data.text.uppercase@1",
+                    "data.text.unicode_uppercase@1",
                     reference_text_uppercase::transform,
                 )
             },
         );
         register_plugin(
+            "wvx.reference.text-lowercase@1",
+            "data.text.unicode_lowercase@1",
+            || {
+                bytes_to_bytes_handler(
+                    "wvx.reference.text-lowercase@1",
+                    "data.text.unicode_lowercase@1",
+                    reference_text_lowercase::transform,
+                )
+            },
+        );
+        // ASCII-only capabilities (must not claim Unicode)
+        register_plugin(
             "wvx.reference.text-ascii-upper@1",
-            "data.text.uppercase@1",
+            "data.text.ascii_uppercase@1",
             || {
                 bytes_to_bytes_handler(
                     "wvx.reference.text-ascii-upper@1",
-                    "data.text.uppercase@1",
+                    "data.text.ascii_uppercase@1",
                     reference_text_ascii_upper::transform,
                 )
             },
         );
         register_plugin(
-            "wvx.reference.text-lowercase@1",
-            "data.text.lowercase@1",
-            || {
-                bytes_to_bytes_handler(
-                    "wvx.reference.text-lowercase@1",
-                    "data.text.lowercase@1",
-                    reference_text_lowercase::transform,
-                )
-            },
-        );
-        register_plugin(
             "wvx.reference.text-ascii-lower@1",
-            "data.text.lowercase@1",
+            "data.text.ascii_lowercase@1",
             || {
                 bytes_to_bytes_handler(
                     "wvx.reference.text-ascii-lower@1",
-                    "data.text.lowercase@1",
+                    "data.text.ascii_lowercase@1",
                     reference_text_ascii_lower::transform,
                 )
             },

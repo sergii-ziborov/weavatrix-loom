@@ -22,12 +22,14 @@
     "license": "pass",
     "security": "absent"
   },
-  "notes": "JSON pilot; Gate A vectors pass. SDK plugin + emit. Not production admission.",
+  "notes": "serde_json parse. Truthful registry: needs evidence artifact for conformant.",
   "sdk": {
     "emit": {
       "crate_name": "wvx-adapters",
       "crate_path": "crates/wvx-adapters",
       "template": "wvx_adapters::serde_json_parse_owned::parse({bytes}.as_slice())?"
     }
-  }
+  },
+  "conformance_profile": "json-rfc8259-core-v1",
+  "evidence_artifact": "evidence/artifacts/serde-json.parse-owned@1.json"
 }

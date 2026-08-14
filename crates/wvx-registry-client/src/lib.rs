@@ -11,6 +11,7 @@
 
 pub mod admission;
 pub mod admit;
+pub mod evidence_artifact;
 pub mod provenance;
 pub mod resolve;
 pub mod requalify;
@@ -20,6 +21,11 @@ pub use admission::{
     ImplementationAdmission,
 };
 pub use admit::{admit_implementation, AdmitRequest, AdmitResult};
+pub use evidence_artifact::{
+    audit_truthful_registry, default_artifact_relpath, subject_digest, verify_artifact,
+    write_artifact, ArtifactCheck, EvidenceArtifact, SuiteResult, TruthfulAuditReport,
+    EVIDENCE_SCHEMA,
+};
 pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
     ProvenanceRecord,
@@ -313,10 +319,18 @@ impl LocalRegistry {
             .collect())
     }
 
-    /// Audit lifecycle labels vs evidence (overclaim detection). See [`admission`].
+    /// Audit lifecycle labels vs evidence artifacts (truthful registry). See [`admission`].
     pub fn audit_admission(&self) -> Result<AdmissionReport, RegistryError> {
         let impls = self.list_implementations()?;
-        Ok(audit_implementations(&impls))
+        Ok(crate::admission::audit_implementations_at(
+            &impls,
+            Some(self.root()),
+        ))
+    }
+
+    /// Strict Milestone-1 audit (artifacts required for conformant+).
+    pub fn audit_truthful(&self) -> Result<TruthfulAuditReport, RegistryError> {
+        audit_truthful_registry(self)
     }
 
     /// Install a Forge draft as **candidate** implementation (never admitted).

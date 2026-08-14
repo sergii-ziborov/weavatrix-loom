@@ -9,5 +9,6 @@
     { "id": "bytes", "type": "bytes", "required": true }
   ],
   "errors": ["invalid-unicode"],
-  "effects": []
+  "effects": [],
+  "notes": "DEPRECATED alias — use data.text.unicode_uppercase@1. No implementations attached."
 }

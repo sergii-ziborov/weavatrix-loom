@@ -1,0 +1,24 @@
+{
+  "id": "unicode-uppercase-15.1-v1",
+  "version": "1",
+  "capability_key": "data.text.unicode_uppercase@1",
+  "title": "Unicode uppercase of UTF-8 text (str::to_uppercase)",
+  "suite_digest": "sha256:pending-compute",
+  "preconditions": ["Valid UTF-8 bytes"],
+  "guarantees": [
+    "Maps Unicode scalar values via language-independent uppercase",
+    "Rejects invalid UTF-8 with invalid-unicode"
+  ],
+  "limitations": [
+    "Locale-independent (not Turkish-i special casing product profile)",
+    "Expansion (ß → SS) may change byte length"
+  ],
+  "expected_error_families": ["invalid-unicode"],
+  "vectors": [
+    { "id": "ascii_hello", "input_b64": "SGVsbG8=", "expect_ok": true },
+    { "id": "eszett", "input_b64": "c3Pf", "expect_ok": true }
+  ],
+  "negative_vectors": [
+    { "id": "bad_utf8", "input_b64": "/w==", "expect_error_family": "invalid-unicode" }
+  ]
+}

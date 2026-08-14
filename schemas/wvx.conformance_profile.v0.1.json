@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weavatrix.com/schemas/wvx.conformance_profile.v0.1.json",
+  "title": "WVX Conformance Profile v0.1",
+  "type": "object",
+  "required": ["id", "version", "capability_key", "suite_digest", "vectors", "guarantees", "limitations"],
+  "properties": {
+    "id": { "type": "string", "description": "Stable profile id, e.g. json-rfc8259-core-v1" },
+    "version": { "type": "string" },
+    "capability_key": { "type": "string", "description": "data.json.parse@1" },
+    "title": { "type": "string" },
+    "suite_digest": { "type": "string", "description": "sha256 hex of canonical suite body" },
+    "preconditions": { "type": "array", "items": { "type": "string" } },
+    "guarantees": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "expected_error_families": { "type": "array", "items": { "type": "string" } },
+    "vectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "input_b64"],
+        "properties": {
+          "id": { "type": "string" },
+          "input_b64": { "type": "string" },
+          "expect_ok": { "type": "boolean" },
+          "expect_output_b64": { "type": ["string", "null"] },
+          "expect_error_family": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "negative_vectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "input_b64", "expect_error_family"],
+        "properties": {
+          "id": { "type": "string" },
+          "input_b64": { "type": "string" },
+          "expect_error_family": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "id": "json-rfc8259-core-v1",
+  "version": "1",
+  "capability_key": "data.json.parse@1",
+  "title": "JSON RFC 8259 core parse vectors (pilot)",
+  "suite_digest": "sha256:pending-compute",
+  "preconditions": [
+    "UTF-8 input bytes",
+    "No streaming / partial values"
+  ],
+  "guarantees": [
+    "Accept well-formed RFC 8259 objects/arrays/scalars used in suite",
+    "Reject invalid syntax with error family invalid-syntax",
+    "Reject invalid UTF-8 with error family invalid-unicode"
+  ],
+  "limitations": [
+    "Depth limits not enforced in pilot",
+    "Does not claim full RFC 8259 edge-case coverage"
+  ],
+  "expected_error_families": ["invalid-syntax", "invalid-unicode"],
+  "vectors": [
+    { "id": "object_simple", "input_b64": "eyJoZWxsbyI6IndvcmxkIn0=", "expect_ok": true },
+    { "id": "array", "input_b64": "WzEsIngiLG51bGxd", "expect_ok": true },
+    { "id": "number", "input_b64": "LTQyLjU=", "expect_ok": true },
+    { "id": "string", "input_b64": "Imxvb20i", "expect_ok": true },
+    { "id": "bool", "input_b64": "ZmFsc2U=", "expect_ok": true },
+    { "id": "null", "input_b64": "bnVsbA==", "expect_ok": true }
+  ],
+  "negative_vectors": [
+    { "id": "trailing_junk", "input_b64": "e30geA==", "expect_error_family": "invalid-syntax" },
+    { "id": "bad_utf8", "input_b64": "/w==", "expect_error_family": "invalid-unicode" }
+  ]
+}

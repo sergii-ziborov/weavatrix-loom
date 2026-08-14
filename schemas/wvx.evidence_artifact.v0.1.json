@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weavatrix.com/schemas/wvx.evidence_artifact.v0.1.json",
+  "title": "WVX Evidence Artifact v0.1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "implementation_id",
+    "capability_key",
+    "conformance_profile",
+    "subject_digest",
+    "suite_results",
+    "axes",
+    "recorded_at_unix"
+  ],
+  "properties": {
+    "schema_version": { "const": "wvx.evidence.v0.1" },
+    "implementation_id": { "type": "string" },
+    "capability_key": { "type": "string" },
+    "conformance_profile": { "type": "string" },
+    "subject_digest": {
+      "type": "string",
+      "description": "sha256:hex of adapter subject (emit template + package pins)"
+    },
+    "profile_suite_digest": { "type": "string" },
+    "suite_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["profile", "suite_digest", "passed", "cases_ok", "cases_total"],
+        "properties": {
+          "profile": { "type": "string" },
+          "suite_digest": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "cases_ok": { "type": "integer" },
+          "cases_total": { "type": "integer" },
+          "notes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "axes": {
+      "type": "object",
+      "properties": {
+        "build": { "type": "string" },
+        "conformance": { "type": "string" },
+        "benchmark": { "type": "string" },
+        "license": { "type": "string" },
+        "security": { "type": "string" }
+      }
+    },
+    "recorded_at_unix": { "type": "integer" },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  }
+}

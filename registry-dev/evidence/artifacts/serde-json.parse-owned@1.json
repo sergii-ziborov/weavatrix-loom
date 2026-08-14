@@ -1,0 +1,31 @@
+{
+  "schema_version": "wvx.evidence.v0.1",
+  "implementation_id": "serde-json.parse-owned@1",
+  "capability_key": "data.json.parse@1",
+  "conformance_profile": "json-rfc8259-core-v1",
+  "subject_digest": "fnv1a64:45d83b8e533342f9",
+  "profile_suite_digest": "sha256:pilot-suite-placeholder",
+  "suite_results": [
+    {
+      "profile": "json-rfc8259-core-v1",
+      "suite_digest": "sha256:pilot-suite-placeholder",
+      "passed": true,
+      "cases_ok": 8,
+      "cases_total": 8,
+      "notes": [
+        "Gate A pilot vectors"
+      ]
+    }
+  ],
+  "axes": {
+    "build": "pass",
+    "conformance": "pass",
+    "benchmark": "absent",
+    "license": "pass",
+    "security": "absent"
+  },
+  "recorded_at_unix": 1700000000,
+  "notes": [
+    "Milestone 1 truthful registry sample"
+  ]
+}

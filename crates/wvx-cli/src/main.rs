@@ -12,7 +12,7 @@ use wvx_command_bus::{
     load_project_path, pilot_bench, project_export_rust, project_export_to_dir_with_registry,
     project_run, project_validate, registry_admission_audit, registry_human_admit,
     registry_implementations, registry_inspect, registry_requalify, registry_resolve,
-    registry_search, registry_summary, BusError,
+    registry_search, registry_summary, registry_truthful_audit, BusError,
 };
 use wvx_forge::load_facts_file;
 use wvx_registry_client::AdmitRequest;
@@ -888,6 +888,45 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 }
                 Err(e) => Err(e),
             }
+        }
+        "truthful" | "truthful-audit" => {
+            return match registry_truthful_audit(&reg) {
+                Ok(resp) => {
+                    if let Some(r) = &resp.data {
+                        eprintln!(
+                            "truthful audit: checked={} overclaims={} bad_artifacts={} — {}",
+                            r.checked,
+                            r.overclaims,
+                            r.missing_or_bad_artifacts,
+                            if r.ok { "PASS" } else { "FAIL" }
+                        );
+                        for item in &r.items {
+                            if item.overclaim || (item.needs_artifact && !item.artifact_ok) {
+                                eprintln!(
+                                    "  [{}] {} declared={} justified={}",
+                                    if item.overclaim { "OVER" } else { "ART" },
+                                    item.full_id,
+                                    item.declared,
+                                    item.justified
+                                );
+                                for f in &item.findings {
+                                    eprintln!("         {f}");
+                                }
+                            }
+                        }
+                    }
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.data.as_ref().map(|d| d.ok).unwrap_or(false) {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            };
         }
         "check" | "audit" | "admission" => {
             match registry_admission_audit(&reg) {

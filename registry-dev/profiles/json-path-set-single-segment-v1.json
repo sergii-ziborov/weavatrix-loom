@@ -1,0 +1,32 @@
+{
+  "id": "json-path-set-single-segment-v1",
+  "version": "1",
+  "capability_key": "data.json.path_set@1",
+  "title": "Unified path_set semantics: single-segment JSON Pointer leaf assign",
+  "suite_digest": "sha256:pending-compute",
+  "preconditions": [
+    "Root value is a JSON object",
+    "path is a single segment JSON Pointer (/key or key)"
+  ],
+  "guarantees": [
+    "Assigns set_to at the leaf key",
+    "Creates missing leaf key on write",
+    "Rejects multi-segment paths and empty paths",
+    "Rejects non-object roots"
+  ],
+  "limitations": [
+    "No nested pointer walk in v1",
+    "No array indices",
+    "RFC 6901 unescaping only as implemented by each backend (must agree on suite)"
+  ],
+  "expected_error_families": ["path-not-found", "invalid-path"],
+  "vectors": [
+    {
+      "id": "set_tag",
+      "input_b64": "eyJoZWxsbyI6IndvcmxkIn0=",
+      "expect_ok": true,
+      "notes": "config.path=/tag config.value=\"loom\" → object gains tag"
+    }
+  ],
+  "negative_vectors": []
+}

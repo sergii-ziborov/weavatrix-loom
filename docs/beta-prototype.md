@@ -69,18 +69,13 @@ npm run alpha:check   # test + build (+ check:api if server up)
 
 ## What next (priority order)
 
-**Freeze new fundamental abstractions.** #1 bottleneck = multi-domain Gate C proof.
-See **[domain-roadmap.md](domain-roadmap.md)**.
-
 | # | Work | Why |
 |---|------|-----|
-| **#1** | **Domain 2 hashing** (`data.hash.*` pilot) | bytes→digest; multi-impl; axes for evidence |
-| **#1** | **Domain 3 compression** then **Domain 4 codecs** | Harder contracts; FerroSift as Implementations |
-| **Gate C open** | 5+ external conformant · multi-domain samples · human review · real Forge economics | Honest criteria |
-| **P2** | crates.io remainder (GitHub Actions + secret, rate-limit resume) | Hosts unpublished |
-| **Never product** | Studio/MCP product wiring · dual code graph | |
+| **M1** | **Truthful Registry** ([truthful-registry.md](truthful-registry.md)) | No false conformant claims; profiles + evidence artifacts + CI |
+| **M2** | **Safe Semantic Core** | Validator passes, GraphPatch preview/commit, compiler policy |
+| Then | Domain 4 codecs / deeper suites | After M1–M2 |
 
-**Do not split monorepo into crate sub-repos** until public API freeze.
+**Do not** expand domains while registry status strings overclaim.
 
 ### Library expansion (beta+)
 

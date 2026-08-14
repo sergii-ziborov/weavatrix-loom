@@ -45,6 +45,12 @@ pub struct ApiCandidate {
     /// Rust module path relative to crate root when known (e.g. `serde_json_parse_owned`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub module_path: Option<String>,
+    /// Weavatrix entity id when candidates come from facts (ADR-0012 source_ref).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_entity_id: Option<String>,
+    /// Facts bundle / Weavatrix revision when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_revision: Option<String>,
 }
 
 fn default_extractor() -> String {
@@ -218,6 +224,8 @@ impl AstCollector {
             shape,
             extractor: "ast".into(),
             module_path: self.current_module(),
+            source_entity_id: None,
+            source_revision: None,
         });
     }
 }
@@ -269,6 +277,8 @@ impl<'ast> Visit<'ast> for AstCollector {
                     shape,
                     extractor: "ast".into(),
                     module_path: self.current_module(),
+                    source_entity_id: None,
+                    source_revision: None,
                 });
             }
         }
@@ -298,6 +308,8 @@ impl AstCollector {
             },
             extractor: "ast".into(),
             module_path: self.current_module(),
+            source_entity_id: None,
+            source_revision: None,
         });
     }
 
@@ -317,6 +329,8 @@ impl AstCollector {
             },
             extractor: "ast".into(),
             module_path: self.current_module(),
+            source_entity_id: None,
+            source_revision: None,
         });
     }
 
@@ -336,6 +350,8 @@ impl AstCollector {
             },
             extractor: "ast".into(),
             module_path: self.current_module(),
+            source_entity_id: None,
+            source_revision: None,
         });
     }
 }
@@ -441,6 +457,8 @@ fn extract_from_source_line(path: &Path, text: &str, out: &mut Vec<ApiCandidate>
                 shape,
                 extractor: "line".into(),
                 module_path: None,
+                source_entity_id: None,
+                source_revision: None,
             });
         } else if let Some(name) = match_pub_item(trimmed, "struct") {
             out.push(ApiCandidate {
@@ -455,6 +473,8 @@ fn extract_from_source_line(path: &Path, text: &str, out: &mut Vec<ApiCandidate>
                 },
                 extractor: "line".into(),
                 module_path: None,
+                source_entity_id: None,
+                source_revision: None,
             });
         } else if let Some(name) = match_pub_item(trimmed, "enum") {
             out.push(ApiCandidate {
@@ -469,6 +489,8 @@ fn extract_from_source_line(path: &Path, text: &str, out: &mut Vec<ApiCandidate>
                 },
                 extractor: "line".into(),
                 module_path: None,
+                source_entity_id: None,
+                source_revision: None,
             });
         } else if let Some(name) = match_pub_item(trimmed, "trait") {
             out.push(ApiCandidate {
@@ -483,6 +505,8 @@ fn extract_from_source_line(path: &Path, text: &str, out: &mut Vec<ApiCandidate>
                 },
                 extractor: "line".into(),
                 module_path: None,
+                source_entity_id: None,
+                source_revision: None,
             });
         }
     }

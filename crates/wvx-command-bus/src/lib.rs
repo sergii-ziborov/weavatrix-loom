@@ -706,11 +706,17 @@ pub fn forge_inventory(path: &Path) -> Result<BusResponse<InventoryReport>, BusE
 
 /// Public API extract + candidate shapes (Forge stage 2 — static only).
 ///
-/// **Bootstrap** path: local Cargo AST. Prefer [`forge_facts_to_extract`] when
-/// Weavatrix facts are available (ADR-0012).
+/// **Deprecated for product path** (bootstrap AST). Prefer
+/// [`forge_facts_to_extract`] / Weavatrix `wvx.facts.v0.1` (ADR-0012).
+/// Remains for offline pilots and export-facts.
 pub fn forge_extract(path: &Path) -> Result<BusResponse<ExtractReport>, BusError> {
     let report = extract_public_api(path)?;
-    Ok(BusResponse::ok(report))
+    let mut resp = BusResponse::ok(report);
+    resp.diagnostics.push(
+        "deprecated product path: forge extract is bootstrap AST only — prefer Weavatrix facts (wvx forge facts / POST /forge/facts) per ADR-0012"
+            .into(),
+    );
+    Ok(resp)
 }
 
 /// Convert a Weavatrix facts bundle → extract-shaped candidates (no filesystem walk).

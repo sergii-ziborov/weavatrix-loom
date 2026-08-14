@@ -461,6 +461,7 @@ cargo test -p wvx-conformance
 | **Trust** Evidence v0.2 + promote | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — mint/verify/promote, `compile_release` |
 | **P1** Profile runner + multi-domain golden + Gate C v2 + schema contracts + CI | this section | **Landed** |
 | **P2** Multi-domain Studio surface + HTTP trust/resolve/profiles | this section | **Landed** |
+| **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 
 Go/No-Go evidence:
 

@@ -312,6 +312,33 @@ pub struct Implementation {
     /// (e.g. `evidence/artifacts/serde-json.parse-owned@1.json`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_artifact: Option<String>,
+    /// Optional pointer into Weavatrix (or bootstrap) code intelligence.
+    ///
+    /// Loom stores a **reference**, not a copy of the code graph (ADR-0012).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<SourceRef>,
+}
+
+/// Cross-product reference: Weavatrix entity (preferred) or bootstrap path id.
+///
+/// Does **not** embed symbols/AST — only identifiers so Loom can re-query
+/// Weavatrix later without dual-indexing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SourceRef {
+    /// `weavatrix` | `bootstrap-ast` | `manual` | other.
+    #[serde(default)]
+    pub provider: String,
+    /// Stable entity id in the provider (Weavatrix symbol id, or `path#line` bootstrap).
+    #[serde(default)]
+    pub entity_id: String,
+    /// Provider revision / snapshot id when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    /// Optional human path hint (not authoritative).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
 }
 
 /// Manifest-driven adapter binding for core-independent extensibility (ADR-0011).

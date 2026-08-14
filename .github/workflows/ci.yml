@@ -120,6 +120,7 @@ jobs:
           test -f schemas/wvx.conformance_profile.v0.1.json
           test -f schemas/wvx.evidence_artifact.v0.1.json
           test -f schemas/wvx.evidence_artifact.v0.2.json
+          test -f schemas/wvx.facts.v0.1.json
           test -f deny.toml
           test -f docs/truthful-registry.md
           test -f docs/adr/README.md

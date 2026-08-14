@@ -26,6 +26,21 @@
         "notes": { "type": "string" }
       }
     },
+    "source_ref": {
+      "type": "object",
+      "description": "Optional Weavatrix (or bootstrap) entity pointer — not a code graph copy (ADR-0012)",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "weavatrix | bootstrap-ast | manual"
+        },
+        "entity_id": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string" },
+        "path": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["provider", "entity_id"]
+    },
     "adapter": {
       "type": "object",
       "properties": {

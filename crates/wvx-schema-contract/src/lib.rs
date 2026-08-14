@@ -180,6 +180,7 @@ mod tests {
 
     #[test]
     fn implementation_rust_roundtrip() {
+        use wvx_ir::SourceRef;
         let imp = Implementation {
             id: "demo".into(),
             version: "1".into(),
@@ -197,6 +198,13 @@ mod tests {
             sdk: None,
             conformance_profile: Some("json-rfc8259-core-v1".into()),
             evidence_artifact: Some("evidence/artifacts/demo@1.json".into()),
+            source_ref: Some(SourceRef {
+                provider: "weavatrix".into(),
+                entity_id: "wvx:demo:fn:parse".into(),
+                revision: Some("r1".into()),
+                path: Some("src/lib.rs".into()),
+                notes: None,
+            }),
         };
         let back = roundtrip_json(&imp).unwrap();
         assert_eq!(back.full_id(), "demo@1");
@@ -204,6 +212,25 @@ mod tests {
             back.conformance_profile.as_deref(),
             Some("json-rfc8259-core-v1")
         );
+        assert_eq!(
+            back.source_ref.as_ref().map(|s| s.entity_id.as_str()),
+            Some("wvx:demo:fn:parse")
+        );
+    }
+
+    #[test]
+    fn implementation_schema_source_ref_on_sample() {
+        let imp = monorepo_root()
+            .join("registry-dev/implementations/serde-json.parse-owned@1.json");
+        let doc = load_json(&imp).unwrap();
+        assert!(doc.get("source_ref").is_some());
+        assert_eq!(doc["source_ref"]["provider"], "manual");
+    }
+
+    #[test]
+    fn facts_schema_required_matches_sample() {
+        let facts = monorepo_root().join("fixtures/weavatrix-facts-sample.json");
+        validate_doc_path("wvx.facts.v0.1.json", &facts, "facts-sample").unwrap();
     }
 
     #[test]

@@ -10,6 +10,12 @@
     "package": "serde_json",
     "package_version": "1"
   },
+  "source_ref": {
+    "provider": "manual",
+    "entity_id": "crates-io:serde_json@1:parse",
+    "path": "serde_json::from_slice",
+    "notes": "Pilot placeholder until Weavatrix indexes the adapter; not a dual code graph"
+  },
   "adapter": {
     "crate_name": "wvx-adapters",
     "execution": "native-rust"

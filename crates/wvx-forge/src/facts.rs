@@ -79,6 +79,9 @@ pub struct WeavatrixFactsBundle {
     /// Optional package version string.
     #[serde(default)]
     pub package_version: Option<String>,
+    /// Weavatrix index / export revision (optional; flows into `source_ref.revision`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
     /// Fact entities (functions, types, …).
     #[serde(default)]
     pub entities: Vec<WeavatrixFactEntity>,
@@ -96,6 +99,9 @@ pub struct WeavatrixFactEntity {
     /// `function` | `struct` | `enum` | `trait` | `module` (case-insensitive).
     pub kind: String,
     pub name: String,
+    /// Stable Weavatrix entity id when available (preferred over path#line).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_id: Option<String>,
     /// Source path relative or absolute.
     #[serde(default)]
     pub path: String,
@@ -152,8 +158,11 @@ pub fn validate_facts(bundle: &WeavatrixFactsBundle) -> Result<(), String> {
 
 /// Convert Weavatrix facts → Forge [`ExtractReport`] (candidate shapes for match/draft).
 pub fn extract_from_facts(bundle: &WeavatrixFactsBundle) -> ExtractReport {
-    let mut candidates: Vec<ApiCandidate> =
-        bundle.entities.iter().map(entity_to_candidate).collect();
+    let mut candidates: Vec<ApiCandidate> = bundle
+        .entities
+        .iter()
+        .map(|e| entity_to_candidate(e, bundle))
+        .collect();
     candidates.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
 
     let status = if candidates.is_empty() {
@@ -169,10 +178,11 @@ pub fn extract_from_facts(bundle: &WeavatrixFactsBundle) -> ExtractReport {
 
     let mut notes = bundle.notes.clone();
     notes.push(format!(
-        "source={} schema={} entities={}",
+        "source={} schema={} entities={} revision={}",
         bundle.source,
         bundle.schema_version,
-        candidates.len()
+        candidates.len(),
+        bundle.revision.as_deref().unwrap_or("-")
     ));
     notes.push("ADR-0012: Weavatrix facts preferred over bootstrap AST when provided.".into());
 
@@ -187,18 +197,26 @@ pub fn extract_from_facts(bundle: &WeavatrixFactsBundle) -> ExtractReport {
     }
 }
 
-fn entity_to_candidate(e: &WeavatrixFactEntity) -> ApiCandidate {
+fn entity_to_candidate(e: &WeavatrixFactEntity, bundle: &WeavatrixFactsBundle) -> ApiCandidate {
     let kind = parse_kind(&e.kind);
     let mut notes = e.notes.clone();
     notes.push("extractor=weavatrix".into());
+    let path = if e.path.is_empty() {
+        "<weavatrix>".into()
+    } else {
+        e.path.clone()
+    };
+    // Prefer explicit entity_id; else stable synthetic id from package+path#line+name.
+    let entity_id = e.entity_id.clone().or_else(|| {
+        Some(format!(
+            "{}:{}:{}#{}",
+            bundle.package_name, path, e.line, e.name
+        ))
+    });
     ApiCandidate {
         kind,
         name: e.name.clone(),
-        path: if e.path.is_empty() {
-            "<weavatrix>".into()
-        } else {
-            e.path.clone()
-        },
+        path,
         line: e.line,
         signature: if e.signature.is_empty() {
             e.name.clone()
@@ -212,6 +230,8 @@ fn entity_to_candidate(e: &WeavatrixFactEntity) -> ApiCandidate {
         },
         extractor: "weavatrix".into(),
         module_path: e.module_path.clone(),
+        source_entity_id: entity_id,
+        source_revision: bundle.revision.clone(),
     }
 }
 
@@ -236,6 +256,9 @@ pub fn facts_from_extract(extract: &ExtractReport, source: &str) -> WeavatrixFac
         .map(|c| WeavatrixFactEntity {
             kind: kind_label(c.kind).into(),
             name: c.name.clone(),
+            entity_id: c.source_entity_id.clone().or_else(|| {
+                Some(format!("{}:{}#{}", c.path, c.line, c.name))
+            }),
             path: c.path.clone(),
             line: c.line,
             signature: c.signature.clone(),
@@ -256,10 +279,12 @@ pub fn facts_from_extract(extract: &ExtractReport, source: &str) -> WeavatrixFac
         package_name: extract.package_name.clone(),
         package_root: Some(extract.root.clone()),
         package_version: None,
+        revision: None,
         entities,
         notes: vec![
             format!("exported_from_extract status={}", extract.status),
             "Interchange for Weavatrix → Forge; re-import with forge facts/match.".into(),
+            "bootstrap-ast is fallback only — product path is Weavatrix facts (ADR-0012).".into(),
         ],
     }
 }
@@ -301,9 +326,11 @@ mod tests {
             package_name: "demo_crate".into(),
             package_root: Some("/tmp/demo_crate".into()),
             package_version: Some("0.1.0".into()),
+            revision: Some("rev-test-1".into()),
             entities: vec![WeavatrixFactEntity {
                 kind: "function".into(),
                 name: "parse".into(),
+                entity_id: Some("wvx:demo_crate:fn:parse".into()),
                 path: "src/lib.rs".into(),
                 line: 10,
                 signature: "pub fn parse(bytes: &[u8]) -> Result<Value, E>".into(),
@@ -323,10 +350,22 @@ mod tests {
         assert_eq!(extract.package_name, "demo_crate");
         assert_eq!(extract.candidates.len(), 1);
         assert_eq!(extract.candidates[0].extractor, "weavatrix");
+        assert_eq!(
+            extract.candidates[0].source_entity_id.as_deref(),
+            Some("wvx:demo_crate:fn:parse")
+        );
+        assert_eq!(
+            extract.candidates[0].source_revision.as_deref(),
+            Some("rev-test-1")
+        );
         assert_eq!(extract.status, "candidate_found_weavatrix");
         let back = facts_from_extract(&extract, "bootstrap-export");
         assert_eq!(back.entities.len(), 1);
         assert_eq!(back.schema_version, FACTS_SCHEMA_VERSION);
+        assert_eq!(
+            back.entities[0].entity_id.as_deref(),
+            Some("wvx:demo_crate:fn:parse")
+        );
     }
 
     #[test]

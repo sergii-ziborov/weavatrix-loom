@@ -4,14 +4,17 @@
   "package_name": "sample_json_like",
   "package_root": "facts://sample_json_like",
   "package_version": "0.1.0",
+  "revision": "sample-facts-rev-1",
   "notes": [
     "Sample Weavatrix facts bundle for Forge (ADR-0012).",
-    "Shapes chosen to match pilot ontology data.json.parse / serialize."
+    "Shapes chosen to match pilot ontology data.json.parse / serialize.",
+    "entity_id values flow into Implementation.source_ref (not a graph copy)."
   ],
   "entities": [
     {
       "kind": "function",
       "name": "parse",
+      "entity_id": "wvx:sample_json_like:fn:parse",
       "path": "src/lib.rs",
       "line": 12,
       "signature": "pub fn parse(bytes: &[u8]) -> Result<Value, Error>",
@@ -23,6 +26,7 @@
     {
       "kind": "function",
       "name": "serialize",
+      "entity_id": "wvx:sample_json_like:fn:serialize",
       "path": "src/lib.rs",
       "line": 40,
       "signature": "pub fn serialize(value: &Value) -> Result<Vec<u8>, Error>",
@@ -34,6 +38,7 @@
     {
       "kind": "function",
       "name": "uppercase",
+      "entity_id": "wvx:sample_json_like:fn:uppercase",
       "path": "src/text.rs",
       "line": 8,
       "signature": "pub fn uppercase(bytes: &[u8]) -> Result<Vec<u8>, Error>",

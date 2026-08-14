@@ -152,4 +152,8 @@ Weavatrix export  →  wvx.facts.v0.1 JSON  →  Forge match/draft  →  Registr
 | Bootstrap → facts | `wvx forge export-facts <crate> -o facts.json` |
 | HTTP | `POST /api/v1/forge/facts` · match/draft accept `facts` / `facts_json` / `facts_path` |
 
-Schema: `schema_version: "wvx.facts.v0.1"`. Bootstrap Cargo/AST extract remains for offline pilots.
+Schema: `schema_version: "wvx.facts.v0.1"` (`schemas/wvx.facts.v0.1.json`).  
+Bootstrap Cargo/AST extract remains for **offline pilots only** — CLI/HTTP warn
+`deprecated product path`; prefer facts. Drafts emit `Implementation.source_ref`
+(`provider` + `entity_id` + optional `revision`) so Loom references Weavatrix
+entities without copying the code graph (ADR-0012).

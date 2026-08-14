@@ -378,10 +378,17 @@ fn cmd_forge(args: &[String]) -> ExitCode {
         "extract" => {
             let Some(path) = args.get(1) else {
                 eprintln!("usage: wvx forge extract <crate-path>");
+                eprintln!("note: bootstrap AST only — prefer: wvx forge facts <weavatrix-facts.json>");
                 return ExitCode::FAILURE;
             };
+            eprintln!(
+                "warn: `forge extract` is bootstrap AST (deprecated product path). Prefer Weavatrix facts (ADR-0012)."
+            );
             match forge_extract(path.as_ref()) {
                 Ok(resp) => {
+                    for d in &resp.diagnostics {
+                        eprintln!("note: {d}");
+                    }
                     println!("{}", serde_json::to_string_pretty(&resp).unwrap());
                     ExitCode::SUCCESS
                 }

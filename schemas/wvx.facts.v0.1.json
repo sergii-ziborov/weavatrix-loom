@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weavatrix.com/schemas/wvx.facts.v0.1.json",
+  "title": "Weavatrix Facts Bundle v0.1 (Loom Forge interchange)",
+  "description": "Code facts export from Weavatrix → Loom Forge match/draft (ADR-0012). Loom does not embed Weavatrix; this document is the only product feed. Bootstrap AST extract is offline-only.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "package_name"],
+  "properties": {
+    "schema_version": {
+      "const": "wvx.facts.v0.1"
+    },
+    "source": {
+      "type": "string",
+      "description": "weavatrix | bootstrap-export | manual"
+    },
+    "package_name": { "type": "string", "minLength": 1 },
+    "package_root": { "type": "string" },
+    "package_version": { "type": "string" },
+    "revision": {
+      "type": "string",
+      "description": "Weavatrix index/export revision → Implementation.source_ref.revision"
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name"],
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" },
+          "entity_id": {
+            "type": "string",
+            "description": "Stable Weavatrix entity id (preferred over path#line)"
+          },
+          "path": { "type": "string" },
+          "line": { "type": "integer", "minimum": 0 },
+          "signature": { "type": "string" },
+          "module_path": { "type": "string" },
+          "inputs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "outputs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "notes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

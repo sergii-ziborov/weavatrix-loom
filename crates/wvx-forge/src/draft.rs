@@ -327,6 +327,34 @@ fn draft_one(
 
     let license_fact = if license.is_some() { "pass" } else { "absent" };
     let impl_base_id = impl_id.trim_end_matches("@1");
+    // ADR-0012: prefer Weavatrix entity id; bootstrap uses path#line as entity.
+    let source_ref = {
+        let is_weavatrix = c.extractor == "weavatrix" || c.source_entity_id.is_some();
+        let provider = if c.extractor == "weavatrix" {
+            "weavatrix"
+        } else if is_weavatrix && c.source_entity_id.as_ref().is_some_and(|id| id.starts_with("wvx:"))
+        {
+            "weavatrix"
+        } else if c.extractor == "ast" || c.extractor == "line" {
+            "bootstrap-ast"
+        } else {
+            "weavatrix"
+        };
+        let entity_id = c.source_entity_id.clone().unwrap_or_else(|| {
+            format!("{}:{}#{}", c.path, c.line, c.name)
+        });
+        serde_json::json!({
+            "provider": provider,
+            "entity_id": entity_id,
+            "revision": c.source_revision,
+            "path": c.path,
+            "notes": if provider == "bootstrap-ast" {
+                "Bootstrap path id — replace with Weavatrix entity when available (ADR-0012)."
+            } else {
+                "Weavatrix code-fact reference — Loom does not copy the code graph."
+            }
+        })
+    };
     let implementation = serde_json::json!({
         "id": impl_base_id,
         "version": "1",
@@ -337,6 +365,7 @@ fn draft_one(
             "package_version": package_version,
             "notes": format!("{}:{}", c.path, c.line)
         },
+        "source_ref": source_ref,
         "adapter": {
             "crate_name": format!("wvx-adapter-{}", slugify(impl_base_id)),
             "execution": "native-rust"
@@ -639,12 +668,16 @@ mod tests {
             },
             extractor: "line".into(),
             module_path: None,
+            source_entity_id: None,
+            source_revision: None,
         };
         let d = draft_one("demo-json", "0.1.0", Some("MIT"), &c, &[]);
         assert_eq!(d.status, "inventory_only");
         assert_eq!(d.mapping_kind, "new_proposal");
         assert!(d.capability_json.contains("demo_json.parse") || d.capability_id.contains("parse"));
         assert!(d.implementation_json.contains("inventory_only"));
+        assert!(d.implementation_json.contains("source_ref"));
+        assert!(d.implementation_json.contains("bootstrap-ast"));
         assert!(d.adapter_stub_rs.contains("pub fn parse"));
         assert!(d.adapter_stub_rs.contains("NOT admitted"));
     }
@@ -677,8 +710,10 @@ mod tests {
                 outputs: vec!["json.value".into()],
                 notes: vec![],
             },
-            extractor: "ast".into(),
+            extractor: "weavatrix".into(),
             module_path: None,
+            source_entity_id: Some("wvx:external-demo:fn:upper_parse".into()),
+            source_revision: Some("facts-rev-1".into()),
         };
         let d = draft_one(
             "wvx-adapter-external-demo",
@@ -694,5 +729,7 @@ mod tests {
             .capability_json
             .contains("wvx_adapter_external_demo.upper_parse"));
         assert!(d.implementation_json.contains("data.json.parse"));
+        assert!(d.implementation_json.contains("wvx:external-demo:fn:upper_parse"));
+        assert!(d.implementation_json.contains("\"provider\": \"weavatrix\""));
     }
 }

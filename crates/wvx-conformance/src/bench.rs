@@ -174,6 +174,106 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         }
     }
 
+    // Domain 4 — binary codecs (hex + base64 multi-impl)
+    let codec_in = b"Weavatrix Loom Domain 4 codec bench payload";
+    for impl_id in [
+        "wvx.reference.hex-encode@1",
+        "wvx.reference.hex-encode-chunked@1",
+    ] {
+        cases.push(bench_bytes_ports(
+            &reg,
+            "data.codec.hex_encode@1",
+            impl_id,
+            "hex_payload",
+            "bytes",
+            "bytes",
+            codec_in,
+            iterations,
+            warmup,
+        ));
+    }
+    let hex_enc = match reg.resolve("data.codec.hex_encode@1", Some("wvx.reference.hex-encode@1")) {
+        Ok(h) => {
+            let mut inputs = WvxValueMap::new();
+            inputs.insert("bytes".into(), WvxValue::Bytes(codec_in.to_vec()));
+            h.execute(&inputs, &BTreeMap::new())
+                .ok()
+                .and_then(|m| match m.get("bytes") {
+                    Some(WvxValue::Bytes(b)) => Some(b.clone()),
+                    _ => None,
+                })
+        }
+        Err(_) => None,
+    };
+    if let Some(hex) = &hex_enc {
+        for impl_id in [
+            "wvx.reference.hex-decode@1",
+            "wvx.reference.hex-decode-table@1",
+        ] {
+            cases.push(bench_bytes_ports(
+                &reg,
+                "data.codec.hex_decode@1",
+                impl_id,
+                "hex_payload",
+                "bytes",
+                "bytes",
+                hex,
+                iterations,
+                warmup,
+            ));
+        }
+    }
+    for impl_id in [
+        "base64.standard-encode@1",
+        "wvx.reference.base64-encode@1",
+    ] {
+        cases.push(bench_bytes_ports(
+            &reg,
+            "data.codec.base64_encode@1",
+            impl_id,
+            "b64_payload",
+            "bytes",
+            "bytes",
+            codec_in,
+            iterations,
+            warmup,
+        ));
+    }
+    let b64_enc = match reg.resolve(
+        "data.codec.base64_encode@1",
+        Some("base64.standard-encode@1"),
+    ) {
+        Ok(h) => {
+            let mut inputs = WvxValueMap::new();
+            inputs.insert("bytes".into(), WvxValue::Bytes(codec_in.to_vec()));
+            h.execute(&inputs, &BTreeMap::new())
+                .ok()
+                .and_then(|m| match m.get("bytes") {
+                    Some(WvxValue::Bytes(b)) => Some(b.clone()),
+                    _ => None,
+                })
+        }
+        Err(_) => None,
+    };
+    if let Some(b64) = &b64_enc {
+        for impl_id in [
+            "base64.standard-decode@1",
+            "wvx.reference.base64-decode@1",
+        ] {
+            cases.push(bench_bytes_ports(
+                &reg,
+                "data.codec.base64_decode@1",
+                impl_id,
+                "b64_payload",
+                "bytes",
+                "bytes",
+                b64,
+                iterations,
+                warmup,
+            ));
+        }
+    }
+
     let ok = cases.iter().all(|c| c.ok);
     BenchReport {
         ok,

@@ -296,8 +296,250 @@ pub fn run_pilot_conformance() -> ConformanceReport {
         }
     }
 
+    // --- multi-domain multi-impl equality (competitors must agree bit-for-bit) ---
+    cases.extend(run_multi_impl_equality(&reg));
+
     let ok = cases.iter().all(|c| c.ok);
     ConformanceReport { ok, cases }
+}
+
+/// Cross-check competing implementations of the same capability on shared vectors.
+///
+/// - Hash / hex / base64 encode: bit-equal outputs  
+/// - Gunzip: bit-equal after decompressing a fixed gzip blob  
+/// - Hex / base64 decode: bit-equal raw recovery
+fn run_multi_impl_equality(reg: &HandlerRegistry) -> Vec<ConformanceCaseResult> {
+    let mut cases = Vec::new();
+    let long = vec![b'x'; 257];
+    let vectors: Vec<(&str, &[u8])> = vec![
+        ("empty", b""),
+        ("ascii", b"hello loom"),
+        ("binary", &[0x00, 0xff, 0x10, 0x7f]),
+        ("unicode_utf8", "привет🧩".as_bytes()),
+        ("long", long.as_slice()),
+    ];
+
+    // Domain 2 — SHA-256 multi-impl
+    let sha_impls = [
+        "sha2.sha256@1",
+        "sha2.sha256-streaming@1",
+        "sha2.sha256-chunked@1",
+        "sha2.sha256-update-all@1",
+    ];
+    for (vname, input) in &vectors {
+        cases.push(conform_multi_bytes(
+            reg,
+            "data.hash.sha256@1",
+            &sha_impls,
+            "digest",
+            vname,
+            input,
+            |b| Ok(b.to_vec()),
+        ));
+    }
+
+    // Domain 3 — gunzip multi-impl (gzip compressed once, all decompress equal)
+    if let Ok(gz_handler) = reg.resolve("data.compress.gzip@1", Some("flate2.gzip@1")) {
+        let mut inputs = WvxValueMap::new();
+        inputs.insert(
+            "bytes".into(),
+            WvxValue::Bytes(b"Weavatrix multi-impl gunzip equality payload".to_vec()),
+        );
+        if let Ok(out) = gz_handler.execute(&inputs, &BTreeMap::new()) {
+            if let Some(WvxValue::Bytes(gz)) = out.get("bytes") {
+                let gunzip_impls = [
+                    "flate2.gunzip@1",
+                    "flate2.gunzip-chunked@1",
+                    "flate2.gunzip-take@1",
+                ];
+                cases.push(conform_multi_bytes(
+                    reg,
+                    "data.compress.gunzip@1",
+                    &gunzip_impls,
+                    "bytes",
+                    "gunzip_fixed_blob",
+                    gz.as_slice(),
+                    |b| Ok(b.to_vec()),
+                ));
+            }
+        }
+    }
+
+    // Domain 4 — hex encode multi-impl
+    let hex_enc = [
+        "wvx.reference.hex-encode@1",
+        "wvx.reference.hex-encode-chunked@1",
+    ];
+    for (vname, input) in &vectors {
+        cases.push(conform_multi_bytes(
+            reg,
+            "data.codec.hex_encode@1",
+            &hex_enc,
+            "bytes",
+            vname,
+            input,
+            |b| Ok(b.to_vec()),
+        ));
+    }
+    // hex decode multi-impl on encoded form of each vector
+    let hex_dec = [
+        "wvx.reference.hex-decode@1",
+        "wvx.reference.hex-decode-table@1",
+    ];
+    if let Ok(enc) = reg.resolve("data.codec.hex_encode@1", Some("wvx.reference.hex-encode@1")) {
+        for (vname, input) in &vectors {
+            let mut inputs = WvxValueMap::new();
+            inputs.insert("bytes".into(), WvxValue::Bytes(input.to_vec()));
+            if let Ok(out) = enc.execute(&inputs, &BTreeMap::new()) {
+                if let Some(WvxValue::Bytes(hex)) = out.get("bytes") {
+                    cases.push(conform_multi_bytes(
+                        reg,
+                        "data.codec.hex_decode@1",
+                        &hex_dec,
+                        "bytes",
+                        vname,
+                        hex.as_slice(),
+                        |b| Ok(b.to_vec()),
+                    ));
+                }
+            }
+        }
+    }
+
+    // Domain 4 — base64 encode/decode multi-impl (crate vs pure)
+    let b64_enc = [
+        "base64.standard-encode@1",
+        "wvx.reference.base64-encode@1",
+    ];
+    let b64_dec = [
+        "base64.standard-decode@1",
+        "wvx.reference.base64-decode@1",
+    ];
+    for (vname, input) in &vectors {
+        cases.push(conform_multi_bytes(
+            reg,
+            "data.codec.base64_encode@1",
+            &b64_enc,
+            "bytes",
+            vname,
+            input,
+            |b| Ok(b.to_vec()),
+        ));
+    }
+    if let Ok(enc) = reg.resolve(
+        "data.codec.base64_encode@1",
+        Some("base64.standard-encode@1"),
+    ) {
+        for (vname, input) in &vectors {
+            let mut inputs = WvxValueMap::new();
+            inputs.insert("bytes".into(), WvxValue::Bytes(input.to_vec()));
+            if let Ok(out) = enc.execute(&inputs, &BTreeMap::new()) {
+                if let Some(WvxValue::Bytes(b64)) = out.get("bytes") {
+                    cases.push(conform_multi_bytes(
+                        reg,
+                        "data.codec.base64_decode@1",
+                        &b64_dec,
+                        "bytes",
+                        vname,
+                        b64.as_slice(),
+                        |b| Ok(b.to_vec()),
+                    ));
+                }
+            }
+        }
+    }
+
+    cases
+}
+
+/// Run `impls` on the same input; all must produce identical bytes on `out_port`.
+fn conform_multi_bytes(
+    reg: &HandlerRegistry,
+    cap: &str,
+    impls: &[&str],
+    out_port: &str,
+    case: &str,
+    input: &[u8],
+    _identity: fn(&[u8]) -> Result<Vec<u8>, String>,
+) -> ConformanceCaseResult {
+    let mut outputs: Vec<(String, Vec<u8>)> = Vec::new();
+    for impl_id in impls {
+        let handler = match reg.resolve(cap, Some(impl_id)) {
+            Ok(h) => h,
+            Err(e) => {
+                return ConformanceCaseResult {
+                    capability: cap.into(),
+                    implementation: impl_id.to_string(),
+                    case: format!("multi_eq:{case}"),
+                    ok: false,
+                    detail: Some(e.to_string()),
+                };
+            }
+        };
+        let mut inputs = WvxValueMap::new();
+        inputs.insert("bytes".into(), WvxValue::Bytes(input.to_vec()));
+        match handler.execute(&inputs, &BTreeMap::new()) {
+            Ok(out) => match out.get(out_port) {
+                Some(WvxValue::Bytes(b)) => outputs.push(((*impl_id).into(), b.clone())),
+                other => {
+                    return ConformanceCaseResult {
+                        capability: cap.into(),
+                        implementation: (*impl_id).into(),
+                        case: format!("multi_eq:{case}"),
+                        ok: false,
+                        detail: Some(format!("bad output port `{out_port}`: {other:?}")),
+                    };
+                }
+            },
+            Err(e) => {
+                return ConformanceCaseResult {
+                    capability: cap.into(),
+                    implementation: (*impl_id).into(),
+                    case: format!("multi_eq:{case}"),
+                    ok: false,
+                    detail: Some(e),
+                };
+            }
+        }
+    }
+    if outputs.is_empty() {
+        return ConformanceCaseResult {
+            capability: cap.into(),
+            implementation: "(none)".into(),
+            case: format!("multi_eq:{case}"),
+            ok: false,
+            detail: Some("no implementations produced output".into()),
+        };
+    }
+    let reference = &outputs[0].1;
+    for (id, bytes) in &outputs[1..] {
+        if bytes != reference {
+            return ConformanceCaseResult {
+                capability: cap.into(),
+                implementation: format!("{} vs {}", outputs[0].0, id),
+                case: format!("multi_eq:{case}"),
+                ok: false,
+                detail: Some(format!(
+                    "bit mismatch: {} len={} vs {} len={}",
+                    outputs[0].0,
+                    reference.len(),
+                    id,
+                    bytes.len()
+                )),
+            };
+        }
+    }
+    ConformanceCaseResult {
+        capability: cap.into(),
+        implementation: impls.join(" ≡ "),
+        case: format!("multi_eq:{case}"),
+        ok: true,
+        detail: Some(format!(
+            "{} impls agree ({} bytes out)",
+            outputs.len(),
+            reference.len()
+        )),
+    }
 }
 
 fn conform_parse(

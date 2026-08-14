@@ -108,6 +108,15 @@ cargo run -p wvx-cli -- export-rust fixtures/pilot-codec-pipeline.wvx.json -o $e
 - Richer cards: port type flow `bytes → json_value`
 - Detail: copy key, status histogram, Forge CTA
 
+### P2 Multi-domain Studio surface (landed)
+
+| Surface | What |
+|---------|------|
+| **Pilot catalog** | HTTP `GET /api/v1/pilot/catalog` + Studio pilot menu (JSON · text · hash · compress · codec) |
+| **Families / profiles** | `GET /registry/families`, `GET /registry/profiles` |
+| **Trust strip** | Studio header chips → `admission` + `truthful` (read-only) |
+| **Resolve / verify** | `POST /registry/resolve`, `GET /registry/verify-evidence/{id}` |
+
 ### Second capability family: `data.text.*`
 
 | Capability | Ports | Implementations (multi-impl swap) |

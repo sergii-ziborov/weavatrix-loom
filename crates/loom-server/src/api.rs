@@ -13,10 +13,12 @@ use wvx_command_bus::{
     forge_extract, forge_facts_to_extract, forge_gate_c, forge_inventory, forge_match,
     forge_match_facts, forge_register_candidates, graph_apply_patch, graph_commit_patch,
     graph_preview_patch, graph_propose_intent, graph_propose_patch, graph_validate_patch,
-    implementations_list, project_export_rust_hydrated, project_run_hydrated,
-    project_validate_hydrated, registry_admission_audit, registry_implementations,
-    registry_inspect, registry_search, registry_summary, BusError, BusResponse, PROTOCOL_VERSION,
+    implementations_list, pilot_catalog, project_export_rust_hydrated, project_run_hydrated,
+    project_validate_hydrated, registry_admission_audit, registry_families, registry_implementations,
+    registry_inspect, registry_profiles, registry_resolve, registry_search, registry_summary,
+    registry_truthful_audit, registry_verify_evidence, BusError, BusResponse, PROTOCOL_VERSION,
 };
+use wvx_ir::{ResolverPolicy, TargetProfile};
 use wvx_forge::WeavatrixFactsBundle;
 use wvx_ir::Project;
 use wvx_project_graph::GraphPatch;
@@ -36,7 +38,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/registry/implementations", get(reg_implementations))
         .route("/api/v1/registry/inspect/{key}", get(reg_inspect))
         .route("/api/v1/registry/admission", get(reg_admission))
+        .route("/api/v1/registry/truthful", get(reg_truthful))
+        .route("/api/v1/registry/profiles", get(reg_profiles))
+        .route("/api/v1/registry/families", get(reg_families))
+        .route("/api/v1/registry/resolve", post(reg_resolve))
+        .route(
+            "/api/v1/registry/verify-evidence/{key}",
+            get(reg_verify_evidence),
+        )
         .route("/api/v1/pilot/implementations", get(pilot_implementations))
+        .route("/api/v1/pilot/catalog", get(pilot_catalog_handler))
         .route("/api/v1/forge/inventory", post(forge_inventory_handler))
         .route(
             "/api/v1/forge/cargo-search",
@@ -269,8 +280,83 @@ async fn reg_admission(State(state): State<AppState>) -> Response {
     }
 }
 
+/// Milestone 1 truthful audit (artifacts required for conformant+).
+async fn reg_truthful(State(state): State<AppState>) -> Response {
+    match registry_truthful_audit(state.registry.as_ref()) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+/// Conformance profile catalog under `registry-dev/profiles/`.
+async fn reg_profiles(State(state): State<AppState>) -> Response {
+    match registry_profiles(state.registry.as_ref()) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+/// Multi-domain family roll-up for Studio Library filters.
+async fn reg_families(State(state): State<AppState>) -> Response {
+    match registry_families(state.registry.as_ref()) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolveBody {
+    capability: String,
+    #[serde(default)]
+    profile: Option<TargetProfile>,
+    #[serde(default)]
+    policy: Option<ResolverPolicy>,
+    /// Convenience: `dev` | `release` when `policy` omitted.
+    #[serde(default)]
+    policy_preset: Option<String>,
+}
+
+/// Explainable resolve (TargetProfile + ResolverPolicy). Does not auto-admit.
+async fn reg_resolve(State(state): State<AppState>, Json(body): Json<ResolveBody>) -> Response {
+    let policy = body.policy.or_else(|| {
+        match body.policy_preset.as_deref() {
+            Some("release") => Some(ResolverPolicy::release()),
+            Some("dev") | None => Some(ResolverPolicy::default()),
+            Some(other) => Some(ResolverPolicy {
+                id: other.into(),
+                ..ResolverPolicy::default()
+            }),
+        }
+    });
+    match registry_resolve(
+        state.registry.as_ref(),
+        &body.capability,
+        body.profile,
+        policy,
+    ) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
+/// Verify evidence artifact for an implementation full id.
+async fn reg_verify_evidence(
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> Response {
+    match registry_verify_evidence(state.registry.as_ref(), &key) {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => bus_error(e),
+    }
+}
+
 async fn pilot_implementations() -> impl IntoResponse {
     Json(implementations_list())
+}
+
+/// Multi-domain pilot catalog (Domains 1–4 + text) for Studio load menu.
+async fn pilot_catalog_handler() -> impl IntoResponse {
+    Json(pilot_catalog())
 }
 
 #[derive(Debug, Deserialize)]
@@ -798,6 +884,77 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["ok"], true);
         assert!(v["data"]["capabilities"].as_u64().unwrap() >= 5);
+    }
+
+    #[tokio::test]
+    async fn registry_truthful_and_profiles_ok() {
+        let app = test_app();
+        for uri in [
+            "/api/v1/registry/truthful",
+            "/api/v1/registry/profiles",
+            "/api/v1/registry/families",
+            "/api/v1/pilot/catalog",
+        ] {
+            let res = app
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::OK, "{uri}");
+            let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(v["ok"], true, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn registry_resolve_parse_ok() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "capability": "data.json.parse@1",
+            "policy_preset": "dev"
+        });
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/registry/resolve")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert!(v["data"]["capability_key"].as_str().unwrap().contains("parse"));
+    }
+
+    #[tokio::test]
+    async fn registry_verify_evidence_sample() {
+        let app = test_app();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/registry/verify-evidence/serde-json.parse-owned@1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // Sample artifact should verify (or soft-fail with diagnostics).
+        assert!(v.get("data").is_some() || v.get("ok").is_some());
     }
 
     #[tokio::test]

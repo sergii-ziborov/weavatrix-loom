@@ -203,6 +203,7 @@ GitHub Actions on push/PR to `main`:
 | **ci.yml** | `fmt`, `clippy -D warnings`, `check`, `test` (skip long golden), **schema contracts** |
 | **ci.yml gates** | conformance, golden, truthful, promote artifacts, Gate C v1 + **v2 blind** |
 | **security.yml** | **cargo-deny** (licenses/sources) + **cargo-audit** (advisories) |
+| **HTTP (P2)** | `/registry/truthful` · `/profiles` · `/families` · `/resolve` · `/verify-evidence` · `/pilot/catalog` |
 
 Local:
 
@@ -303,7 +304,8 @@ API **`compile_release`** requires a `VerifiedImplementation` pool (not raw mani
 | 4 Codec | `data.codec.*` | `pilot-codec-*.wvx.json` |
 | text | `data.text.*` | `pilot-text-pipeline.wvx.json` |
 
-See [domain-roadmap](docs/domain-roadmap.md). **No Domain 5** until trust P1 completes.
+See [domain-roadmap](docs/domain-roadmap.md). **P2** exposes Domains 1–4 + text in Studio
+(pilot catalog + trust strip). **No Domain 5** until product demand + trust remains green.
 
 ## Local registry (`registry-dev`)
 
@@ -404,6 +406,23 @@ Pilot JSON implementations live in the **`wvx-adapters`** crate. Exports vendor
 that crate under `vendor/wvx-adapters` so generated projects stay self-contained
 while the monorepo keeps a single source of truth.
 
+## P2 — Multi-domain Studio + HTTP trust surface
+
+After P1 trust/CI closure, Studio can load every pilot domain and surface registry
+trust without shelling out to the CLI:
+
+| Surface | Detail |
+| --- | --- |
+| **Pilot catalog** | `GET /api/v1/pilot/catalog` — JSON, text, hash, compress, codec (+ round-trip) |
+| **Families** | `GET /api/v1/registry/families` — `data.json` / `hash` / `compress` / `codec` / `text` roll-up |
+| **Profiles** | `GET /api/v1/registry/profiles` — conformance profile index |
+| **Truthful** | `GET /api/v1/registry/truthful` — artifact audit for conformant+ |
+| **Resolve** | `POST /api/v1/registry/resolve` — explainable impl pick (`dev` / `release` preset) |
+| **Verify evidence** | `GET /api/v1/registry/verify-evidence/{impl}` | 
+
+Studio ([loom-studio](https://github.com/sergii-ziborov/loom-studio)): pilot dropdown,
+per-domain default inputs, **admit** / **truthful** chips in the header.
+
 ## Loom Studio (separate repo)
 
 The visual editor lives in **[loom-studio](https://github.com/sergii-ziborov/loom-studio)**
@@ -441,6 +460,7 @@ cargo test -p wvx-conformance
 | **M2** Safe Semantic Core | [beta-prototype.md](docs/beta-prototype.md) | **Landed** — validator passes, preview/commit, CompilePolicy |
 | **Trust** Evidence v0.2 + promote | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — mint/verify/promote, `compile_release` |
 | **P1** Profile runner + multi-domain golden + Gate C v2 + schema contracts + CI | this section | **Landed** |
+| **P2** Multi-domain Studio surface + HTTP trust/resolve/profiles | this section | **Landed** |
 
 Go/No-Go evidence:
 

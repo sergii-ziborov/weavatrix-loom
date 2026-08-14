@@ -38,9 +38,9 @@ use wvx_registry_client::{
     admit_implementation, audit_truthful_registry, mint_and_write, promote_implementation,
     requalify_implementation, resolve_implementation, verify_artifact, verify_implementation,
     AdmissionReport, AdmitRequest, AdmitResult, ArtifactCheck, CapabilityHit, CaseResult,
-    EvidenceArtifact, ImplementationHit, InstallCandidateResult, LocalRegistry, MintRequest,
-    PromoteRequest, PromoteResult, RegistryError, RegistrySummary, RequalifyReport,
-    TruthfulAuditReport, VerifiedImplementation,
+    EvidenceArtifact, FamilySummary, ImplementationHit, InstallCandidateResult, LocalRegistry,
+    MintRequest, ProfileSummary, PromoteRequest, PromoteResult, RegistryError, RegistrySummary,
+    RequalifyReport, TruthfulAuditReport, VerifiedImplementation,
 };
 use wvx_runtime::{
     apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
@@ -400,6 +400,93 @@ pub fn registry_admission_audit(
     registry: &LocalRegistry,
 ) -> Result<BusResponse<AdmissionReport>, BusError> {
     Ok(BusResponse::ok(registry.audit_admission()?))
+}
+
+/// List conformance profiles for Studio Library / trust strip.
+pub fn registry_profiles(
+    registry: &LocalRegistry,
+) -> Result<BusResponse<Vec<ProfileSummary>>, BusError> {
+    Ok(BusResponse::ok(registry.list_profiles()?))
+}
+
+/// Multi-domain family roll-up (`data.json`, `data.hash`, `data.compress`, …).
+pub fn registry_families(
+    registry: &LocalRegistry,
+) -> Result<BusResponse<Vec<FamilySummary>>, BusError> {
+    Ok(BusResponse::ok(registry.list_families()?))
+}
+
+/// Static multi-domain pilot catalog (Studio load menu + HTTP discovery).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PilotCatalogEntry {
+    pub id: String,
+    pub label: String,
+    pub domain: String,
+    pub family: String,
+    /// Path relative to monorepo / fixture root.
+    pub fixture: String,
+    /// Suggested playground input (UTF-8 text, not always JSON).
+    pub default_input: String,
+    pub notes: String,
+}
+
+pub fn pilot_catalog() -> BusResponse<Vec<PilotCatalogEntry>> {
+    BusResponse::ok(vec![
+        PilotCatalogEntry {
+            id: "json".into(),
+            label: "JSON pilot".into(),
+            domain: "1".into(),
+            family: "data.json".into(),
+            fixture: "fixtures/pilot-json-pipeline.wvx.json".into(),
+            default_input: r#"{"hello":"world"}"#.into(),
+            notes: "parse → path_set → serialize".into(),
+        },
+        PilotCatalogEntry {
+            id: "text".into(),
+            label: "Text pilot".into(),
+            domain: "text".into(),
+            family: "data.text".into(),
+            fixture: "fixtures/pilot-text-pipeline.wvx.json".into(),
+            default_input: "Hello Loom".into(),
+            notes: "unicode upper → lower".into(),
+        },
+        PilotCatalogEntry {
+            id: "hash".into(),
+            label: "Hash pilot".into(),
+            domain: "2".into(),
+            family: "data.hash".into(),
+            fixture: "fixtures/pilot-hash-pipeline.wvx.json".into(),
+            default_input: "abc".into(),
+            notes: "SHA-256 multi-impl swap".into(),
+        },
+        PilotCatalogEntry {
+            id: "compress".into(),
+            label: "Compress pilot".into(),
+            domain: "3".into(),
+            family: "data.compress".into(),
+            fixture: "fixtures/pilot-compress-pipeline.wvx.json".into(),
+            default_input: "hello loom compress".into(),
+            notes: "gzip → gunzip round-trip".into(),
+        },
+        PilotCatalogEntry {
+            id: "codec".into(),
+            label: "Codec pilot".into(),
+            domain: "4".into(),
+            family: "data.codec".into(),
+            fixture: "fixtures/pilot-codec-pipeline.wvx.json".into(),
+            default_input: "hello".into(),
+            notes: "hex_encode → base64_encode".into(),
+        },
+        PilotCatalogEntry {
+            id: "codec-roundtrip".into(),
+            label: "Codec round-trip".into(),
+            domain: "4".into(),
+            family: "data.codec".into(),
+            fixture: "fixtures/pilot-codec-roundtrip.wvx.json".into(),
+            default_input: "hello".into(),
+            notes: "hex encode → decode identity".into(),
+        },
+    ])
 }
 
 /// Pilot microbench for Gate E (`benchmark` evidence axis).

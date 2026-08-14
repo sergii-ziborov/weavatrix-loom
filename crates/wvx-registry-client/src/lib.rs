@@ -123,6 +123,28 @@ pub struct RegistrySummary {
     pub implementations: usize,
 }
 
+/// Compact conformance profile listing (Registry Library / Studio trust strip).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileSummary {
+    pub id: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub capability_key: String,
+    #[serde(default)]
+    pub title: String,
+    /// Relative path under registry root, e.g. `profiles/sha256-fips180-4-v1.json`.
+    pub path: String,
+}
+
+/// Capability family roll-up for multi-domain Studio filters (`data.json`, `data.hash`, …).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FamilySummary {
+    pub family: String,
+    pub capabilities: usize,
+    pub implementations: usize,
+}
+
 /// Result of installing one Forge draft as a local registry **candidate**.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallCandidateResult {
@@ -176,6 +198,86 @@ impl LocalRegistry {
             capabilities: self.list_capabilities()?.len(),
             implementations: self.list_implementations()?.len(),
         })
+    }
+
+    /// List versioned conformance profiles under `profiles/*.json`.
+    pub fn list_profiles(&self) -> Result<Vec<ProfileSummary>, RegistryError> {
+        let dir = self.root.join("profiles");
+        if !dir.is_dir() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::new();
+        for entry in fs::read_dir(&dir).map_err(|e| RegistryError::Io(dir.clone(), e))? {
+            let entry = entry.map_err(|e| RegistryError::Io(dir.clone(), e))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let text =
+                fs::read_to_string(&path).map_err(|e| RegistryError::Io(path.clone(), e))?;
+            let v: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| RegistryError::Parse(path.clone(), e.to_string()))?;
+            let id = v
+                .get("id")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            if id.is_empty() {
+                continue;
+            }
+            let rel = format!(
+                "profiles/{}",
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown.json")
+            );
+            out.push(ProfileSummary {
+                id,
+                version: v
+                    .get("version")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .into(),
+                capability_key: v
+                    .get("capability_key")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .into(),
+                title: v
+                    .get("title")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .into(),
+                path: rel,
+            });
+        }
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(out)
+    }
+
+    /// Roll up capabilities/implementations by family prefix (`data.json`, `data.hash`, …).
+    pub fn list_families(&self) -> Result<Vec<FamilySummary>, RegistryError> {
+        let mut caps: BTreeMap<String, usize> = BTreeMap::new();
+        for c in self.list_capabilities()? {
+            let fam = capability_family(&c.id);
+            *caps.entry(fam).or_insert(0) += 1;
+        }
+        let mut impls: BTreeMap<String, usize> = BTreeMap::new();
+        for i in self.list_implementations()? {
+            let fam = capability_family(&i.capability.id);
+            *impls.entry(fam).or_insert(0) += 1;
+        }
+        let mut keys: Vec<String> = caps.keys().chain(impls.keys()).cloned().collect();
+        keys.sort();
+        keys.dedup();
+        Ok(keys
+            .into_iter()
+            .map(|family| FamilySummary {
+                capabilities: *caps.get(&family).unwrap_or(&0),
+                implementations: *impls.get(&family).unwrap_or(&0),
+                family,
+            })
+            .collect())
     }
 
     pub fn list_capabilities(&self) -> Result<Vec<Capability>, RegistryError> {
@@ -447,6 +549,17 @@ impl LocalRegistry {
             }
         }
         Ok(added)
+    }
+}
+
+/// Family prefix for a capability id (`data.json.parse` → `data.json`).
+/// Mirrors Studio `capabilityFamily` so Library filters stay aligned.
+pub fn capability_family(id: &str) -> String {
+    let parts: Vec<&str> = id.split('.').collect();
+    if parts.len() >= 2 {
+        format!("{}.{}", parts[0], parts[1])
+    } else {
+        id.to_string()
     }
 }
 

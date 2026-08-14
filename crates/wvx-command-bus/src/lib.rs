@@ -9,8 +9,8 @@ use thiserror::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use wvx_compiler_rust::{
-    compile_to_rust_with_sdk, compile_with_policy, export_to_directory_with_policy, ExportReport,
-    GeneratedWorkspace,
+    compile_release, compile_to_rust_with_sdk, compile_with_policy, export_to_directory_with_policy,
+    ExportReport, GeneratedWorkspace,
 };
 
 // Re-export policy / preview types for hosts (CLI, HTTP).
@@ -33,11 +33,12 @@ use wvx_project_graph::{
 };
 use wvx_conformance::{run_pilot_bench, BenchReport};
 use wvx_registry_client::{
-    admit_implementation, audit_truthful_registry, mint_and_write, requalify_implementation,
-    resolve_implementation, verify_artifact, ArtifactCheck, CapabilityHit, CaseResult,
-    EvidenceArtifact, ImplementationHit, InstallCandidateResult, LocalRegistry, MintRequest,
+    admit_implementation, audit_truthful_registry, mint_and_write, promote_implementation,
+    requalify_implementation, resolve_implementation, verify_artifact, verify_implementation,
+    ArtifactCheck, CapabilityHit, CaseResult, EvidenceArtifact, ImplementationHit,
+    InstallCandidateResult, LocalRegistry, MintRequest, PromoteRequest, PromoteResult,
     RegistryError, RegistrySummary, RequalifyReport, TruthfulAuditReport, AdmitRequest,
-    AdmitResult, AdmissionReport,
+    AdmitResult, AdmissionReport, VerifiedImplementation,
 };
 use wvx_ir::{ResolveDecision, ResolverPolicy, TargetProfile};
 use std::collections::BTreeMap;
@@ -500,6 +501,56 @@ pub fn pilot_parse_case_results() -> Vec<CaseResult> {
             expected_error_family: None,
         })
         .collect()
+}
+
+/// Unified promotion transaction (build → profile → bench → artifact → manifest → audit).
+pub fn registry_promote(
+    registry: &LocalRegistry,
+    req: PromoteRequest,
+) -> Result<BusResponse<PromoteResult>, BusError> {
+    let Some(imp) = registry.find_implementation(&req.implementation_id)? else {
+        return Ok(BusResponse::err(vec![format!(
+            "implementation not found: {}",
+            req.implementation_id
+        )]));
+    };
+    let result = promote_implementation(registry.root(), imp, &req)?;
+    if result.ok {
+        Ok(BusResponse::ok(result))
+    } else {
+        let mut resp = BusResponse::ok(result.clone());
+        resp.ok = false;
+        resp.diagnostics = result.findings;
+        Ok(resp)
+    }
+}
+
+/// Build VerifiedImplementation handle (release pool entry).
+pub fn registry_verify_implementation(
+    registry: &LocalRegistry,
+    full_id: &str,
+) -> Result<BusResponse<VerifiedImplementation>, BusError> {
+    let Some(imp) = registry.find_implementation(full_id)? else {
+        return Ok(BusResponse::err(vec![format!(
+            "implementation not found: {full_id}"
+        )]));
+    };
+    Ok(BusResponse::ok(verify_implementation(registry.root(), &imp)?))
+}
+
+/// Release compile using only a verified implementation pool.
+pub fn project_export_rust_release(
+    project: &Project,
+    verified: &[VerifiedImplementation],
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<CompileReport>, BusError> {
+    let mut project = project.clone();
+    hydrate_project(&mut project, registry)?;
+    let sdk = sdk_emits_from_registry(registry);
+    match compile_release(&project, verified, &sdk) {
+        Ok(report) => Ok(BusResponse::ok(report)),
+        Err(e) => Err(BusError::Compile(e.to_string())),
+    }
 }
 
 /// Human Gate E admit (fail-closed). See `docs/go-no-go-e-pilot.md`.

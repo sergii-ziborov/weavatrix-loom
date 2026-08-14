@@ -30,6 +30,16 @@
    identity), case-by-case results, timestamp. Verifier **loads the profile** and recomputes
    linkages. v0.1 remains readable for migration.
 
+5. **Unified promotion** (`registry promote`) is the single transaction:
+
+   ```text
+   build → profile suite → bench → license/security → mint artifact
+   → verify → optional human (admitted) → manifest → truthful audit
+   ```
+
+   Release compile accepts only `VerifiedImplementation` (`compile_release`).  
+   Resolver release policy requires **Pass** axes + verified artifact path.
+
 4. **CI invariant**
 
 ```text

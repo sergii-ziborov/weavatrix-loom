@@ -12,9 +12,11 @@
 pub mod admission;
 pub mod admit;
 pub mod evidence_artifact;
+pub mod promote;
 pub mod provenance;
 pub mod resolve;
 pub mod requalify;
+pub mod verified;
 
 pub use admission::{
     audit_implementations, check_implementation, justified_status, AdmissionReport,
@@ -29,12 +31,17 @@ pub use evidence_artifact::{
     EvidenceArtifact, EvidenceDigests, EvidenceEnvironment, MintRequest, SuiteResult,
     TruthfulAuditItem, TruthfulAuditReport, EVIDENCE_SCHEMA, EVIDENCE_SCHEMA_V01,
 };
+pub use promote::{
+    promote_from_admit, promote_implementation, write_implementation_manifest, HumanSignature,
+    PromoteRequest, PromoteResult, PromoteStep,
+};
 pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
     ProvenanceRecord,
 };
 pub use resolve::resolve_implementation;
 pub use requalify::{requalify_implementation, RequalifyReport};
+pub use verified::{verify_all_conformant, verify_implementation, VerifiedImplementation};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

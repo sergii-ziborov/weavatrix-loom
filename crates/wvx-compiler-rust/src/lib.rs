@@ -23,7 +23,7 @@ use wvx_ir::{
     Implementation, LifecycleStatus, Project, ResolveDecision, ResolverPolicy, SdkEmit,
     TargetProfile,
 };
-use wvx_registry_client::resolve_implementation;
+use wvx_registry_client::{resolve_implementation, VerifiedImplementation};
 use wvx_validator::{validate_project, validate_project_with, ValidateOptions, ValidationReport};
 
 pub use adapters::{
@@ -106,6 +106,9 @@ impl CompilePolicy {
                 allow_candidate: true,
                 require_conformance_pass: false,
                 require_build_pass: false,
+                require_license_pass: false,
+                require_security_pass: false,
+                require_verified_artifact: false,
                 prefer_impl_ids: Vec::new(),
             },
             implementations: Vec::new(),
@@ -114,7 +117,7 @@ impl CompilePolicy {
         }
     }
 
-    /// Release: no candidates, conformance preferred, trusted emit only.
+    /// Release: no candidates, Pass-only axes, verified artifact required.
     pub fn release() -> Self {
         Self {
             id: "compile.release".into(),
@@ -127,13 +130,7 @@ impl CompilePolicy {
                 prefer_no_unsafe: true,
                 ..Default::default()
             },
-            resolver: ResolverPolicy {
-                id: "compile.release".into(),
-                allow_candidate: false,
-                require_conformance_pass: true,
-                require_build_pass: false,
-                prefer_impl_ids: Vec::new(),
-            },
+            resolver: ResolverPolicy::release(),
             implementations: Vec::new(),
             generate_cargo_lock: true,
             compute_digests: true,
@@ -219,6 +216,59 @@ pub fn compile_to_rust_with_sdk(
     sdk_emits: &BTreeMap<String, SdkEmit>,
 ) -> Result<GeneratedWorkspace, CompileError> {
     Ok(compile_with_policy(project, sdk_emits, &CompilePolicy::dev())?.workspace)
+}
+
+/// Release compile: **only** accepts [`VerifiedImplementation`] pool.
+///
+/// Fail-closed when `verified` is empty or an instance selects an unverified impl
+/// (I/O passthrough excepted).
+pub fn compile_release(
+    project: &Project,
+    verified: &[VerifiedImplementation],
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+) -> Result<CompileReport, CompileError> {
+    if verified.is_empty() {
+        return Err(CompileError::PolicyRejected(
+            "(pool)".into(),
+            "compile_release requires non-empty VerifiedImplementation pool (not raw manifests)"
+                .into(),
+        ));
+    }
+    let mut policy = CompilePolicy::release();
+    policy.implementations = verified
+        .iter()
+        .map(|v| v.implementation.clone())
+        .collect();
+    // Ensure every non-IO instance maps to a verified id
+    let verified_ids: BTreeSet<String> = verified.iter().map(|v| v.full_id()).collect();
+    for inst in &project.instances {
+        let cap = inst.capability.as_key();
+        if adapters::is_passthrough_io(&cap) {
+            continue;
+        }
+        let chosen = inst
+            .implementation
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| default_implementation(&cap).map(str::to_string));
+        if let Some(id) = chosen {
+            if !verified_ids.contains(&id) {
+                return Err(CompileError::PolicyRejected(
+                    id,
+                    format!(
+                        "instance `{}` implementation is not in VerifiedImplementation pool",
+                        inst.id
+                    ),
+                ));
+            }
+        } else {
+            return Err(CompileError::PolicyRejected(
+                "(none)".into(),
+                format!("instance `{}` has no implementation for release", inst.id),
+            ));
+        }
+    }
+    compile_with_policy(project, sdk_emits, &policy)
 }
 
 /// Compile with explicit policy (release/dev), digests, and resolution explanations.
@@ -678,6 +728,17 @@ mod tests {
         assert!(!report.digests.is_empty());
         assert!(!report.resolutions.is_empty());
         assert!(report.digests.contains_key("weavatrix.lock"));
+    }
+
+    #[test]
+    fn compile_release_rejects_empty_verified_pool() {
+        let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
+        let project: Project = serde_json::from_str(text).unwrap();
+        let err = compile_release(&project, &[], &BTreeMap::new()).unwrap_err();
+        assert!(
+            err.to_string().contains("VerifiedImplementation"),
+            "{err}"
+        );
     }
 
     #[test]

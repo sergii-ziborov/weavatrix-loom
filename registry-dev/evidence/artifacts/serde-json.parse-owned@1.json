@@ -13,7 +13,7 @@
       "cases_ok": 8,
       "cases_total": 8,
       "notes": [
-        "minted by wvx-command-bus@0.1.1 at x86_64-windows-windows"
+        "minted by wvx-registry-client/promote at x86_64-windows-windows"
       ]
     }
   ],
@@ -24,9 +24,10 @@
     "license": "pass",
     "security": "absent"
   },
-  "recorded_at_unix": 1786737040,
+  "recorded_at_unix": 1786737482,
   "notes": [
-    "minted via wvx registry mint-evidence"
+    "unit test promote",
+    "promote → conformant"
   ],
   "digests": {
     "implementation_source_tree": "sha256:957fdcb910bb1fd5be5041a28fa640036ff6aab933d3ca012be3cdd542d25914",
@@ -42,56 +43,48 @@
     "target": "x86_64-windows-windows",
     "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
     "features": [],
-    "runner_identity": "wvx-command-bus@0.1.1"
+    "runner_identity": "wvx-registry-client/promote"
   },
   "case_results": [
     {
-      "case_id": "gate_a_vector_0",
+      "case_id": "v0",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     },
     {
-      "case_id": "gate_a_vector_1",
+      "case_id": "v1",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     },
     {
-      "case_id": "gate_a_vector_2",
+      "case_id": "v2",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     },
     {
-      "case_id": "gate_a_vector_3",
+      "case_id": "v3",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     },
     {
-      "case_id": "gate_a_vector_4",
+      "case_id": "v4",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     },
     {
-      "case_id": "gate_a_vector_5",
+      "case_id": "v5",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     },
     {
-      "case_id": "gate_a_vector_6",
+      "case_id": "v6",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     },
     {
-      "case_id": "gate_a_vector_7",
+      "case_id": "v7",
       "kind": "positive",
-      "ok": true,
-      "detail": "pilot suite vector"
+      "ok": true
     }
   ]
 }

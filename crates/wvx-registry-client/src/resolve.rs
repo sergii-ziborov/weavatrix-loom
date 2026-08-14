@@ -56,10 +56,14 @@ pub fn resolve_implementation(
             });
             return false;
         }
-        if policy.require_conformance_pass && imp.evidence.conformance == AxisFact::Fail {
+        // require_conformance_pass → must be **exactly** Pass (not Absent/Unknown).
+        if policy.require_conformance_pass && imp.evidence.conformance != AxisFact::Pass {
             rejected.push(ResolveRejection {
                 implementation_id: full,
-                reason: "conformance evidence is fail".into(),
+                reason: format!(
+                    "conformance evidence is `{}` (policy requires pass)",
+                    imp.evidence.conformance.as_str()
+                ),
             });
             return false;
         }
@@ -69,6 +73,39 @@ pub fn resolve_implementation(
                 reason: "build evidence is not pass".into(),
             });
             return false;
+        }
+        if policy.require_license_pass && imp.evidence.license != AxisFact::Pass {
+            rejected.push(ResolveRejection {
+                implementation_id: full,
+                reason: "license evidence is not pass".into(),
+            });
+            return false;
+        }
+        if policy.require_security_pass && imp.evidence.security != AxisFact::Pass {
+            rejected.push(ResolveRejection {
+                implementation_id: full,
+                reason: "security evidence is not pass".into(),
+            });
+            return false;
+        }
+        if policy.require_verified_artifact {
+            let has_art = imp
+                .evidence_artifact
+                .as_ref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            let lifecycle_ok = matches!(
+                imp.status,
+                LifecycleStatus::Conformant | LifecycleStatus::Admitted
+            );
+            if !has_art || !lifecycle_ok {
+                rejected.push(ResolveRejection {
+                    implementation_id: full,
+                    reason: "policy requires verified artifact (path + lifecycle ≥ conformant)"
+                        .into(),
+                });
+                return false;
+            }
         }
         if profile.prefer_no_unsafe {
             if let Some(n) = &imp.notes {
@@ -216,5 +253,53 @@ mod tests {
         );
         assert_eq!(d.chosen.as_deref(), Some("sha2.sha256@1"));
         assert!(d.explanation.iter().any(|e| e.contains("chosen")));
+    }
+
+    #[test]
+    fn require_conformance_pass_rejects_absent() {
+        let impls = vec![imp(
+            "sha2.sha256",
+            LifecycleStatus::Candidate,
+            AxisFact::Absent,
+        )];
+        let d = resolve_implementation(
+            "data.hash.sha256@1",
+            &impls,
+            &TargetProfile {
+                id: "dev".into(),
+                ..Default::default()
+            },
+            &ResolverPolicy {
+                require_conformance_pass: true,
+                ..Default::default()
+            },
+        );
+        assert!(d.chosen.is_none());
+        assert!(d
+            .rejected
+            .iter()
+            .any(|r| r.reason.contains("requires pass")));
+    }
+
+    #[test]
+    fn release_policy_requires_verified_artifact() {
+        let mut i = imp("sha2.sha256", LifecycleStatus::Conformant, AxisFact::Pass);
+        i.evidence.license = AxisFact::Pass;
+        i.evidence_artifact = None;
+        let d = resolve_implementation(
+            "data.hash.sha256@1",
+            &[i],
+            &TargetProfile {
+                id: "release".into(),
+                ..Default::default()
+            },
+            &ResolverPolicy::release(),
+        );
+        assert!(d.chosen.is_none(), "rejected={:?}", d.rejected);
+        assert!(
+            d.rejected.iter().any(|r| r.reason.contains("verified")),
+            "rejected={:?}",
+            d.rejected
+        );
     }
 }

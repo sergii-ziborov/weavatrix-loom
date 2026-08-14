@@ -202,11 +202,23 @@ pub struct TargetProfile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolverPolicy {
     pub id: String,
-    /// Reject when evidence.conformance is Fail (Absent/Unknown still allowed unless required).
+    /// When true, `evidence.conformance` must be **exactly** [`AxisFact::Pass`]
+    /// (Absent/Unknown/Fail are all rejected).
     #[serde(default = "default_true")]
     pub require_conformance_pass: bool,
+    /// When true, `evidence.build` must be Pass.
     #[serde(default)]
     pub require_build_pass: bool,
+    /// When true, `evidence.license` must be Pass.
+    #[serde(default)]
+    pub require_license_pass: bool,
+    /// When true, `evidence.security` must be Pass.
+    #[serde(default)]
+    pub require_security_pass: bool,
+    /// When true, implementation must carry a non-empty `evidence_artifact`
+    /// path and lifecycle ≥ conformant (verified artifact expected).
+    #[serde(default)]
+    pub require_verified_artifact: bool,
     /// If false, `candidate` / `inventory_only` are rejected.
     #[serde(default = "default_true")]
     pub allow_candidate: bool,
@@ -221,7 +233,26 @@ impl Default for ResolverPolicy {
             id: "default".into(),
             require_conformance_pass: true,
             require_build_pass: false,
+            require_license_pass: false,
+            require_security_pass: false,
+            require_verified_artifact: false,
             allow_candidate: true,
+            prefer_impl_ids: Vec::new(),
+        }
+    }
+}
+
+impl ResolverPolicy {
+    /// Release resolver: Pass axes + verified artifact + no candidates.
+    pub fn release() -> Self {
+        Self {
+            id: "resolve.release".into(),
+            require_conformance_pass: true,
+            require_build_pass: true,
+            require_license_pass: true,
+            require_security_pass: false, // optional until Gate E full
+            require_verified_artifact: true,
+            allow_candidate: false,
             prefer_impl_ids: Vec::new(),
         }
     }

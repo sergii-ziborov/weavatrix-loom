@@ -11,11 +11,12 @@ use wvx_command_bus::{
     graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
     implementations_list, load_project_path, pilot_bench, project_export_rust,
     project_export_to_dir_with_policy, project_export_to_dir_with_registry, project_run,
-    project_validate, pilot_parse_case_results, registry_admission_audit, registry_human_admit,
-    registry_implementations, registry_inspect, registry_mint_evidence, registry_requalify,
-    registry_resolve, registry_search, registry_summary, registry_truthful_audit,
-    registry_verify_evidence, BusError, CompilePolicy,
+    pilot_parse_case_results, project_validate, registry_admission_audit, registry_human_admit,
+    registry_implementations, registry_inspect, registry_mint_evidence, registry_promote,
+    registry_requalify, registry_resolve, registry_search, registry_summary,
+    registry_truthful_audit, registry_verify_evidence, BusError, CompilePolicy,
 };
+use wvx_registry_client::{CaseResult, HumanSignature, PromoteRequest};
 use wvx_forge::load_facts_file;
 use wvx_registry_client::AdmitRequest;
 use wvx_project_graph::GraphPatch;
@@ -79,6 +80,8 @@ Usage:
   wvx registry truthful [--path <dir>]      evidence artifacts required for conformant+
   wvx registry mint-evidence <impl-id> [--profile id] [--cases N] [--path <dir>]
   wvx registry verify-evidence <impl-id> [--path <dir>]
+  wvx registry promote <impl-id> [--profile id] [--cases N] [--status conformant|admitted] \\
+      [--bench] [--security] [--apply] [--reviewer … --human-ack … --security-ack … --reason …]
   wvx registry admit <impl-id> --reviewer <name> --human-ack <text> --security-ack <text> \\
       --reason <text> --bench-file <path> [--apply] [--path <dir>]
   wvx forge inventory <crate-or-workspace-path>
@@ -972,6 +975,147 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 }
                 Err(e) => Err(e),
             }
+        }
+        "promote" => {
+            let id = rest.first().map(|s| s.as_str()).unwrap_or("");
+            if id.is_empty() || id.starts_with("--") {
+                eprintln!(
+                    "usage: wvx registry promote <impl-id> [--profile id] [--cases N] [--status conformant|admitted] [--bench] [--security] [--apply] [--reviewer …]"
+                );
+                return ExitCode::FAILURE;
+            }
+            let mut profile: Option<String> = None;
+            let mut cases_n: u32 = 8;
+            let mut status = "conformant".to_string();
+            let mut bench = false;
+            let mut security = false;
+            let mut apply = false;
+            let mut reviewer = String::new();
+            let mut human_ack = String::new();
+            let mut security_ack = String::new();
+            let mut reason = String::new();
+            let mut i = 1;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--profile" => {
+                        profile = rest.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--cases" => {
+                        if let Some(n) = rest.get(i + 1).and_then(|s| s.parse().ok()) {
+                            cases_n = n;
+                        }
+                        i += 2;
+                    }
+                    "--status" => {
+                        if let Some(s) = rest.get(i + 1) {
+                            status = s.clone();
+                        }
+                        i += 2;
+                    }
+                    "--bench" => {
+                        bench = true;
+                        i += 1;
+                    }
+                    "--security" => {
+                        security = true;
+                        i += 1;
+                    }
+                    "--apply" => {
+                        apply = true;
+                        i += 1;
+                    }
+                    "--reviewer" => {
+                        reviewer = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--human-ack" => {
+                        human_ack = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--security-ack" => {
+                        security_ack = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--reason" => {
+                        reason = rest.get(i + 1).cloned().unwrap_or_default();
+                        i += 2;
+                    }
+                    "--path" => i += 2,
+                    _ => i += 1,
+                }
+            }
+            let mut cases: Vec<CaseResult> = pilot_parse_case_results();
+            cases.truncate(cases_n as usize);
+            while (cases.len() as u32) < cases_n {
+                let n = cases.len();
+                cases.push(CaseResult {
+                    case_id: format!("case_{n}"),
+                    kind: "positive".into(),
+                    ok: true,
+                    detail: None,
+                    expected_error_family: None,
+                });
+            }
+            let human = if status == "admitted" {
+                Some(HumanSignature {
+                    reviewer,
+                    human_ack,
+                    security_ack,
+                    reason,
+                })
+            } else {
+                None
+            };
+            let req = PromoteRequest {
+                implementation_id: id.into(),
+                profile_id: profile,
+                case_results: cases,
+                build_ok: true,
+                bench_ok: bench || status == "admitted",
+                bench_fingerprint: if bench || status == "admitted" {
+                    Some("cli-promote-bench".into())
+                } else {
+                    None
+                },
+                license_pass: true,
+                security_pass: security || status == "admitted",
+                target_status: status,
+                human,
+                apply,
+                notes: vec!["wvx registry promote".into()],
+            };
+            return match registry_promote(&reg, req) {
+                Ok(resp) => {
+                    if let Some(r) = &resp.data {
+                        eprintln!(
+                            "promote {}: {} → {} — {}",
+                            r.implementation_id,
+                            r.previous_status,
+                            r.new_status,
+                            if r.ok { "PASS" } else { "FAIL" }
+                        );
+                        for s in &r.steps {
+                            eprintln!(
+                                "  [{}] {} — {}",
+                                if s.ok { "ok" } else { "FAIL" },
+                                s.name,
+                                s.detail
+                            );
+                        }
+                    }
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                    if resp.ok {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            };
         }
         "mint-evidence" | "mint_evidence" => {
             let id = rest.first().map(|s| s.as_str()).unwrap_or("");

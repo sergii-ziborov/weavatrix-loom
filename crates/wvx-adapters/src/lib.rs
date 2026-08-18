@@ -37,6 +37,7 @@ pub mod sha2_sha256;
 pub mod sha2_sha256_chunked;
 pub mod sha2_sha256_streaming;
 pub mod sha2_sha256_update_all;
+pub mod simd_json_parse;
 
 #[cfg(feature = "host")]
 pub use register::register_pilot_plugins;
@@ -46,6 +47,7 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("serde-json.parse-owned@1", "serde_json_parse_owned"),
     ("wvx.reference.json-parse@1", "reference_json_parse"),
     ("json-crate.parse@1", "json_crate_parse"),
+    ("simd-json.parse@1", "simd_json_parse"),
     ("serde-json.serialize@1", "serde_json_serialize"),
     ("wvx.reference.json-serialize@1", "reference_json_serialize"),
     (

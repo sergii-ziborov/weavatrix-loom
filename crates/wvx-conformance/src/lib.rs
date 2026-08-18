@@ -161,6 +161,7 @@ fn parse_impls() -> &'static [&'static str] {
         "serde-json.parse-owned@1",
         "wvx.reference.json-parse@1",
         "json-crate.parse@1",
+        "simd-json.parse@1",
     ]
 }
 

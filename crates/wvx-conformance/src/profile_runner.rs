@@ -463,9 +463,11 @@ mod tests {
         let h = handlers();
         let r = run_profile_conformance(&root, &h, "json-rfc8259-core-v1").expect("run");
         assert!(
-            r.implementations
-                .iter()
-                .all(|id| id == "serde-json.parse-owned@1" || id == "external.demo.json-parse@1"),
+            r.implementations.iter().all(|id| {
+                id == "serde-json.parse-owned@1"
+                    || id == "external.demo.json-parse@1"
+                    || id == "simd-json.parse@1"
+            }),
             "unexpected impls: {:?}",
             r.implementations
         );

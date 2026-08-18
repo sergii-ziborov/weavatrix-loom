@@ -67,6 +67,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         "serde-json.parse-owned@1",
         "wvx.reference.json-parse@1",
         "json-crate.parse@1",
+        "simd-json.parse@1",
     ];
     for impl_id in parse_impls {
         cases.push(bench_parse(
@@ -79,7 +80,11 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         ));
     }
     let parse_bulk = bulk_json_object(64 * 1024);
-    for impl_id in ["serde-json.parse-owned@1", "wvx.reference.json-parse@1"] {
+    for impl_id in [
+        "serde-json.parse-owned@1",
+        "wvx.reference.json-parse@1",
+        "simd-json.parse@1",
+    ] {
         cases.push(bench_parse(
             &reg,
             impl_id,

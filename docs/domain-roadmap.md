@@ -30,7 +30,7 @@ That is the **#1 project bottleneck**.
 bytes → json_value → json_value → bytes
 ```
 
-Multi-impl parse/serialize/path_set. Pilot fixture: `pilot-json-pipeline.wvx.json`.
+Multi-impl parse/serialize/path_set (`serde_json` · reference · `json` crate · **`simd-json`**). Pilot fixture: `pilot-json-pipeline.wvx.json`.
 
 ### Domain 2 — Hashing (in progress / pilot)
 

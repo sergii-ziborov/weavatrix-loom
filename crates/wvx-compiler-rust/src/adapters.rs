@@ -12,6 +12,7 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
         "serde-json.parse-owned@1" => Some("serde_json_parse_owned"),
         "wvx.reference.json-parse@1" => Some("reference_json_parse"),
         "json-crate.parse@1" => Some("json_crate_parse"),
+        "simd-json.parse@1" => Some("simd_json_parse"),
         "serde-json.serialize@1" => Some("serde_json_serialize"),
         "wvx.reference.json-serialize@1" => Some("reference_json_serialize"),
         "wvx.reference.json-serialize-pretty@1" => Some("reference_json_serialize_pretty"),
@@ -92,6 +93,7 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
         "serde-json.parse-owned@1",
         "wvx.reference.json-parse@1",
         "json-crate.parse@1",
+        "simd-json.parse@1",
         "external.demo.json-parse@1",
         "serde-json.serialize@1",
         "wvx.reference.json-serialize@1",
@@ -148,6 +150,11 @@ pub fn built_in_sdk_emit(implementation_id: &str) -> Option<SdkEmit> {
             "wvx-adapters",
             Some("crates/wvx-adapters"),
             "wvx_adapters::json_crate_parse::parse({bytes}.as_slice())?",
+        ),
+        "simd-json.parse@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::simd_json_parse::parse({bytes}.as_slice())?",
         ),
         "external.demo.json-parse@1" => (
             "wvx-adapter-external-demo",

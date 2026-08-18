@@ -79,8 +79,8 @@ feeds signatures/spans (ADR-0012).
 
 > **Status:** **v0.2 beta** — multi-domain pilots (JSON · text · hash · compress · codec),
 > **M1 Truthful Registry**, **M2 Safe Semantic Core**, **EvidenceArtifact v0.2**,
-> **P0 trust closure** (live promote / signed reports only — no claimed `ok=true`),
-> **P1** Gate C v3 + Facts v0.2 + Draft 2020-12 + binary-safe export + MSRV 1.78 CI.  
+> **P0–P2 trust closure** (live promote, CSPRNG remote, bench-aware resolve),
+> fast catalog impls: **simd-json** · **sonic-rs** · **blake3-parallel** · **zlib-rs**.  
 > Public release path is `VerifiedImplementation` → `compile_release` only.  
 > Not a hosted marketplace. Details:
 > **[docs/beta-prototype.md](docs/beta-prototype.md)** ·
@@ -187,7 +187,7 @@ embed it.
 | `wvx-command-bus` | Shared semantic API for **CLI + HTTP** (**lib**; preferred host entry) |
 | `wvx-cli` | Command-line entry point (**product host**) |
 | `wvx-mcp` | Optional **agent-only** MCP adapter (`mcport`) — not used by Studio |
-| `wvx-adapters` | Pilot adapters: JSON · text · hash · compress · **codec** (**lib**) |
+| `wvx-adapters` | Pilot adapters: JSON (serde / reference / json / **simd-json** / **sonic-rs**) · hash (**blake3-parallel**) · compress (**zlib-rs** + flate2) · codec (**lib**) |
 | `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) (**lib**) |
 | `wvx-adapter-external-demo` | External Gate F fixture (`parse`) — semantically equivalent JSON parser |
 | `wvx-forge` | Thin Forge: bootstrap inventory + **semantic match/draft** (**lib**; deep code facts → Weavatrix; ADR-0012) |
@@ -324,6 +324,7 @@ cargo run -p wvx-cli -- registry inspect serde-json.parse-owned@1
 cargo run -p wvx-cli -- registry resolve data.json.parse@1 --policy dev --workload small
 cargo run -p wvx-cli -- registry sbom serde-json.parse-owned@1
 cargo run -p wvx-cli -- registry transparency --verify
+cargo run -p wvx-cli -- registry attest serde-json.parse-owned@1   # needs WVX_PROMOTION_HMAC_KEY
 
 # Lifecycle vs multi-fact evidence (overclaim = fail)
 cargo run -p wvx-cli -- registry check
@@ -569,10 +570,11 @@ Input Bytes → SHA-256 digest → Output Bytes
 
 | Family | Capabilities | Multi-impl examples |
 | --- | --- | --- |
-| `data.json.*` | parse · path_set · serialize | serde-json / reference / json-crate |
+| `data.json.*` | parse · path_set · serialize | serde-json · reference · json-crate · **simd-json** · **sonic-rs** |
 | `data.text.*` | uppercase · lowercase | Unicode vs ASCII-only |
-| `data.hash.*` | sha256 · blake3 | **4×** SHA-256 multi-impl + blake3 |
-| `data.compress.*` | gzip · gunzip | **3×** each (flate2 path variants) |
+| `data.hash.*` | sha256 · blake3 | 4× SHA-256 + blake3 + **blake3-parallel** |
+| `data.compress.*` | gzip · gunzip | flate2 path variants + **zlib-rs** |
+| `data.codec.*` | hex · base64 | reference + crate multi-impl |
 | `io.*` | input.bytes · output.bytes | reference I/O |
 
 Fixtures: `pilot-json`, `pilot-text`, `pilot-hash`, `pilot-compress`.  

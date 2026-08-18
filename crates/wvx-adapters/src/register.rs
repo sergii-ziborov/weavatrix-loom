@@ -13,7 +13,7 @@ use wvx_component_sdk::{
 };
 
 use crate::{
-    base64_standard_decode, base64_standard_encode, blake3_hash, flate2_gunzip,
+    base64_standard_decode, base64_standard_encode, blake3_hash, blake3_hash_parallel, flate2_gunzip,
     flate2_gunzip_chunked, flate2_gunzip_take, flate2_gzip, flate2_gzip_chunked,
     flate2_gzip_oneshot, json_crate_parse, reference_base64_decode, reference_base64_encode,
     reference_hex_decode, reference_hex_decode_table, reference_hex_encode,
@@ -170,6 +170,14 @@ pub fn register_pilot_plugins() {
                 "data.hash.blake3@1",
                 "digest",
                 blake3_hash::digest,
+            )
+        });
+        register_plugin("blake3.blake3-parallel@1", "data.hash.blake3@1", || {
+            bytes_to_named_bytes_handler(
+                "blake3.blake3-parallel@1",
+                "data.hash.blake3@1",
+                "digest",
+                blake3_hash_parallel::digest,
             )
         });
         register_plugin("sha2.sha256-chunked@1", "data.hash.sha256@1", || {

@@ -115,6 +115,9 @@ pub struct SbomComponent {
     pub version: String,
     /// `upstream` | `adapter` | `capability` | `lock`
     pub kind: String,
+    /// Cargo PURL when name+version look like a crate (`pkg:cargo/name@version`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub purl: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<String>,
 }
@@ -122,8 +125,23 @@ pub struct SbomComponent {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SoftwareBill {
     pub schema_version: String,
+    /// CycloneDX-shaped labels — not a full 1.5 document.
+    #[serde(default)]
+    pub bom_format: String,
+    #[serde(default)]
+    pub spec_version: String,
     pub implementation_id: String,
     pub components: Vec<SbomComponent>,
+}
+
+fn cargo_purl(name: &str, version: &str) -> Option<String> {
+    if name.trim().is_empty() || version.trim().is_empty() || version == "1" && name.contains('.') {
+        return None;
+    }
+    if !version.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some(format!("pkg:cargo/{name}@{version}"))
 }
 
 impl SoftwareBill {
@@ -141,6 +159,7 @@ pub fn sbom_from_implementation(imp: &Implementation) -> SoftwareBill {
             name: imp.source.package.clone(),
             version: imp.source.package_version.clone(),
             kind: "upstream".into(),
+            purl: cargo_purl(&imp.source.package, &imp.source.package_version),
             digest: None,
         });
     }
@@ -149,6 +168,7 @@ pub fn sbom_from_implementation(imp: &Implementation) -> SoftwareBill {
             name: ad.crate_name.clone(),
             version: String::new(),
             kind: "adapter".into(),
+            purl: None,
             digest: None,
         });
     }
@@ -156,10 +176,13 @@ pub fn sbom_from_implementation(imp: &Implementation) -> SoftwareBill {
         name: format!("{}@{}", imp.capability.id, imp.capability.version),
         version: imp.capability.version.clone(),
         kind: "capability".into(),
+        purl: None,
         digest: None,
     });
     let mut bill = SoftwareBill {
         schema_version: SBOM_SCHEMA.into(),
+        bom_format: "CycloneDX".into(),
+        spec_version: "1.5".into(),
         implementation_id: imp.full_id(),
         components,
     };
@@ -209,6 +232,7 @@ fn enrich_sbom_from_lock(bill: &mut SoftwareBill, lock_path: &Path) {
                 name: name.to_string(),
                 version: version.to_string(),
                 kind: "lock".into(),
+                purl: cargo_purl(name, version),
                 digest: checksum.clone(),
             });
         }

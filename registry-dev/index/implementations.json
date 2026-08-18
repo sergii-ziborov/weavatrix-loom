@@ -26,7 +26,8 @@
     "flate2.gzip-oneshot@1"
   ],
   "data.hash.blake3@1": [
-    "blake3.blake3@1"
+    "blake3.blake3@1",
+    "blake3.blake3-parallel@1"
   ],
   "data.hash.sha256@1": [
     "sha2.sha256@1",

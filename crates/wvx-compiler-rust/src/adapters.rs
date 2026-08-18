@@ -26,6 +26,7 @@ pub fn crate_module(implementation_id: &str) -> Option<&'static str> {
         "sha2.sha256-chunked@1" => Some("sha2_sha256_chunked"),
         "sha2.sha256-update-all@1" => Some("sha2_sha256_update_all"),
         "blake3.blake3@1" => Some("blake3_hash"),
+        "blake3.blake3-parallel@1" => Some("blake3_hash_parallel"),
         "flate2.gzip@1" => Some("flate2_gzip"),
         "flate2.gzip-chunked@1" => Some("flate2_gzip_chunked"),
         "flate2.gzip-oneshot@1" => Some("flate2_gzip_oneshot"),
@@ -106,6 +107,7 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
         "sha2.sha256-chunked@1",
         "sha2.sha256-update-all@1",
         "blake3.blake3@1",
+        "blake3.blake3-parallel@1",
         "flate2.gzip@1",
         "flate2.gzip-chunked@1",
         "flate2.gzip-oneshot@1",
@@ -201,6 +203,11 @@ pub fn built_in_sdk_emit(implementation_id: &str) -> Option<SdkEmit> {
             "wvx-adapters",
             Some("crates/wvx-adapters"),
             "wvx_adapters::blake3_hash::digest({bytes}.as_slice())?",
+        ),
+        "blake3.blake3-parallel@1" => (
+            "wvx-adapters",
+            Some("crates/wvx-adapters"),
+            "wvx_adapters::blake3_hash_parallel::digest({bytes}.as_slice())?",
         ),
         "sha2.sha256-chunked@1" => (
             "wvx-adapters",

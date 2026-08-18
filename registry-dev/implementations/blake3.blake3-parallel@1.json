@@ -1,0 +1,33 @@
+{
+  "id": "blake3.blake3-parallel",
+  "version": "1",
+  "capability": {
+    "id": "data.hash.blake3",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crates-io",
+    "package": "blake3",
+    "package_version": "1"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "BLAKE3 via Hasher::update_rayon (same digest as blake3.blake3@1). Candidate until suite artifact. Faster on large inputs.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::blake3_hash_parallel::digest({bytes}.as_slice())?"
+    }
+  }
+}

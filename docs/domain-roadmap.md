@@ -41,7 +41,7 @@ bytes → digest
 | Capability | Contract | Implementations (pilot) |
 |------------|----------|-------------------------|
 | `data.hash.sha256@1` | bytes → digest (32 B) | **4 multi-impl:** one-shot · streaming · chunked · update-all (`sha2.*`) |
-| `data.hash.blake3@1` | bytes → digest (32 B) | `blake3.blake3@1` |
+| `data.hash.blake3@1` | bytes → digest (32 B) | `blake3.blake3@1` · `blake3.blake3-parallel@1` (rayon) |
 
 **Why hashing first**
 

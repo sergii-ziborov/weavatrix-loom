@@ -145,6 +145,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
     for (cap, impl_id) in [
         ("data.hash.sha256@1", "sha2.sha256@1"),
         ("data.hash.blake3@1", "blake3.blake3@1"),
+        ("data.hash.blake3@1", "blake3.blake3-parallel@1"),
     ] {
         cases.push(bench_bytes_ports(
             &reg,

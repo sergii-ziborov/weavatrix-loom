@@ -6,6 +6,7 @@
 pub mod base64_standard_decode;
 pub mod base64_standard_encode;
 pub mod blake3_hash;
+pub mod blake3_hash_parallel;
 pub mod flate2_gunzip;
 pub mod flate2_gunzip_chunked;
 pub mod flate2_gunzip_take;
@@ -70,6 +71,7 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("sha2.sha256-chunked@1", "sha2_sha256_chunked"),
     ("sha2.sha256-update-all@1", "sha2_sha256_update_all"),
     ("blake3.blake3@1", "blake3_hash"),
+    ("blake3.blake3-parallel@1", "blake3_hash_parallel"),
     // Domain 3 — compression
     ("flate2.gzip@1", "flate2_gzip"),
     ("flate2.gzip-chunked@1", "flate2_gzip_chunked"),

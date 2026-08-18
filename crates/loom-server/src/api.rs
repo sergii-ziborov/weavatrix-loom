@@ -13,8 +13,8 @@ use wvx_command_bus::{
     forge_extract, forge_facts_to_extract, forge_gate_c_ex3, forge_inventory, forge_match,
     forge_match_facts, forge_register_candidates, graph_apply_patch, graph_commit_patch,
     graph_preview_patch, graph_propose_intent, graph_propose_patch, graph_validate_patch,
-    implementations_list, pilot_catalog, project_export_rust_hydrated, project_run_hydrated,
-    project_validate_hydrated, registry_admission_audit, registry_families,
+    implementations_list, load_bench_records, pilot_catalog, project_export_rust_hydrated,
+    project_run_hydrated, project_validate_hydrated, registry_admission_audit, registry_families,
     registry_implementations, registry_inspect, registry_profiles, registry_resolve,
     registry_search, registry_summary, registry_truthful_audit, registry_verify_evidence, BusError,
     BusResponse, PROTOCOL_VERSION,
@@ -330,23 +330,48 @@ struct ResolveBody {
     /// Convenience: `dev` | `release` when `policy` omitted.
     #[serde(default)]
     policy_preset: Option<String>,
+    /// Optional verified bench records (from `wvx bench`).
+    #[serde(default)]
+    benches: Vec<wvx_ir::BenchmarkRecord>,
+    /// Optional path to a bench JSON (must sit under workspace roots).
+    #[serde(default)]
+    bench_file: Option<String>,
 }
 
 /// Explainable resolve (TargetProfile + ResolverPolicy). Does not auto-admit.
 async fn reg_resolve(State(state): State<AppState>, Json(body): Json<ResolveBody>) -> Response {
     let policy = body.policy.or_else(|| match body.policy_preset.as_deref() {
         Some("release") => Some(ResolverPolicy::release()),
-        Some("dev") | None => Some(ResolverPolicy::default()),
+        Some("dev") | None => Some(ResolverPolicy::dev()),
         Some(other) => Some(ResolverPolicy {
             id: other.into(),
             ..ResolverPolicy::default()
         }),
     });
+    let mut benches = body.benches.clone();
+    if let Some(p) = body.bench_file.as_deref() {
+        let path = std::path::PathBuf::from(p);
+        if !state.security.path_allowed(&path) {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "ok": false,
+                    "diagnostics": ["bench_file is outside workspace roots"]
+                })),
+            )
+                .into_response();
+        }
+        match load_bench_records(&path) {
+            Ok(extra) => benches.extend(extra),
+            Err(e) => return bus_error(e),
+        }
+    }
     match registry_resolve(
         state.registry.as_ref(),
         &body.capability,
         body.profile,
         policy,
+        &benches,
     ) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),

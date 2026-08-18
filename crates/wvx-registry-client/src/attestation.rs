@@ -158,11 +158,79 @@ pub fn sbom_from_implementation(imp: &Implementation) -> SoftwareBill {
         kind: "capability".into(),
         digest: None,
     });
-    SoftwareBill {
+    let mut bill = SoftwareBill {
         schema_version: SBOM_SCHEMA.into(),
         implementation_id: imp.full_id(),
         components,
+    };
+    if let Some(lock) = find_cargo_lock() {
+        enrich_sbom_from_lock(&mut bill, &lock);
     }
+    bill
+}
+
+fn find_cargo_lock() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
+    for _ in 0..6 {
+        let p = dir.join("Cargo.lock");
+        if p.is_file() {
+            return Some(p);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
+}
+
+/// Add lockfile packages that match already-listed component names (not the whole graph).
+fn enrich_sbom_from_lock(bill: &mut SoftwareBill, lock_path: &Path) {
+    let Ok(text) = fs::read_to_string(lock_path) else {
+        return;
+    };
+    let want: Vec<String> = bill
+        .components
+        .iter()
+        .map(|c| c.name.replace('_', "-").to_ascii_lowercase())
+        .collect();
+    let mut name = String::new();
+    let mut version = String::new();
+    let mut checksum = None;
+    let flush = |bill: &mut SoftwareBill, name: &str, version: &str, checksum: &Option<String>| {
+        if name.is_empty() {
+            return;
+        }
+        let key = name.replace('_', "-").to_ascii_lowercase();
+        if want
+            .iter()
+            .any(|w| key == *w || key.contains(w) || w.contains(&key))
+        {
+            bill.components.push(SbomComponent {
+                name: name.to_string(),
+                version: version.to_string(),
+                kind: "lock".into(),
+                digest: checksum.clone(),
+            });
+        }
+    };
+    for line in text.lines() {
+        let t = line.trim();
+        if t == "[[package]]" {
+            flush(bill, &name, &version, &checksum);
+            name.clear();
+            version.clear();
+            checksum = None;
+            continue;
+        }
+        if let Some(v) = t.strip_prefix("name = \"") {
+            name = v.trim_end_matches('"').into();
+        } else if let Some(v) = t.strip_prefix("version = \"") {
+            version = v.trim_end_matches('"').into();
+        } else if let Some(v) = t.strip_prefix("checksum = \"") {
+            checksum = Some(format!("sha256:{}", v.trim_end_matches('"')));
+        }
+    }
+    flush(bill, &name, &version, &checksum);
 }
 
 // ─── Transparency log ───────────────────────────────────────────────────────
@@ -340,8 +408,8 @@ mod tests {
     fn sbom_lists_upstream_adapter_capability() {
         let bill = sbom_from_implementation(&sample_imp());
         assert_eq!(bill.schema_version, SBOM_SCHEMA);
-        assert_eq!(bill.components.len(), 3);
         assert!(bill.components.iter().any(|c| c.kind == "upstream"));
+        assert!(bill.components.iter().any(|c| c.kind == "capability"));
         assert!(bill.digest().starts_with("sha256:"));
     }
 

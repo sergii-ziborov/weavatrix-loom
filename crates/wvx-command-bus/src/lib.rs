@@ -28,7 +28,7 @@ use wvx_forge::{
 };
 use wvx_ir::Project;
 use wvx_ir::SdkEmit;
-use wvx_ir::{ResolveDecision, ResolverPolicy, TargetProfile};
+use wvx_ir::{BenchmarkRecord, ResolveDecision, ResolverPolicy, TargetProfile};
 pub use wvx_project_graph::PatchPreview;
 use wvx_project_graph::{
     apply_graph_patch, commit_patch, preview_patch, propose_json_pipeline_patch_relative,
@@ -36,7 +36,7 @@ use wvx_project_graph::{
 };
 use wvx_registry_client::{
     admit_implementation, audit_truthful_registry, mint_and_write,
-    promote_implementation_with_collector, requalify_implementation, resolve_implementation,
+    promote_implementation_with_collector, requalify_implementation, resolve_implementation_ex,
     verify_artifact, verify_implementation, AdmissionReport, AdmitRequest, AdmitResult,
     ArtifactCheck, CapabilityHit, CaseResult, EvidenceArtifact, FamilySummary, ImplementationHit,
     InstallCandidateResult, LocalRegistry, MintRequest, ProfileSuiteCollector, ProfileSummary,
@@ -587,6 +587,7 @@ pub fn registry_resolve(
     capability_key: &str,
     profile: Option<TargetProfile>,
     policy: Option<ResolverPolicy>,
+    benches: &[BenchmarkRecord],
 ) -> Result<BusResponse<ResolveDecision>, BusError> {
     let impls = registry.list_implementations()?;
     let profile = profile.unwrap_or_else(|| TargetProfile {
@@ -594,9 +595,50 @@ pub fn registry_resolve(
         prefer_pure_rust: true,
         ..Default::default()
     });
-    let policy = policy.unwrap_or_default();
-    let decision = resolve_implementation(capability_key, &impls, &profile, &policy);
+    let policy = policy.unwrap_or_else(ResolverPolicy::dev);
+    let decision = resolve_implementation_ex(capability_key, &impls, &profile, &policy, benches);
     Ok(BusResponse::ok(decision))
+}
+
+/// Turn a Gate E bench report into resolver records (arch / OS / workload).
+pub fn bench_records_from_report(report: &BenchReport) -> Vec<BenchmarkRecord> {
+    report
+        .cases
+        .iter()
+        .filter(|c| c.ok)
+        .map(|c| BenchmarkRecord {
+            implementation_id: c.implementation.clone(),
+            capability_key: c.capability.clone(),
+            iterations: c.iterations,
+            warmup: c.warmup,
+            ok: true,
+            mean_ns: Some(c.mean_ns),
+            input_fingerprint: Some(report.provenance.input_fingerprint.clone()),
+            recorded_at_unix: report.provenance.recorded_at_unix,
+            host: None,
+            arch: Some(report.provenance.arch.clone()),
+            os: Some(report.provenance.os.clone()),
+            workload_class: Some(if c.case.contains("bulk") {
+                "bulk".into()
+            } else {
+                "small".into()
+            }),
+            notes: vec![format!("case={}", c.case)],
+        })
+        .collect()
+}
+
+/// Load `wvx bench -o` JSON (BusResponse or bare BenchReport).
+pub fn load_bench_records(path: &Path) -> Result<Vec<BenchmarkRecord>, BusError> {
+    let text = std::fs::read_to_string(path).map_err(|e| BusError::Io(e.to_string()))?;
+    if let Ok(wrap) = serde_json::from_str::<BusResponse<BenchReport>>(&text) {
+        if let Some(data) = wrap.data {
+            return Ok(bench_records_from_report(&data));
+        }
+    }
+    let report: BenchReport = serde_json::from_str(&text)
+        .map_err(|e| BusError::InvalidProject(format!("bench file {}: {e}", path.display())))?;
+    Ok(bench_records_from_report(&report))
 }
 
 /// Continuous requalification after version / evidence change (no auto-admit).

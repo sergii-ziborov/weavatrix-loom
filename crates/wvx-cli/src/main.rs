@@ -9,18 +9,22 @@ use wvx_command_bus::{
     forge_compile, forge_draft, forge_draft_facts, forge_export_facts, forge_extract,
     forge_facts_file, forge_gate_c_ex3, forge_inventory, forge_match, forge_match_facts,
     graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
-    implementations_list, load_project_path, pilot_bench, project_export_rust_hydrated,
-    project_export_to_dir_release, project_export_to_dir_with_policy, project_run,
-    project_validate, registry_admission_audit, registry_human_admit, registry_implementations,
-    registry_inspect, registry_mint_evidence, registry_promote, registry_requalify,
-    registry_resolve, registry_search, registry_summary, registry_truthful_audit,
-    registry_verify_evidence, BusError, CompilePolicy,
+    implementations_list, load_bench_records, load_project_path, pilot_bench,
+    project_export_rust_hydrated, project_export_to_dir_release, project_export_to_dir_with_policy,
+    project_run, project_validate, registry_admission_audit, registry_human_admit,
+    registry_implementations, registry_inspect, registry_mint_evidence, registry_promote,
+    registry_requalify, registry_resolve, registry_search, registry_summary,
+    registry_truthful_audit, registry_verify_evidence, BusError, CompilePolicy,
 };
 use wvx_forge::load_facts_file;
 use wvx_project_graph::GraphPatch;
 use wvx_registry_client::AdmitRequest;
 use wvx_registry_client::LocalRegistry;
-use wvx_registry_client::{HumanSignature, PromoteRequest};
+use wvx_registry_client::{
+    append_transparency, artifact_path, load_artifact, promotion_hmac_key, read_transparency_log,
+    sbom_from_implementation, sign_attestation, verify_attestation, verify_transparency_log,
+    HumanSignature, PromoteRequest, TransparencyKind,
+};
 use wvx_types::WvxValue;
 
 fn main() -> ExitCode {
@@ -82,6 +86,10 @@ Usage:
   wvx registry verify-evidence <impl-id> [--path <dir>]
   wvx registry promote <impl-id> [--profile id] [--status conformant|admitted] [--apply] \\
       [--reviewer … --human-ack … --security-ack … --reason …]
+  wvx registry resolve <cap> [--policy dev|release] [--arch|--os|--workload] [--bench-file]
+  wvx registry sbom <impl-id>
+  wvx registry attest <impl-id> [--apply]
+  wvx registry transparency [--verify]
   wvx registry admit <impl-id> --reviewer <name> --human-ack <text> --security-ack <text> \\
       --reason <text> --bench-file <path> [--apply] [--path <dir>]
   wvx forge inventory <crate-or-workspace-path>
@@ -975,7 +983,7 @@ fn cmd_patch(args: &[String]) -> ExitCode {
 
 fn cmd_registry(args: &[String]) -> ExitCode {
     if args.is_empty() {
-        eprintln!("usage: wvx registry <summary|search|implementations|inspect|check> ...");
+        eprintln!("usage: wvx registry <summary|search|resolve|sbom|attest|transparency|…> ...");
         return ExitCode::FAILURE;
     }
     let sub = args[0].as_str();
@@ -1024,10 +1032,87 @@ fn cmd_registry(args: &[String]) -> ExitCode {
         }
         "resolve" => {
             let Some(cap) = rest.first() else {
-                eprintln!("usage: wvx registry resolve <capability-key>");
+                eprintln!(
+                    "usage: wvx registry resolve <capability-key> [--policy dev|release] [--arch x] [--os y] [--workload small|bulk] [--bench-file path] [--no-bench]"
+                );
                 return ExitCode::FAILURE;
             };
-            match registry_resolve(&reg, cap, None, None) {
+            let mut policy = None;
+            let mut arch = None;
+            let mut os = None;
+            let mut workload = None;
+            let mut bench_file: Option<PathBuf> = None;
+            let mut no_bench = false;
+            let mut i = 1;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--policy" => {
+                        policy = rest.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--arch" => {
+                        arch = rest.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--os" => {
+                        os = rest.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--workload" => {
+                        workload = rest.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--bench-file" => {
+                        bench_file = rest.get(i + 1).map(PathBuf::from);
+                        i += 2;
+                    }
+                    "--no-bench" => {
+                        no_bench = true;
+                        i += 1;
+                    }
+                    _ => i += 1,
+                }
+            }
+            let pol = match policy.as_deref() {
+                Some("release") => Some(wvx_ir::ResolverPolicy::release()),
+                Some("dev") | None => Some(wvx_ir::ResolverPolicy::dev()),
+                Some(other) => Some(wvx_ir::ResolverPolicy {
+                    id: other.into(),
+                    ..wvx_ir::ResolverPolicy::dev()
+                }),
+            };
+            let profile = wvx_ir::TargetProfile {
+                id: "cli".into(),
+                arch,
+                os,
+                workload_class: workload,
+                prefer_pure_rust: true,
+                ..Default::default()
+            };
+            let benches = if no_bench {
+                Vec::new()
+            } else {
+                let path = bench_file.unwrap_or_else(|| PathBuf::from(".lab/bench.json"));
+                if path.is_file() {
+                    match load_bench_records(&path) {
+                        Ok(b) => {
+                            eprintln!(
+                                "resolve: loaded {} bench records from {}",
+                                b.len(),
+                                path.display()
+                            );
+                            b
+                        }
+                        Err(e) => {
+                            eprintln!("{e}");
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                } else {
+                    Vec::new()
+                }
+            };
+            match registry_resolve(&reg, cap, Some(profile), pol, &benches) {
                 Ok(resp) => {
                     if let Some(d) = &resp.data {
                         eprintln!(
@@ -1041,6 +1126,34 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                     }
                     Ok(serde_json::to_string_pretty(&resp).unwrap())
                 }
+                Err(e) => Err(e),
+            }
+        }
+        "sbom" => {
+            let Some(id) = rest.first() else {
+                eprintln!("usage: wvx registry sbom <impl-id>");
+                return ExitCode::FAILURE;
+            };
+            match cmd_registry_sbom(&reg, id) {
+                Ok(s) => Ok(s),
+                Err(e) => Err(e),
+            }
+        }
+        "attest" => {
+            let Some(id) = rest.first() else {
+                eprintln!("usage: wvx registry attest <impl-id> [--apply]");
+                return ExitCode::FAILURE;
+            };
+            let apply = rest.iter().any(|a| a == "--apply");
+            match cmd_registry_attest(&reg, id, apply) {
+                Ok(s) => Ok(s),
+                Err(e) => Err(e),
+            }
+        }
+        "transparency" | "log" => {
+            let verify = rest.iter().any(|a| a == "--verify" || a == "--check");
+            match cmd_registry_transparency(&reg, verify) {
+                Ok(s) => Ok(s),
                 Err(e) => Err(e),
             }
         }
@@ -1468,6 +1581,74 @@ fn cmd_registry(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn cmd_registry_sbom(reg: &LocalRegistry, id: &str) -> Result<String, BusError> {
+    let imp = reg
+        .find_implementation(id)?
+        .ok_or_else(|| BusError::InvalidProject(format!("unknown impl {id}")))?;
+    let bill = sbom_from_implementation(&imp);
+    Ok(serde_json::to_string_pretty(&bill).unwrap())
+}
+
+fn cmd_registry_attest(reg: &LocalRegistry, id: &str, apply: bool) -> Result<String, BusError> {
+    let imp = reg
+        .find_implementation(id)?
+        .ok_or_else(|| BusError::InvalidProject(format!("unknown impl {id}")))?;
+    let art_path = artifact_path(reg.root(), &imp);
+    if !art_path.is_file() {
+        return Err(BusError::InvalidProject(format!(
+            "no evidence artifact at {} — run promote first",
+            art_path.display()
+        )));
+    }
+    let art = load_artifact(&art_path)?;
+    let bill = sbom_from_implementation(&imp);
+    let Some(key) = promotion_hmac_key() else {
+        return Err(BusError::InvalidProject(
+            "WVX_PROMOTION_HMAC_KEY is required to sign attestations".into(),
+        ));
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let profile = imp
+        .conformance_profile
+        .clone()
+        .unwrap_or_else(|| art.conformance_profile.clone());
+    let att = sign_attestation(&imp.full_id(), &profile, &art, &bill.digest(), now, &key);
+    verify_attestation(&att, &imp.full_id())?;
+    if apply {
+        let dest = reg
+            .root()
+            .join("evidence")
+            .join("attestations")
+            .join(format!("{}.json", imp.full_id().replace(['/', '\\'], "_")));
+        if let Some(parent) = dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&dest, serde_json::to_string_pretty(&att).unwrap())
+            .map_err(|e| BusError::Io(e.to_string()))?;
+        append_transparency(
+            reg.root(),
+            TransparencyKind::Attest,
+            &imp.full_id(),
+            &att.payload_digest,
+            now,
+        )?;
+        eprintln!("wrote {}", dest.display());
+    }
+    Ok(serde_json::to_string_pretty(&att).unwrap())
+}
+
+fn cmd_registry_transparency(reg: &LocalRegistry, verify: bool) -> Result<String, BusError> {
+    let log = read_transparency_log(reg.root())?;
+    if verify {
+        verify_transparency_log(&log)?;
+        eprintln!("transparency: {} entries, chain ok", log.len());
+    }
+    Ok(serde_json::to_string_pretty(&log).unwrap())
 }
 
 fn cmd_validate(args: &[String]) -> ExitCode {

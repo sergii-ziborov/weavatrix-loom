@@ -46,6 +46,14 @@ pub struct BenchProvenance {
     pub notes: Vec<String>,
 }
 
+fn bulk_json_object(inner_bytes: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(inner_bytes + 16);
+    out.extend_from_slice(br#"{"k":""#);
+    out.resize(out.len() + inner_bytes, b'x');
+    out.extend_from_slice(br#""}"#);
+    out
+}
+
 /// Run pilot parse / serialize / path_set micro-benches.
 pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
     let iterations = iterations.max(1);
@@ -66,6 +74,17 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
             impl_id,
             "object_tag",
             parse_input,
+            iterations,
+            warmup,
+        ));
+    }
+    let parse_bulk = bulk_json_object(64 * 1024);
+    for impl_id in ["serde-json.parse-owned@1", "wvx.reference.json-parse@1"] {
+        cases.push(bench_parse(
+            &reg,
+            impl_id,
+            "object_tag_bulk",
+            &parse_bulk,
             iterations,
             warmup,
         ));
@@ -122,6 +141,23 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         iterations,
         warmup,
     ));
+    let hash_bulk = vec![b'a'; 64 * 1024];
+    for (cap, impl_id) in [
+        ("data.hash.sha256@1", "sha2.sha256@1"),
+        ("data.hash.blake3@1", "blake3.blake3@1"),
+    ] {
+        cases.push(bench_bytes_ports(
+            &reg,
+            cap,
+            impl_id,
+            "digest_bulk",
+            "bytes",
+            "digest",
+            &hash_bulk,
+            iterations,
+            warmup,
+        ));
+    }
 
     // Domain 3 — compression (gzip/gunzip multi-impl)
     let gz_in = b"Weavatrix Loom Domain 3 compression bench payload xxxxxxxxxx";
@@ -142,6 +178,18 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
             warmup,
         ));
     }
+    let gz_bulk = vec![b'x'; 64 * 1024];
+    cases.push(bench_bytes_ports(
+        &reg,
+        "data.compress.gzip@1",
+        "flate2.gzip@1",
+        "gzip_payload_bulk",
+        "bytes",
+        "bytes",
+        &gz_bulk,
+        iterations,
+        warmup,
+    ));
     // Pre-compress once for gunzip benches
     let gz_bytes = match reg.resolve("data.compress.gzip@1", Some("flate2.gzip@1")) {
         Ok(h) => {

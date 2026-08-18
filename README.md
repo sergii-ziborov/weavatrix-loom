@@ -321,6 +321,9 @@ cargo run -p wvx-cli -- registry summary
 cargo run -p wvx-cli -- registry search json
 cargo run -p wvx-cli -- registry implementations --capability data.json.parse@1
 cargo run -p wvx-cli -- registry inspect serde-json.parse-owned@1
+cargo run -p wvx-cli -- registry resolve data.json.parse@1 --policy dev --workload small
+cargo run -p wvx-cli -- registry sbom serde-json.parse-owned@1
+cargo run -p wvx-cli -- registry transparency --verify
 
 # Lifecycle vs multi-fact evidence (overclaim = fail)
 cargo run -p wvx-cli -- registry check

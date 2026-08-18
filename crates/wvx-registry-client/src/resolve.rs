@@ -143,6 +143,12 @@ pub fn resolve_implementation_ex(
 
     let ranked: Vec<String> = pool.iter().map(|i| i.full_id()).collect();
     explanation.push(format!("{} candidate(s) after filters", ranked.len()));
+    if !benches.is_empty() {
+        let n = benches.iter().filter(|b| b.ok).count();
+        explanation.push(format!(
+            "verified bench records: {n} (arch/os/workload ranking enabled)"
+        ));
+    }
     for (i, id) in ranked.iter().enumerate() {
         explanation.push(format!("  rank {}: {id}", i + 1));
     }

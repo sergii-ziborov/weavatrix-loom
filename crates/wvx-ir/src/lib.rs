@@ -252,6 +252,20 @@ impl Default for ResolverPolicy {
 }
 
 impl ResolverPolicy {
+    /// Lab / Studio default: candidates allowed; benches can rank.
+    pub fn dev() -> Self {
+        Self {
+            id: "resolve.dev".into(),
+            require_conformance_pass: false,
+            require_build_pass: false,
+            require_license_pass: false,
+            require_security_pass: false,
+            require_verified_artifact: false,
+            allow_candidate: true,
+            prefer_impl_ids: Vec::new(),
+        }
+    }
+
     /// Release resolver: Pass axes + verified artifact + no candidates.
     pub fn release() -> Self {
         Self {

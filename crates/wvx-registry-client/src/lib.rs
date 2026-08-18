@@ -34,13 +34,13 @@ pub use attestation::{
     TransparencyEntry, TransparencyKind, ATTESTATION_SCHEMA, SBOM_SCHEMA,
 };
 pub use evidence_artifact::{
-    audit_truthful_registry, capture_environment, compute_digests, default_artifact_relpath,
-    load_artifact, load_profile, mint_and_write, mint_artifact, profile_case_ids,
-    profile_case_ids_digest, sha256_hex, subject_digest, subject_digest_fnv, subject_digest_sha256,
-    suite_digest_for_profile, verify_artifact, verify_loaded_artifact, write_artifact,
-    ArtifactCheck, CaseResult, ConformanceProfileDoc, DigestContext, EvidenceArtifact,
-    EvidenceDigests, EvidenceEnvironment, MintRequest, SuiteResult, TruthfulAuditItem,
-    TruthfulAuditReport, EVIDENCE_SCHEMA, EVIDENCE_SCHEMA_V01,
+    artifact_path, audit_truthful_registry, capture_environment, compute_digests,
+    default_artifact_relpath, load_artifact, load_profile, mint_and_write, mint_artifact,
+    profile_case_ids, profile_case_ids_digest, sha256_hex, subject_digest, subject_digest_fnv,
+    subject_digest_sha256, suite_digest_for_profile, verify_artifact, verify_loaded_artifact,
+    write_artifact, ArtifactCheck, CaseResult, ConformanceProfileDoc, DigestContext,
+    EvidenceArtifact, EvidenceDigests, EvidenceEnvironment, MintRequest, SuiteResult,
+    TruthfulAuditItem, TruthfulAuditReport, EVIDENCE_SCHEMA, EVIDENCE_SCHEMA_V01,
 };
 pub use promote::{
     promote_from_admit, promote_implementation, promote_implementation_with_collector,
@@ -54,7 +54,8 @@ pub use provenance::{
 pub use requalify::{requalify_implementation, RequalTrigger, RequalifyReport};
 pub use resolve::{resolve_implementation, resolve_implementation_ex};
 pub use signed::{
-    hmac_sha256, sign_reports, verify_signed_reports, SignedPromotionReports, SIGNED_REPORTS_SCHEMA,
+    hmac_sha256, promotion_hmac_key, sign_reports, verify_signed_reports, SignedPromotionReports,
+    SIGNED_REPORTS_SCHEMA,
 };
 pub use temp_registry::{materialize_temp_registry, snapshot_files};
 pub use verified::{verify_all_conformant, verify_implementation, VerifiedImplementation};

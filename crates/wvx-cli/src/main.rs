@@ -23,9 +23,9 @@ use wvx_registry_client::LocalRegistry;
 use wvx_registry_client::{
     append_transparency, artifact_path, attach_local_tlog, hashedrekord_for_digest, load_artifact,
     promotion_hmac_key, read_transparency_log, refuse_remote_rekor, sbom_from_implementation,
-    sign_attestation, verify_attestation, verify_hashedrekord, verify_sigstore_bundle,
-    verify_tlog_entries, verify_transparency_log, wrap_attestation, HumanSignature, PromoteRequest,
-    TransparencyKind,
+    sign_attestation, spdx_from_implementation, verify_attestation, verify_hashedrekord,
+    verify_sigstore_bundle, verify_spdx_document, verify_tlog_entries, verify_transparency_log,
+    wrap_attestation, HumanSignature, PromoteRequest, TransparencyKind,
 };
 use wvx_types::WvxValue;
 
@@ -91,7 +91,8 @@ Usage:
   wvx registry promote <impl-id> [--profile id] [--status conformant|admitted] [--apply] \\
       [--reviewer … --human-ack … --security-ack … --reason …]
   wvx registry resolve <cap> [--policy dev|release] [--arch|--os|--workload] [--bench-file]
-  wvx registry sbom <impl-id>
+  wvx registry sbom <impl-id>                 # CycloneDX-shaped (not full CDX 1.5)
+  wvx registry spdx <impl-id> [--apply]       # SPDX 2.3 JSON (not 3.0; licenses NOASSERTION)
   wvx registry attest <impl-id> [--apply]
   wvx registry sigstore <impl-id> [--apply]   # in-toto+DSSE HMAC bundle; not Fulcio
   wvx registry rekor <impl-id> [--apply]      # hashedrekord v0.0.1 + local tlog; not public Rekor
@@ -993,7 +994,7 @@ fn cmd_patch(args: &[String]) -> ExitCode {
 fn cmd_registry(args: &[String]) -> ExitCode {
     if args.is_empty() {
         eprintln!(
-            "usage: wvx registry <summary|search|resolve|sbom|attest|sigstore|rekor|transparency|…> ..."
+            "usage: wvx registry <summary|search|resolve|sbom|spdx|attest|sigstore|rekor|transparency|…> ..."
         );
         return ExitCode::FAILURE;
     }
@@ -1146,6 +1147,17 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 return ExitCode::FAILURE;
             };
             match cmd_registry_sbom(&reg, id) {
+                Ok(s) => Ok(s),
+                Err(e) => Err(e),
+            }
+        }
+        "spdx" => {
+            let Some(id) = rest.first() else {
+                eprintln!("usage: wvx registry spdx <impl-id> [--apply]");
+                return ExitCode::FAILURE;
+            };
+            let apply = rest.iter().any(|a| a == "--apply");
+            match cmd_registry_spdx(&reg, id, apply) {
                 Ok(s) => Ok(s),
                 Err(e) => Err(e),
             }
@@ -1622,6 +1634,31 @@ fn cmd_registry_sbom(reg: &LocalRegistry, id: &str) -> Result<String, BusError> 
         .ok_or_else(|| BusError::InvalidProject(format!("unknown impl {id}")))?;
     let bill = sbom_from_implementation(&imp);
     Ok(serde_json::to_string_pretty(&bill).unwrap())
+}
+
+fn cmd_registry_spdx(reg: &LocalRegistry, id: &str, apply: bool) -> Result<String, BusError> {
+    let imp = reg
+        .find_implementation(id)?
+        .ok_or_else(|| BusError::InvalidProject(format!("unknown impl {id}")))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let doc = spdx_from_implementation(&imp, now);
+    verify_spdx_document(&doc)?;
+    if apply {
+        let dest = reg.root().join("evidence").join("sbom").join(format!(
+            "{}.spdx.json",
+            imp.full_id().replace(['/', '\\'], "_")
+        ));
+        if let Some(parent) = dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&dest, serde_json::to_string_pretty(&doc).unwrap())
+            .map_err(|e| BusError::Io(e.to_string()))?;
+        eprintln!("wrote {}", dest.display());
+    }
+    Ok(serde_json::to_string_pretty(&doc).unwrap())
 }
 
 fn cmd_registry_attest(reg: &LocalRegistry, id: &str, apply: bool) -> Result<String, BusError> {

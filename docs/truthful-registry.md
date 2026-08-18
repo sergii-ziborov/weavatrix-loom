@@ -52,6 +52,10 @@
    A Fulcio certificate in the bundle is **rejected**. `WVX_REKOR_URL` is
    **refused** — HMAC is not a Fulcio identity and is not uploaded to public Rekor.
 
+   `wvx registry spdx` emits SPDX **2.3** JSON from the same component set as
+   `sbom`. Licenses and copyright are `NOASSERTION` (no scanner). This is not
+   SPDX 3.0 and not a full Cargo graph.
+
 4. **CI invariant**
 
 ```text

@@ -2,7 +2,7 @@
 
 Local filesystem client for a Loom capability registry (lifecycle + multi-fact evidence,
 HMAC attestations, offline Sigstore-shaped in-toto/DSSE bundles, local
-hashedrekord — not Fulcio identity, not public Rekor).
+hashedrekord, SPDX 2.3 JSON — not Fulcio, not public Rekor, not SPDX 3.0).
 
 Part of **[Weavatrix Loom](https://github.com/sergii-ziborov/weavatrix-loom)** — semantic software composition
 (Capability · Implementation · Registry · GraphPatch · compile to ordinary Rust).

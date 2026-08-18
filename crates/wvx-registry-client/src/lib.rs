@@ -21,6 +21,7 @@ pub mod requalify;
 pub mod resolve;
 pub mod signed;
 pub mod sigstore;
+pub mod spdx;
 pub mod temp_registry;
 pub mod verified;
 pub mod workspace;
@@ -65,6 +66,9 @@ pub use signed::{
 };
 pub use sigstore::{
     verify_sigstore_bundle, wrap_attestation, SigstoreBundle, BUNDLE_MEDIA, DSSE_PAYLOAD_TYPE,
+};
+pub use spdx::{
+    spdx_from_bill, spdx_from_implementation, verify_spdx_document, SpdxDocument, SPDX_VERSION,
 };
 pub use temp_registry::{materialize_temp_registry, snapshot_files};
 pub use verified::{verify_all_conformant, verify_implementation, VerifiedImplementation};

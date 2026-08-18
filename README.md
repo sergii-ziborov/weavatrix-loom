@@ -82,7 +82,8 @@ feeds signatures/spans (ADR-0012).
 > **P0–P2 trust closure** (live promote, CSPRNG remote, bench-aware resolve),
 > fast catalog impls: **simd-json** · **sonic-rs** · **blake3-parallel** · **zlib-rs**,
 > offline **Sigstore-shaped** bundle (in-toto + DSSE + HMAC) + local **hashedrekord**
-> (**not** Fulcio identity, **not** public Rekor),
+> (**not** Fulcio identity, **not** public Rekor), **SPDX 2.3 JSON** (licenses
+> `NOASSERTION`; not SPDX 3.0),
 > optional **`wasm32-wasip1` sidecar** (`export-wasm`; native remains the default).  
 > Public release path is `VerifiedImplementation` → `compile_release` only.  
 > Not a hosted marketplace. Details:
@@ -186,7 +187,7 @@ embed it.
 | `wvx-validator` | M2 validation passes (schema, cycles, cardinality, policy, …) (**lib**) |
 | `wvx-runtime` | Dynamic playground execution (erased values) (**lib**) |
 | `wvx-compiler-rust` | Export to Rust + `CompilePolicy` / **`compile_release`** + optional **`export-wasm`** (**lib**) |
-| `wvx-registry-client` | Registry + **EvidenceArtifact v0.2** + **promote** + HMAC attest / offline Sigstore + local hashedrekord + resolve (**lib**) |
+| `wvx-registry-client` | Registry + **EvidenceArtifact v0.2** + **promote** + HMAC attest / offline Sigstore + local hashedrekord + SPDX 2.3 + resolve (**lib**) |
 | `wvx-command-bus` | Shared semantic API for **CLI + HTTP** (**lib**; preferred host entry) |
 | `wvx-cli` | Command-line entry point (**product host**) |
 | `wvx-mcp` | Optional **agent-only** MCP adapter (`mcport`) — not used by Studio |
@@ -331,7 +332,8 @@ cargo run -p wvx-cli -- registry search json
 cargo run -p wvx-cli -- registry implementations --capability data.json.parse@1
 cargo run -p wvx-cli -- registry inspect serde-json.parse-owned@1
 cargo run -p wvx-cli -- registry resolve data.json.parse@1 --policy dev --workload small
-cargo run -p wvx-cli -- registry sbom serde-json.parse-owned@1
+cargo run -p wvx-cli -- registry sbom serde-json.parse-owned@1   # CycloneDX-shaped
+cargo run -p wvx-cli -- registry spdx serde-json.parse-owned@1   # SPDX 2.3 JSON; not 3.0
 cargo run -p wvx-cli -- registry transparency --verify
 cargo run -p wvx-cli -- registry attest serde-json.parse-owned@1   # needs WVX_PROMOTION_HMAC_KEY
 cargo run -p wvx-cli -- registry sigstore serde-json.parse-owned@1  # in-toto+DSSE; HMAC, not Fulcio
@@ -489,6 +491,7 @@ cargo test -p wvx-conformance
 | **P2 hosted** CSPRNG remote mode + HMAC attestations + SBOM + transparency log + bench-aware resolve + incremental requal | this section | **Landed** |
 | **Sigstore envelope** Offline in-toto Statement + DSSE + bundle v0.3 media type (HMAC; **not** Fulcio) | `wvx registry sigstore` | **Landed** |
 | **Rekor hashedrekord** Local `hashedrekord` v0.0.1 + `tlogEntries`; refuse `WVX_REKOR_URL` / Fulcio certs | `wvx registry rekor` | **Landed** (not public Rekor) |
+| **SPDX 2.3** JSON from the same component set as `sbom` (`NOASSERTION` licenses; not 3.0 / not a scan) | `wvx registry spdx` | **Landed** |
 | **Wasm sidecar** Optional `wasm32-wasip1` export (native default; no host/WIT) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 

@@ -80,14 +80,14 @@ feeds signatures/spans (ADR-0012).
 > **Status:** **v0.2 beta** — multi-domain pilots (JSON · text · hash · compress · codec),
 > **M1 Truthful Registry**, **M2 Safe Semantic Core**, **EvidenceArtifact v0.2**,
 > **P0–P2 trust closure** (live promote, CSPRNG remote, bench-aware resolve),
-> fast catalog impls: **simd-json** · **sonic-rs** · **blake3-parallel** · **zlib-rs**,
-> offline **Sigstore-shaped** bundle (in-toto + DSSE + HMAC) + local **hashedrekord**
-> (**not** Fulcio identity, **not** public Rekor), **SPDX 2.3 JSON** (licenses
-> `NOASSERTION`; not SPDX 3.0),
-> optional **`wasm32-wasip1` sidecar** + thin **`run-wasm`** host via wasmtime CLI
-> (not an embedded VM / WIT; native remains the default).  
+> fast catalog: **simd-json** · **sonic-rs** · **blake3-parallel** · **zlib-rs**,
+> offline **Sigstore** envelope + local **hashedrekord** (**not** Fulcio / public Rekor),
+> **SPDX 2.3 JSON** (licenses `NOASSERTION`; not 3.0),
+> optional **`wasm32-wasip1` sidecar** + **`run-wasm`** via wasmtime CLI (not an
+> embedded VM / WIT), **`run_pipeline_read`** (hash/gzip/hex; JSON still buffers),
+> **multi-output** (`run_pipeline_named`; `sha256_pair` digest+hex).  
 > Public release path is `VerifiedImplementation` → `compile_release` only.  
-> Not a hosted marketplace. Details:
+> Native Rust remains the default. Not a hosted marketplace. Details:
 > **[docs/beta-prototype.md](docs/beta-prototype.md)** ·
 > **[docs/truthful-registry.md](docs/truthful-registry.md)** ·
 > **[docs/domain-roadmap.md](docs/domain-roadmap.md)**. UI:
@@ -187,12 +187,12 @@ embed it.
 | `wvx-project-graph` | Project graph operations + GraphPatch apply (**lib**) |
 | `wvx-validator` | M2 validation passes (schema, cycles, cardinality, policy, …) (**lib**) |
 | `wvx-runtime` | Dynamic playground execution (erased values) (**lib**) |
-| `wvx-compiler-rust` | Export to Rust + `CompilePolicy` / **`compile_release`** + optional **`export-wasm`** / **`run-wasm`** (**lib**) |
+| `wvx-compiler-rust` | Export to Rust + `CompilePolicy` / **`compile_release`** + **`run_pipeline_read`** / **`run_pipeline_named`** + optional **`export-wasm`** / **`run-wasm`** (**lib**) |
 | `wvx-registry-client` | Registry + **EvidenceArtifact v0.2** + **promote** + HMAC attest / offline Sigstore + local hashedrekord + SPDX 2.3 + resolve (**lib**) |
 | `wvx-command-bus` | Shared semantic API for **CLI + HTTP** (**lib**; preferred host entry) |
 | `wvx-cli` | Command-line entry point (**product host**) |
 | `wvx-mcp` | Optional **agent-only** MCP adapter (`mcport`) — not used by Studio |
-| `wvx-adapters` | Pilot adapters: JSON (serde / reference / json / **simd-json** / **sonic-rs**) · hash (**blake3-parallel**) · compress (**zlib-rs** + flate2) · codec (**lib**) |
+| `wvx-adapters` | Pilot adapters: JSON (serde / reference / json / **simd-json** / **sonic-rs**) · hash (**blake3-parallel** · **sha256-pair**) · compress (**zlib-rs** + flate2) · codec (**lib**) |
 | `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) (**lib**) |
 | `wvx-adapter-external-demo` | External Gate F fixture (`parse`) — semantically equivalent JSON parser |
 | `wvx-forge` | Thin Forge: bootstrap inventory + **semantic match/draft** (**lib**; deep code facts → Weavatrix; ADR-0012) |
@@ -259,6 +259,8 @@ Validate and run pilot fixtures (multi-domain):
 cargo run -p wvx-cli -- validate fixtures/pilot-json-pipeline.wvx.json
 cargo run -p wvx-cli -- run fixtures/pilot-json-pipeline.wvx.json
 cargo run -p wvx-cli -- run fixtures/pilot-hash-pipeline.wvx.json --input-json "hello"
+# two sinks (digest + hex):
+cargo run -p wvx-cli -- run fixtures/pilot-hash-pair-pipeline.wvx.json --input-json "hello"
 # codec: write bytes to a file then --input path
 cargo run -p wvx-cli -- run fixtures/pilot-codec-roundtrip.wvx.json --input ./hello.txt
 cargo run -p wvx-cli -- implementations
@@ -306,14 +308,26 @@ cargo run -p wvx-cli -- run-wasm fixtures/pilot-json-pipeline.wvx.json \
   --input-json "{\"hello\":\"world\"}"
 ```
 
-The export is a normal Cargo package with `run_pipeline(&[u8]) -> Result<Vec<u8>, String>`  
-and `run_pipeline_read<R: Read>` (64 KiB I/O for single-step hash / gzip / hex;  
-JSON and multi-step graphs still buffer).  
+The export is a normal Cargo package:
+
+| API | Meaning |
+| --- | --- |
+| `run_pipeline(&[u8]) -> Result<Vec<u8>, String>` | First `io.output.bytes` sink (topo order) |
+| `run_pipeline_named` | Every sink: instance id → bytes |
+| `run_pipeline_read<R: Read>` | 64 KiB I/O for a single hash / gzip / hex step; JSON and multi-step graphs still buffer |
+
 Input is binary-safe: `WVX_PIPELINE_INPUT_FILE` (streamed `Read`) or `WVX_PIPELINE_INPUT_B64`.  
 API **`compile_release`** requires a `VerifiedImplementation` pool (not raw manifests).  
 `export-wasm` writes `.cargo/config.toml` + a wasm-safe vendor (no simd-json / sonic-rs / rayon).  
 `--check` / `run-wasm` need `rustup target add wasm32-wasip1`. `run-wasm` also needs the
 **wasmtime CLI** — Loom does not embed a VM and does not implement WIT.
+
+```bash
+# Multi-output: digest + hex sinks (`run_pipeline` = digest; named map has both)
+cargo run -p wvx-cli -- run fixtures/pilot-hash-pair-pipeline.wvx.json --input-json "hello"
+cargo run -p wvx-cli -- export-rust fixtures/pilot-hash-pair-pipeline.wvx.json \
+  -o /tmp/loom-pair --dev --check
+```
 
 ## Domains (pilots)
 

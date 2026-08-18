@@ -101,6 +101,8 @@ host = []
 serde_json = "1"
 json = "0.12"
 simd-json = { version = "0.14", default-features = false, features = ["serde_impl"] }
+sonic-rs = "0.3"
+zlib-rs = "0.5"
 # Domain 2 hashing + Domain 3 compression + Domain 4 codecs
 sha2 = "0.10"
 blake3 = { version = "1.5", default-features = false, features = ["std", "pure", "rayon"] }

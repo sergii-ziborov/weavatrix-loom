@@ -1,0 +1,33 @@
+{
+  "id": "zlib-rs.gunzip",
+  "version": "1",
+  "capability": {
+    "id": "data.compress.gunzip",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crates-io",
+    "package": "zlib-rs",
+    "package_version": "0.5"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "gunzip via zlib-rs. Must decompress flate2 and zlib-rs gzip payloads to the same bytes.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::zlib_rs_gunzip::decompress({bytes}.as_slice())?"
+    }
+  }
+}

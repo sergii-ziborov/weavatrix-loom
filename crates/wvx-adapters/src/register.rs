@@ -22,6 +22,7 @@ use crate::{
     reference_text_ascii_upper, reference_text_lowercase, reference_text_uppercase,
     serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize, sha2_sha256,
     sha2_sha256_chunked, sha2_sha256_streaming, sha2_sha256_update_all, simd_json_parse,
+    sonic_rs_parse, zlib_rs_gunzip, zlib_rs_gzip,
 };
 
 /// Register all pilot transform implementations into the SDK plugin table.
@@ -57,6 +58,13 @@ pub fn register_pilot_plugins() {
                 "simd-json.parse@1",
                 "data.json.parse@1",
                 simd_json_parse::parse,
+            )
+        });
+        register_plugin("sonic-rs.parse@1", "data.json.parse@1", || {
+            bytes_to_json_handler(
+                "sonic-rs.parse@1",
+                "data.json.parse@1",
+                sonic_rs_parse::parse,
             )
         });
 
@@ -245,6 +253,20 @@ pub fn register_pilot_plugins() {
                 "flate2.gunzip-take@1",
                 "data.compress.gunzip@1",
                 flate2_gunzip_take::decompress,
+            )
+        });
+        register_plugin("zlib-rs.gzip@1", "data.compress.gzip@1", || {
+            bytes_to_bytes_handler(
+                "zlib-rs.gzip@1",
+                "data.compress.gzip@1",
+                zlib_rs_gzip::compress,
+            )
+        });
+        register_plugin("zlib-rs.gunzip@1", "data.compress.gunzip@1", || {
+            bytes_to_bytes_handler(
+                "zlib-rs.gunzip@1",
+                "data.compress.gunzip@1",
+                zlib_rs_gunzip::decompress,
             )
         });
 

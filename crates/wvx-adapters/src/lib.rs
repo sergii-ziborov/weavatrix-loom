@@ -38,6 +38,9 @@ pub mod sha2_sha256_chunked;
 pub mod sha2_sha256_streaming;
 pub mod sha2_sha256_update_all;
 pub mod simd_json_parse;
+pub mod sonic_rs_parse;
+pub mod zlib_rs_gunzip;
+pub mod zlib_rs_gzip;
 
 #[cfg(feature = "host")]
 pub use register::register_pilot_plugins;
@@ -48,6 +51,7 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("wvx.reference.json-parse@1", "reference_json_parse"),
     ("json-crate.parse@1", "json_crate_parse"),
     ("simd-json.parse@1", "simd_json_parse"),
+    ("sonic-rs.parse@1", "sonic_rs_parse"),
     ("serde-json.serialize@1", "serde_json_serialize"),
     ("wvx.reference.json-serialize@1", "reference_json_serialize"),
     (
@@ -81,6 +85,8 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ("flate2.gunzip@1", "flate2_gunzip"),
     ("flate2.gunzip-chunked@1", "flate2_gunzip_chunked"),
     ("flate2.gunzip-take@1", "flate2_gunzip_take"),
+    ("zlib-rs.gzip@1", "zlib_rs_gzip"),
+    ("zlib-rs.gunzip@1", "zlib_rs_gunzip"),
     // Domain 4 — binary codecs (hex + base64 multi-impl)
     ("wvx.reference.hex-encode@1", "reference_hex_encode"),
     (

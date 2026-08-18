@@ -1,0 +1,33 @@
+{
+  "id": "zlib-rs.gzip",
+  "version": "1",
+  "capability": {
+    "id": "data.compress.gzip",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crates-io",
+    "package": "zlib-rs",
+    "package_version": "0.5"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "gzip via zlib-rs (pure Rust zlib). Distinct from flate2/miniz_oxide. Compressed bytes need not match flate2; gunzip equality does.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::zlib_rs_gzip::compress({bytes}.as_slice())?"
+    }
+  }
+}

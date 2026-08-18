@@ -30,7 +30,7 @@ That is the **#1 project bottleneck**.
 bytes → json_value → json_value → bytes
 ```
 
-Multi-impl parse/serialize/path_set (`serde_json` · reference · `json` crate · **`simd-json`**). Pilot fixture: `pilot-json-pipeline.wvx.json`.
+Multi-impl parse/serialize/path_set (`serde_json` · reference · `json` crate · `simd-json` · **`sonic-rs`**). Pilot fixture: `pilot-json-pipeline.wvx.json`.
 
 ### Domain 2 — Hashing (in progress / pilot)
 
@@ -59,8 +59,8 @@ bytes → gzip-bytes → bytes   (round-trip)
 
 | Capability | Multi-impl (3 each) |
 |------------|---------------------|
-| `data.compress.gzip@1` | flate2 write_all · chunked · oneshot-read |
-| `data.compress.gunzip@1` | flate2 read_to_end · chunked · take |
+| `data.compress.gzip@1` | flate2 write_all · chunked · oneshot-read · **zlib-rs** |
+| `data.compress.gunzip@1` | flate2 read_to_end · chunked · take · **zlib-rs** |
 
 Fixture: `fixtures/pilot-compress-pipeline.wvx.json`.  
 Compressed **byte equality** is not required across gzip impls; **gunzip equality** is.

@@ -467,6 +467,7 @@ mod tests {
                 id == "serde-json.parse-owned@1"
                     || id == "external.demo.json-parse@1"
                     || id == "simd-json.parse@1"
+                    || id == "sonic-rs.parse@1"
             }),
             "unexpected impls: {:?}",
             r.implementations

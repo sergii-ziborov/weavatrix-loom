@@ -1,0 +1,34 @@
+{
+  "id": "sonic-rs.parse",
+  "version": "1",
+  "capability": {
+    "id": "data.json.parse",
+    "version": "1"
+  },
+  "source": {
+    "kind": "crates-io",
+    "package": "sonic-rs",
+    "package_version": "0.3"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapters",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "CloudWeGo sonic-rs SIMD parse. Not the default. Fastest on x86_64/aarch64; other targets fall back. Candidate until a live suite artifact.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapters",
+      "crate_path": "crates/wvx-adapters",
+      "template": "wvx_adapters::sonic_rs_parse::parse({bytes}.as_slice())?"
+    }
+  },
+  "conformance_profile": "json-rfc8259-core-v1"
+}

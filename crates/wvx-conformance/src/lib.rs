@@ -162,6 +162,7 @@ fn parse_impls() -> &'static [&'static str] {
         "wvx.reference.json-parse@1",
         "json-crate.parse@1",
         "simd-json.parse@1",
+        "sonic-rs.parse@1",
     ]
 }
 

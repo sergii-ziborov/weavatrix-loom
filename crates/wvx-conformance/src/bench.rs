@@ -68,6 +68,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         "wvx.reference.json-parse@1",
         "json-crate.parse@1",
         "simd-json.parse@1",
+        "sonic-rs.parse@1",
     ];
     for impl_id in parse_impls {
         cases.push(bench_parse(
@@ -84,6 +85,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         "serde-json.parse-owned@1",
         "wvx.reference.json-parse@1",
         "simd-json.parse@1",
+        "sonic-rs.parse@1",
     ] {
         cases.push(bench_parse(
             &reg,
@@ -171,6 +173,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         "flate2.gzip@1",
         "flate2.gzip-chunked@1",
         "flate2.gzip-oneshot@1",
+        "zlib-rs.gzip@1",
     ] {
         cases.push(bench_bytes_ports(
             &reg,
@@ -189,6 +192,17 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
         &reg,
         "data.compress.gzip@1",
         "flate2.gzip@1",
+        "gzip_payload_bulk",
+        "bytes",
+        "bytes",
+        &gz_bulk,
+        iterations,
+        warmup,
+    ));
+    cases.push(bench_bytes_ports(
+        &reg,
+        "data.compress.gzip@1",
+        "zlib-rs.gzip@1",
         "gzip_payload_bulk",
         "bytes",
         "bytes",
@@ -215,6 +229,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
             "flate2.gunzip@1",
             "flate2.gunzip-chunked@1",
             "flate2.gunzip-take@1",
+            "zlib-rs.gunzip@1",
         ] {
             cases.push(bench_bytes_ports(
                 &reg,

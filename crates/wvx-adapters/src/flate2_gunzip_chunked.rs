@@ -20,6 +20,22 @@ pub fn decompress(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+pub fn decompress_read<R: Read>(reader: R) -> Result<Vec<u8>, String> {
+    let mut dec = GzDecoder::new(reader);
+    let mut out = Vec::new();
+    let mut buf = [0u8; 512];
+    loop {
+        let n = dec
+            .read(&mut buf)
+            .map_err(|e| format!("gunzip-chunk: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

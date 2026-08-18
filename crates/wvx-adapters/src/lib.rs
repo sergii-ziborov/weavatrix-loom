@@ -42,6 +42,7 @@ pub mod sha2_sha256_update_all;
 pub mod simd_json_parse;
 #[cfg(feature = "sonic")]
 pub mod sonic_rs_parse;
+pub mod stream;
 pub mod zlib_rs_gunzip;
 pub mod zlib_rs_gzip;
 

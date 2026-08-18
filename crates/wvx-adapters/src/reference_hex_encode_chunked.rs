@@ -17,6 +17,20 @@ pub fn encode(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+pub fn encode_read<R: std::io::Read>(reader: R) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    crate::stream::pump(reader, |chunk| {
+        for piece in chunk.chunks(CHUNK) {
+            for &b in piece {
+                out.push(HEX[(b >> 4) as usize]);
+                out.push(HEX[(b & 0xf) as usize]);
+            }
+        }
+        Ok(())
+    })?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

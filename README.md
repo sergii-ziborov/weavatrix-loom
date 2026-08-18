@@ -307,8 +307,9 @@ cargo run -p wvx-cli -- run-wasm fixtures/pilot-json-pipeline.wvx.json \
 ```
 
 The export is a normal Cargo package with `run_pipeline(&[u8]) -> Result<Vec<u8>, String>`  
-(raw stdout bytes — works for JSON **and** binary digests).  
-Input is binary-safe: `WVX_PIPELINE_INPUT_FILE` (raw path) or `WVX_PIPELINE_INPUT_B64`.  
+and `run_pipeline_read<R: Read>` (64 KiB I/O for single-step hash / gzip / hex;  
+JSON and multi-step graphs still buffer).  
+Input is binary-safe: `WVX_PIPELINE_INPUT_FILE` (streamed `Read`) or `WVX_PIPELINE_INPUT_B64`.  
 API **`compile_release`** requires a `VerifiedImplementation` pool (not raw manifests).  
 `export-wasm` writes `.cargo/config.toml` + a wasm-safe vendor (no simd-json / sonic-rs / rayon).  
 `--check` / `run-wasm` need `rustup target add wasm32-wasip1`. `run-wasm` also needs the
@@ -500,6 +501,7 @@ cargo test -p wvx-conformance
 | **SPDX 2.3** JSON from the same component set as `sbom` (`NOASSERTION` licenses; not 3.0 / not a scan) | `wvx registry spdx` | **Landed** |
 | **Wasm sidecar** Optional `wasm32-wasip1` export (native default) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
 | **Wasm host** Thin `run-wasm` via wasmtime CLI (not embedded VM / not WIT) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
+| **Streaming I/O** `run_pipeline_read` for hash/gzip/hex; JSON still buffers; no streaming IR | this section | **Landed** |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 
 Go/No-Go evidence:

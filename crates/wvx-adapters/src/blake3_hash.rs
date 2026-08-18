@@ -8,6 +8,15 @@ pub fn digest(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(blake3::hash(bytes).as_bytes().to_vec())
 }
 
+pub fn digest_read<R: std::io::Read>(reader: R) -> Result<Vec<u8>, String> {
+    let mut hasher = blake3::Hasher::new();
+    crate::stream::pump(reader, |chunk| {
+        hasher.update(chunk);
+        Ok(())
+    })?;
+    Ok(hasher.finalize().as_bytes().to_vec())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -21,5 +30,6 @@ mod tests {
         // Different from SHA-256 of same message
         let sha = crate::sha2_sha256::digest(b"loom").unwrap();
         assert_ne!(a, sha);
+        assert_eq!(digest_read(&b"loom"[..]).unwrap(), a);
     }
 }

@@ -15,6 +15,15 @@ pub fn digest(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(hasher.finalize().to_vec())
 }
 
+pub fn digest_read<R: std::io::Read>(reader: R) -> Result<Vec<u8>, String> {
+    let mut hasher = Sha256::new();
+    crate::stream::pump(reader, |chunk| {
+        hasher.update(chunk);
+        Ok(())
+    })?;
+    Ok(hasher.finalize().to_vec())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -24,5 +33,6 @@ mod tests {
     fn matches_oneshot() {
         let msg = vec![0xABu8; 10_000];
         assert_eq!(digest(&msg).unwrap(), sha2_sha256::digest(&msg).unwrap());
+        assert_eq!(digest_read(msg.as_slice()).unwrap(), digest(&msg).unwrap());
     }
 }

@@ -16,6 +16,18 @@ pub fn compress(bytes: &[u8]) -> Result<Vec<u8>, String> {
     enc.finish().map_err(|e| format!("gzip-finish: {e}"))
 }
 
+pub fn compress_read<R: std::io::Read>(reader: R) -> Result<Vec<u8>, String> {
+    let mut enc = GzEncoder::new(Vec::new(), Compression::default());
+    crate::stream::pump(reader, |chunk| {
+        for piece in chunk.chunks(CHUNK) {
+            enc.write_all(piece)
+                .map_err(|e| format!("gzip-write: {e}"))?;
+        }
+        Ok(())
+    })?;
+    enc.finish().map_err(|e| format!("gzip-finish: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

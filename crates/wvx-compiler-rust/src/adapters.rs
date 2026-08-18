@@ -140,6 +140,36 @@ pub fn needs_external_adapters(impls: &BTreeSet<String>) -> bool {
 }
 
 /// Implementations that require native SIMD / rayon and are rejected on wasm export.
+/// `run_pipeline_read` call for a single-transform streamable impl.
+pub fn stream_read_call(implementation_id: &str) -> Option<&'static str> {
+    match implementation_id {
+        "sha2.sha256@1" => Some("wvx_adapters::sha2_sha256::digest_read(reader)"),
+        "sha2.sha256-streaming@1" => {
+            Some("wvx_adapters::sha2_sha256_streaming::digest_read(reader)")
+        }
+        "sha2.sha256-chunked@1" => Some("wvx_adapters::sha2_sha256_chunked::digest_read(reader)"),
+        "sha2.sha256-update-all@1" => {
+            Some("wvx_adapters::sha2_sha256_update_all::digest_read(reader)")
+        }
+        "blake3.blake3@1" => Some("wvx_adapters::blake3_hash::digest_read(reader)"),
+        "flate2.gzip@1" => Some("wvx_adapters::flate2_gzip::compress_read(reader)"),
+        "flate2.gzip-chunked@1" => Some("wvx_adapters::flate2_gzip_chunked::compress_read(reader)"),
+        "flate2.gzip-oneshot@1" => Some("wvx_adapters::flate2_gzip_oneshot::compress_read(reader)"),
+        "flate2.gunzip@1" => Some("wvx_adapters::flate2_gunzip::decompress_read(reader)"),
+        "flate2.gunzip-chunked@1" => {
+            Some("wvx_adapters::flate2_gunzip_chunked::decompress_read(reader)")
+        }
+        "flate2.gunzip-take@1" => Some("wvx_adapters::flate2_gunzip_take::decompress_read(reader)"),
+        "wvx.reference.hex-encode@1" => {
+            Some("wvx_adapters::reference_hex_encode::encode_read(reader)")
+        }
+        "wvx.reference.hex-encode-chunked@1" => {
+            Some("wvx_adapters::reference_hex_encode_chunked::encode_read(reader)")
+        }
+        _ => None,
+    }
+}
+
 pub fn wasm_incompatible_reason(implementation_id: &str) -> Option<&'static str> {
     match implementation_id {
         "simd-json.parse@1" => Some("simd-json needs native SIMD (not wasm32-wasip1)"),

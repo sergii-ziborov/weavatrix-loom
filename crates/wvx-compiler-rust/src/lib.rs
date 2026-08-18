@@ -420,7 +420,7 @@ pub fn compile_with_policy(
 
     files.push(GeneratedFile {
         relative_path: "src/lib.rs".into(),
-        contents: "//! Generated Loom export.\n//!\n//! Uses vendored adapters under `vendor/`.\n\npub mod generated_pipeline;\n\npub use generated_pipeline::run_pipeline;\n".into(),
+        contents: "//! Generated Loom export.\n//!\n//! Uses vendored adapters under `vendor/`.\n\npub mod generated_pipeline;\n\npub use generated_pipeline::{run_pipeline, run_pipeline_read};\n".into(),
     });
 
     let workspace = GeneratedWorkspace {
@@ -954,6 +954,8 @@ mod tests {
             .find(|f| f.relative_path == "src/generated_pipeline.rs")
             .unwrap();
         assert!(pipeline.contents.contains("run_pipeline"));
+        assert!(pipeline.contents.contains("run_pipeline_read"));
+        assert!(pipeline.contents.contains("read_to_end"));
         assert!(pipeline
             .contents
             .contains("wvx_adapters::serde_json_parse_owned"));
@@ -1087,6 +1089,28 @@ mod tests {
             err.to_string().contains("simd-json") || err.to_string().contains("wasm"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn hash_export_streams_read() {
+        let text = include_str!("../../../fixtures/pilot-hash-pipeline.wvx.json");
+        let project: Project = serde_json::from_str(text).unwrap();
+        let report =
+            compile_with_policy(&project, &BTreeMap::new(), &CompilePolicy::dev()).unwrap();
+        let pipeline = report
+            .workspace
+            .files
+            .iter()
+            .find(|f| f.relative_path == "src/generated_pipeline.rs")
+            .unwrap();
+        assert!(
+            pipeline
+                .contents
+                .contains("sha2_sha256::digest_read(reader)"),
+            "{}",
+            pipeline.contents
+        );
+        assert!(!pipeline.contents.contains("reader.read_to_end(&mut input)"));
     }
 
     #[test]

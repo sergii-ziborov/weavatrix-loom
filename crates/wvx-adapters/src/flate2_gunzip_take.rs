@@ -14,6 +14,16 @@ pub fn decompress(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+pub fn decompress_read<R: Read>(reader: R) -> Result<Vec<u8>, String> {
+    let dec = GzDecoder::new(reader);
+    let mut limited = dec.take(u64::MAX);
+    let mut out = Vec::new();
+    limited
+        .read_to_end(&mut out)
+        .map_err(|e| format!("gunzip-take: {e}"))?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

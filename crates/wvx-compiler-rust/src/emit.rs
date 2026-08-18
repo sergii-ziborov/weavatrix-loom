@@ -117,6 +117,25 @@ use std::env;
 use std::io::{self, Write};
 
 fn main() {
+    if let Ok(path) = env::var("WVX_PIPELINE_INPUT_FILE") {
+        match std::fs::File::open(&path) {
+            Ok(file) => match generated_pipeline::run_pipeline_read(file) {
+                Ok(bytes) => {
+                    let _ = io::stdout().write_all(&bytes);
+                }
+                Err(err) => {
+                    eprintln!("pipeline error: {err}");
+                    std::process::exit(1);
+                }
+            },
+            Err(err) => {
+                eprintln!("input error: {path}: {err}");
+                std::process::exit(2);
+            }
+        }
+        return;
+    }
+
     let input = match read_pipeline_input() {
         Ok(b) => b,
         Err(err) => {
@@ -137,9 +156,6 @@ fn main() {
 }
 
 fn read_pipeline_input() -> Result<Vec<u8>, String> {
-    if let Ok(path) = env::var("WVX_PIPELINE_INPUT_FILE") {
-        return std::fs::read(&path).map_err(|e| format!("{path}: {e}"));
-    }
     if let Ok(b64) = env::var("WVX_PIPELINE_INPUT_B64") {
         return decode_b64(&b64);
     }
@@ -346,7 +362,61 @@ pub fn pipeline(
     };
     writeln!(out, "    Ok({ret})").ok();
     writeln!(out, "}}").ok();
+    writeln!(out).ok();
+    emit_run_pipeline_read(&mut out, project, order, resolved);
     Ok(out)
+}
+
+/// Single-transform hash/gzip/hex graphs stream the input `Read`.
+/// JSON / multi-step graphs still `read_to_end` then [`run_pipeline`].
+fn emit_run_pipeline_read(
+    out: &mut String,
+    project: &Project,
+    order: &[String],
+    resolved: &BTreeMap<String, String>,
+) {
+    writeln!(
+        out,
+        "/// Stream input when the graph is one streamable transform; otherwise buffer."
+    )
+    .ok();
+    writeln!(
+        out,
+        "pub fn run_pipeline_read<R: std::io::Read>(mut reader: R) -> Result<Vec<u8>, String> {{"
+    )
+    .ok();
+    if let Some(call) = linear_stream_call(project, order, resolved) {
+        writeln!(out, "    {call}").ok();
+    } else {
+        writeln!(out, "    let mut input = Vec::new();").ok();
+        writeln!(
+            out,
+            "    reader.read_to_end(&mut input).map_err(|e| format!(\"read: {{e}}\"))?;"
+        )
+        .ok();
+        writeln!(out, "    run_pipeline(&input)").ok();
+    }
+    writeln!(out, "}}").ok();
+}
+
+fn linear_stream_call(
+    project: &Project,
+    order: &[String],
+    resolved: &BTreeMap<String, String>,
+) -> Option<String> {
+    let mut transforms = Vec::new();
+    for id in order {
+        let inst = project.instance(id)?;
+        if adapters::is_passthrough_io(&inst.capability.as_key()) {
+            continue;
+        }
+        transforms.push(resolved.get(id)?.as_str());
+    }
+    if transforms.len() != 1 {
+        return None;
+    }
+    let call = adapters::stream_read_call(transforms[0])?;
+    Some(format!("{call}?"))
 }
 
 fn rust_var(instance: &str, port: &str) -> String {

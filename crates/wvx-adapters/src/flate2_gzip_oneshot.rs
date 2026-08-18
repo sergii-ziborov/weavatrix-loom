@@ -13,6 +13,15 @@ pub fn compress(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Wrap the reader in `GzEncoder` — true streaming compress.
+pub fn compress_read<R: Read>(reader: R) -> Result<Vec<u8>, String> {
+    let mut enc = GzEncoder::new(reader, Compression::default());
+    let mut out = Vec::new();
+    enc.read_to_end(&mut out)
+        .map_err(|e| format!("gzip-read: {e}"))?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

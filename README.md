@@ -84,7 +84,8 @@ feeds signatures/spans (ADR-0012).
 > offline **Sigstore-shaped** bundle (in-toto + DSSE + HMAC) + local **hashedrekord**
 > (**not** Fulcio identity, **not** public Rekor), **SPDX 2.3 JSON** (licenses
 > `NOASSERTION`; not SPDX 3.0),
-> optional **`wasm32-wasip1` sidecar** (`export-wasm`; native remains the default).  
+> optional **`wasm32-wasip1` sidecar** + thin **`run-wasm`** host via wasmtime CLI
+> (not an embedded VM / WIT; native remains the default).  
 > Public release path is `VerifiedImplementation` → `compile_release` only.  
 > Not a hosted marketplace. Details:
 > **[docs/beta-prototype.md](docs/beta-prototype.md)** ·
@@ -186,7 +187,7 @@ embed it.
 | `wvx-project-graph` | Project graph operations + GraphPatch apply (**lib**) |
 | `wvx-validator` | M2 validation passes (schema, cycles, cardinality, policy, …) (**lib**) |
 | `wvx-runtime` | Dynamic playground execution (erased values) (**lib**) |
-| `wvx-compiler-rust` | Export to Rust + `CompilePolicy` / **`compile_release`** + optional **`export-wasm`** (**lib**) |
+| `wvx-compiler-rust` | Export to Rust + `CompilePolicy` / **`compile_release`** + optional **`export-wasm`** / **`run-wasm`** (**lib**) |
 | `wvx-registry-client` | Registry + **EvidenceArtifact v0.2** + **promote** + HMAC attest / offline Sigstore + local hashedrekord + SPDX 2.3 + resolve (**lib**) |
 | `wvx-command-bus` | Shared semantic API for **CLI + HTTP** (**lib**; preferred host entry) |
 | `wvx-cli` | Command-line entry point (**product host**) |
@@ -296,9 +297,13 @@ cargo run -p wvx-cli -- export-rust fixtures/pilot-json-pipeline.wvx.json \
 cargo run -p wvx-cli -- export-rust fixtures/pilot-json-pipeline.wvx.json \
   -o /tmp/loom-export-rel --check --release
 
-# Optional wasm32-wasip1 sidecar (not a Wasm host; rejects SIMD / rayon impls)
+# Optional wasm32-wasip1 sidecar (rejects SIMD / rayon impls)
 cargo run -p wvx-cli -- export-wasm fixtures/pilot-json-pipeline.wvx.json \
   -o /tmp/loom-export-wasm --check
+
+# Thin host: cargo build --target wasm32-wasip1 + wasmtime CLI (must be on PATH)
+cargo run -p wvx-cli -- run-wasm fixtures/pilot-json-pipeline.wvx.json \
+  --input-json "{\"hello\":\"world\"}"
 ```
 
 The export is a normal Cargo package with `run_pipeline(&[u8]) -> Result<Vec<u8>, String>`  
@@ -306,7 +311,8 @@ The export is a normal Cargo package with `run_pipeline(&[u8]) -> Result<Vec<u8>
 Input is binary-safe: `WVX_PIPELINE_INPUT_FILE` (raw path) or `WVX_PIPELINE_INPUT_B64`.  
 API **`compile_release`** requires a `VerifiedImplementation` pool (not raw manifests).  
 `export-wasm` writes `.cargo/config.toml` + a wasm-safe vendor (no simd-json / sonic-rs / rayon).  
-`--check` needs `rustup target add wasm32-wasip1`. This is **not** Fulcio, wasmtime, or WIT.
+`--check` / `run-wasm` need `rustup target add wasm32-wasip1`. `run-wasm` also needs the
+**wasmtime CLI** — Loom does not embed a VM and does not implement WIT.
 
 ## Domains (pilots)
 
@@ -492,7 +498,8 @@ cargo test -p wvx-conformance
 | **Sigstore envelope** Offline in-toto Statement + DSSE + bundle v0.3 media type (HMAC; **not** Fulcio) | `wvx registry sigstore` | **Landed** |
 | **Rekor hashedrekord** Local `hashedrekord` v0.0.1 + `tlogEntries`; refuse `WVX_REKOR_URL` / Fulcio certs | `wvx registry rekor` | **Landed** (not public Rekor) |
 | **SPDX 2.3** JSON from the same component set as `sbom` (`NOASSERTION` licenses; not 3.0 / not a scan) | `wvx registry spdx` | **Landed** |
-| **Wasm sidecar** Optional `wasm32-wasip1` export (native default; no host/WIT) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
+| **Wasm sidecar** Optional `wasm32-wasip1` export (native default) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
+| **Wasm host** Thin `run-wasm` via wasmtime CLI (not embedded VM / not WIT) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 
 Go/No-Go evidence:

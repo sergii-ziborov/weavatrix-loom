@@ -549,6 +549,8 @@ fn write_compiled_workspace(
         cargo_lock_generated: false,
         policy_id: policy.id.clone(),
         target: None,
+        host: None,
+        wasm_path: None,
     };
 
     if policy.generate_cargo_lock {
@@ -643,7 +645,7 @@ pub fn export_wasm_to_directory(
             "sonic-rs.parse@1",
             "blake3.blake3-parallel@1"
         ],
-        "note": "Optional sidecar (ADR-0006). Not a Wasm host, WIT component, or wasmtime runtime."
+        "note": "Optional sidecar (ADR-0006). Host is `wvx run-wasm` via wasmtime CLI — not an embedded VM or WIT."
     });
     report.workspace.files.push(GeneratedFile {
         relative_path: "weavatrix.wasm.json".into(),
@@ -679,6 +681,88 @@ pub fn export_wasm_to_directory(
     Ok(export)
 }
 
+/// Thin WASI host: build the sidecar and run it with the **wasmtime CLI**.
+///
+/// This is not an embedded wasmtime/cranelift VM and not a WIT component
+/// runtime. Fail-closed when `wasm32-wasip1` or `wasmtime` is missing.
+pub fn run_wasm_in_directory(
+    project: &Project,
+    out_dir: &Path,
+    input: &[u8],
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+    policy: &CompilePolicy,
+) -> Result<ExportReport, CompileError> {
+    require_wasm_host_tools()?;
+    let mut export = export_wasm_to_directory(project, out_dir, false, sdk_emits, policy)?;
+    let status = Command::new("cargo")
+        .args(["build", "--quiet", "--target", WASM_TARGET])
+        .current_dir(out_dir)
+        .status()
+        .map_err(|e| CompileError::Cargo(e.to_string()))?;
+    if !status.success() {
+        return Err(CompileError::Cargo(format!(
+            "cargo build --target {WASM_TARGET} failed for wasm host"
+        )));
+    }
+    let rel_wasm = format!("target/{WASM_TARGET}/debug/{}.wasm", export.package_name);
+    let wasm = out_dir.join(&rel_wasm);
+    if !wasm.is_file() {
+        return Err(CompileError::Cargo(format!(
+            "wasm artifact missing at {}",
+            wasm.display()
+        )));
+    }
+    let input_rel = ".wvx-input.bin";
+    fs::write(out_dir.join(input_rel), input).map_err(|e| CompileError::Io(e.to_string()))?;
+    let output = Command::new("wasmtime")
+        .args([
+            "--dir",
+            ".",
+            "--env",
+            &format!("WVX_PIPELINE_INPUT_FILE={input_rel}"),
+            &rel_wasm,
+        ])
+        .current_dir(out_dir)
+        .output()
+        .map_err(|e| CompileError::Cargo(format!("wasmtime CLI: {e}")))?;
+    let _ = fs::remove_file(out_dir.join(input_rel));
+    if !output.status.success() {
+        return Err(CompileError::Cargo(format!(
+            "wasmtime failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    export.check_ok = Some(true);
+    export.host = Some("wasmtime-cli".into());
+    export.wasm_path = Some(rel_wasm);
+    export.run_output = Some(output.stdout.clone());
+    export.run_stdout = String::from_utf8(output.stdout).ok();
+    Ok(export)
+}
+
+pub fn require_wasm_host_tools() -> Result<(), CompileError> {
+    if !wasm_target_installed() {
+        return Err(CompileError::Cargo(format!(
+            "rustup target `{WASM_TARGET}` is not installed; rustup target add {WASM_TARGET}"
+        )));
+    }
+    if !wasmtime_cli_available() {
+        return Err(CompileError::Cargo(
+            "wasmtime CLI is not on PATH (Loom hosts via wasmtime; not an embedded VM or WIT). Install: https://wasmtime.dev/"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn wasmtime_cli_available() -> bool {
+    Command::new("wasmtime")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 fn wasm_target_installed() -> bool {
     Command::new("rustup")
         .args(["target", "list", "--installed"])
@@ -708,6 +792,11 @@ pub struct ExportReport {
     /// Set on wasm sidecar export (`wasm32-wasip1`). Absent for native.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    /// `wasmtime-cli` when `run-wasm` hosted the artifact. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wasm_path: Option<String>,
 }
 
 /// instance_id → implementation_id + resolution explanations
@@ -998,5 +1087,35 @@ mod tests {
             err.to_string().contains("simd-json") || err.to_string().contains("wasm"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn run_wasm_fail_closed_without_host_tools() {
+        if wasm_target_installed() && wasmtime_cli_available() {
+            return;
+        }
+        let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
+        let project: Project = serde_json::from_str(text).unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "wvx-wasm-host-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let err = run_wasm_in_directory(
+            &project,
+            &dir,
+            br#"{"hello":"world"}"#,
+            &BTreeMap::new(),
+            &CompilePolicy::dev(),
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("wasm32-wasip1") || msg.contains("wasmtime"),
+            "{msg}"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 }

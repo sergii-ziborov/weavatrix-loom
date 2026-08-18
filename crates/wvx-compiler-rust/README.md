@@ -34,7 +34,7 @@ Normative boundaries: [ADR-0012](https://github.com/sergii-ziborov/weavatrix-loo
 ## Example
 
 ```rust
-// compile_to_rust / export_to_directory / export_wasm_to_directory (optional sidecar)
+// compile_to_rust / export_to_directory / export_wasm_to_directory / run_wasm_in_directory
 ```
 
 See the monorepo README and `docs/crate-surface.md` for the full crate map and host entry points.

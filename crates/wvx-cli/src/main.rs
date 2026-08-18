@@ -11,10 +11,11 @@ use wvx_command_bus::{
     graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
     implementations_list, load_bench_records, load_project_path, pilot_bench,
     project_export_rust_hydrated, project_export_to_dir_release, project_export_to_dir_with_policy,
-    project_export_wasm_to_dir, project_run, project_validate, registry_admission_audit,
-    registry_human_admit, registry_implementations, registry_inspect, registry_mint_evidence,
-    registry_promote, registry_requalify, registry_resolve, registry_search, registry_summary,
-    registry_truthful_audit, registry_verify_evidence, BusError, CompilePolicy,
+    project_export_wasm_to_dir, project_run, project_run_wasm, project_validate,
+    registry_admission_audit, registry_human_admit, registry_implementations, registry_inspect,
+    registry_mint_evidence, registry_promote, registry_requalify, registry_resolve,
+    registry_search, registry_summary, registry_truthful_audit, registry_verify_evidence, BusError,
+    CompilePolicy,
 };
 use wvx_forge::load_facts_file;
 use wvx_project_graph::GraphPatch;
@@ -46,6 +47,7 @@ fn main() -> ExitCode {
         "implementations" | "impls" => cmd_implementations(),
         "export-rust" => cmd_export(&args),
         "export-wasm" => cmd_export_wasm(&args),
+        "run-wasm" => cmd_run_wasm(&args),
         "registry" => cmd_registry(&args),
         "forge" => cmd_forge(&args),
         "patch" => cmd_patch(&args),
@@ -80,6 +82,7 @@ Usage:
   wvx implementations
   wvx export-rust <project.wvx.json> [-o <dir>] [--check] [--run] [--dev] [--impl id=impl]...
   wvx export-wasm <project.wvx.json> -o <dir> [--check] [--dev] [--impl id=impl]...
+  wvx run-wasm <project.wvx.json> [-o <dir>] [--input file] [--dev] [--impl id=impl]...
   wvx registry summary [--path <dir>]
   wvx registry search [query] [--path <dir>]
   wvx registry implementations [--capability key] [query] [--path <dir>]
@@ -125,9 +128,9 @@ Export options:
 
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
-`export-wasm` is an optional wasm32-wasip1 sidecar (ADR-0006) — not a Wasm host.
-It rejects simd-json / sonic-rs / blake3-parallel. `--check` needs
-`rustup target add wasm32-wasip1`.
+`export-wasm` is an optional wasm32-wasip1 sidecar (ADR-0006).
+`run-wasm` hosts that sidecar via the **wasmtime CLI** (not an embedded VM, not WIT).
+Needs `rustup target add wasm32-wasip1` and `wasmtime` on PATH.
 
   wvx conformance               pilot + multi-impl equality + profile suites
   wvx conformance --profiles    multi-domain profile runner only
@@ -2154,7 +2157,7 @@ fn cmd_export_wasm(args: &[String]) -> ExitCode {
                 i += 1;
             }
             "--run" => {
-                eprintln!("export-wasm does not support --run (no Wasm host in 0.1)");
+                eprintln!("use `wvx run-wasm` to host via wasmtime CLI");
                 return ExitCode::FAILURE;
             }
             "--impl" => {
@@ -2199,6 +2202,128 @@ fn cmd_export_wasm(args: &[String]) -> ExitCode {
     match project_export_wasm_to_dir(&project, &dir, check, reg.as_ref(), policy) {
         Ok(resp) => {
             println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+            if resp.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn cmd_run_wasm(args: &[String]) -> ExitCode {
+    let Some(path) = args.first() else {
+        eprintln!(
+            "usage: wvx run-wasm <project.wvx.json> [-o <dir>] [--input file] [--input-json json] [--dev] [--impl id=impl]"
+        );
+        return ExitCode::FAILURE;
+    };
+
+    let mut out_dir: Option<PathBuf> = None;
+    let mut release = false;
+    let mut overrides = BTreeMap::new();
+    let mut input = br#"{"hello":"world"}"#.to_vec();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" | "--out" => {
+                let Some(dir) = args.get(i + 1) else {
+                    eprintln!("-o requires a directory");
+                    return ExitCode::FAILURE;
+                };
+                out_dir = Some(PathBuf::from(dir));
+                i += 2;
+            }
+            "--release" => {
+                release = true;
+                i += 1;
+            }
+            "--dev" => {
+                release = false;
+                i += 1;
+            }
+            "--input" => {
+                let Some(p) = args.get(i + 1) else {
+                    eprintln!("--input requires a path");
+                    return ExitCode::FAILURE;
+                };
+                match fs::read(p) {
+                    Ok(b) => input = b,
+                    Err(e) => {
+                        eprintln!("--input {p}: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+                i += 2;
+            }
+            "--input-json" => {
+                let Some(json) = args.get(i + 1) else {
+                    eprintln!("--input-json requires JSON");
+                    return ExitCode::FAILURE;
+                };
+                if let Err(e) = serde_json::from_str::<serde_json::Value>(json) {
+                    eprintln!("invalid --input-json: {e}");
+                    return ExitCode::FAILURE;
+                }
+                input = json.as_bytes().to_vec();
+                i += 2;
+            }
+            "--impl" => {
+                let Some(spec) = args.get(i + 1) else {
+                    eprintln!("--impl requires instance=implementation-id");
+                    return ExitCode::FAILURE;
+                };
+                let Some((instance, impl_id)) = spec.split_once('=') else {
+                    eprintln!("--impl expected instance=impl-id");
+                    return ExitCode::FAILURE;
+                };
+                overrides.insert(instance.to_string(), impl_id.to_string());
+                i += 2;
+            }
+            other => {
+                eprintln!("unknown run-wasm option: {other}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let dir = out_dir.unwrap_or_else(|| {
+        std::env::temp_dir().join(format!(
+            "wvx-run-wasm-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    });
+
+    let mut project = match load_project_path(path.as_ref()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    wvx_runtime::apply_implementation_overrides(&mut project, &overrides);
+
+    let policy = if release {
+        CompilePolicy::release()
+    } else {
+        CompilePolicy::dev()
+    };
+    let reg = LocalRegistry::open_default().ok();
+    match project_run_wasm(&project, &dir, &input, reg.as_ref(), policy) {
+        Ok(resp) => {
+            println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+            if let Some(data) = &resp.data {
+                if let Some(stdout) = &data.run_stdout {
+                    println!("\n--- wasmtime stdout ---\n{stdout}");
+                }
+            }
             if resp.ok {
                 ExitCode::SUCCESS
             } else {

@@ -10,7 +10,8 @@ use std::process::Command;
 use thiserror::Error;
 use wvx_compiler_rust::{
     compile_release, compile_to_rust_with_sdk, compile_with_policy, export_release_to_directory,
-    export_to_directory_with_policy, export_wasm_to_directory, ExportReport, GeneratedWorkspace,
+    export_to_directory_with_policy, export_wasm_to_directory, run_wasm_in_directory, ExportReport,
+    GeneratedWorkspace,
 };
 
 // Re-export policy / preview types for hosts (CLI, HTTP).
@@ -334,7 +335,7 @@ pub fn project_export_to_dir_release(
     }
 }
 
-/// Optional wasm32-wasip1 sidecar export (ADR-0006). Not a Wasm host.
+/// Optional wasm32-wasip1 sidecar export (ADR-0006). Host is `project_run_wasm`.
 pub fn project_export_wasm_to_dir(
     project: &Project,
     out_dir: &Path,
@@ -353,6 +354,30 @@ pub fn project_export_wasm_to_dir(
     }
     let sdk = sdk_emits_from_registry(registry);
     match export_wasm_to_directory(&project, out_dir, check, &sdk, &policy) {
+        Ok(report) => Ok(BusResponse::ok(report)),
+        Err(e) => Err(BusError::Compile(e.to_string())),
+    }
+}
+
+/// Host the wasm sidecar via the wasmtime CLI (not an embedded VM).
+pub fn project_run_wasm(
+    project: &Project,
+    out_dir: &Path,
+    input: &[u8],
+    registry: Option<&LocalRegistry>,
+    mut policy: CompilePolicy,
+) -> Result<BusResponse<ExportReport>, BusError> {
+    let mut project = project.clone();
+    let _ = hydrate_project(&mut project, registry);
+    if policy.implementations.is_empty() {
+        if let Some(reg) = registry {
+            if let Ok(impls) = reg.list_implementations() {
+                policy.implementations = impls;
+            }
+        }
+    }
+    let sdk = sdk_emits_from_registry(registry);
+    match run_wasm_in_directory(&project, out_dir, input, &sdk, &policy) {
         Ok(report) => Ok(BusResponse::ok(report)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }

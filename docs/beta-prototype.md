@@ -81,7 +81,7 @@ npm run alpha:check   # test + build (+ check:api if server up)
 |---------|------|
 | **Validator** | Ordered passes: schema · unique caps/ports/instances · entrypoint · bindings (types + cardinality) · cycles · impl compat · config · outputs · compiler_profile · policy. `ValidateOptions` / `ValidateOptions::release()`. |
 | **GraphPatch** | `preview_patch` (ghost, no revision bump) · `commit_patch` (atomic, revision only if valid) · `base_revision` (PATCH-001). HTTP: `/graph/preview_patch`, `/graph/commit_patch`. CLI: `wvx patch preview|commit`. |
-| **Compiler** | `CompilePolicy::dev()` / `::release()` — no candidates in release, trusted emit subset, SHA-256 digests (`weavatrix.digests.json`), optional `Cargo.lock`, TargetProfile + ResolveDecision explanations (`weavatrix.resolution.json`, lockfile `[resolution]`). CLI: `wvx export-rust … --release`. Optional sidecar: `wvx export-wasm` → `wasm32-wasip1` (ADR-0006; rejects SIMD/rayon). |
+| **Compiler** | `CompilePolicy::dev()` / `::release()` — no candidates in release, trusted emit subset, SHA-256 digests (`weavatrix.digests.json`), optional `Cargo.lock`, TargetProfile + ResolveDecision explanations (`weavatrix.resolution.json`, lockfile `[resolution]`). CLI: `wvx export-rust … --release`. Optional sidecar: `wvx export-wasm` → `wasm32-wasip1`. Thin host: `wvx run-wasm` via wasmtime CLI (ADR-0006; rejects SIMD/rayon; not WIT). |
 
 **Do not** expand domains while registry status strings overclaim.
 

@@ -323,6 +323,7 @@ mod tests {
             sdk: None,
             conformance_profile: None,
             evidence_artifact: None,
+            source_ref: None,
         }
     }
 

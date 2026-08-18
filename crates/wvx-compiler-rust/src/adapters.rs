@@ -91,7 +91,7 @@ pub fn known_implementation_ids() -> Vec<&'static str> {
         "serde-json.parse-owned@1",
         "wvx.reference.json-parse@1",
         "json-crate.parse@1",
-        "external.demo.upper-parse@1",
+        "external.demo.json-parse@1",
         "serde-json.serialize@1",
         "wvx.reference.json-serialize@1",
         "wvx.reference.json-serialize-pretty@1",
@@ -147,10 +147,10 @@ pub fn built_in_sdk_emit(implementation_id: &str) -> Option<SdkEmit> {
             Some("crates/wvx-adapters"),
             "wvx_adapters::json_crate_parse::parse({bytes}.as_slice())?",
         ),
-        "external.demo.upper-parse@1" => (
+        "external.demo.json-parse@1" => (
             "wvx-adapter-external-demo",
             Some("crates/wvx-adapter-external-demo"),
-            "wvx_adapter_external_demo::upper_parse({bytes}.as_slice())?",
+            "wvx_adapter_external_demo::parse({bytes}.as_slice())?",
         ),
         "serde-json.serialize@1" => (
             "wvx-adapters",

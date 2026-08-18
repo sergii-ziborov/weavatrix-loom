@@ -60,7 +60,7 @@ pub fn pilot_gate_c_expectations() -> Vec<GateCCaseExpectation> {
     vec![
         GateCCaseExpectation {
             package_rel: "crates/wvx-adapter-external-demo".into(),
-            fn_name: "upper_parse".into(),
+            fn_name: "parse".into(),
             expected_capability: "data.json.parse@1".into(),
             expect_compile: true,
         },
@@ -224,6 +224,8 @@ pub struct GateCOptions {
     /// Gate C v2: never feed `expected_capability` into matcher/draft selection
     /// (grading remains post-hoc against the label).
     pub blind_mapping: bool,
+    /// Gate C v3: do not leak `package_rel` into the matcher; use rustdoc instead.
+    pub neutral_package_ids: bool,
 }
 
 /// Load expectations JSON from `fixtures/gate-c-external/expectations.json` shape.
@@ -251,7 +253,14 @@ pub fn run_gate_c_external(
     run_compile: bool,
     human_minutes: Option<f64>,
 ) -> Result<GateCReport, ForgeError> {
-    run_gate_c_external_ex(external_root, ontology, run_compile, human_minutes, false)
+    run_gate_c_external_ex(
+        external_root,
+        ontology,
+        run_compile,
+        human_minutes,
+        false,
+        false,
+    )
 }
 
 /// Gate C v2 external campaign: **blind** mapping (≥10 cases preferred).
@@ -261,7 +270,34 @@ pub fn run_gate_c_external_v2(
     run_compile: bool,
     human_minutes: Option<f64>,
 ) -> Result<GateCReport, ForgeError> {
-    run_gate_c_external_ex(external_root, ontology, run_compile, human_minutes, true)
+    run_gate_c_external_ex(
+        external_root,
+        ontology,
+        run_compile,
+        human_minutes,
+        true,
+        false,
+    )
+}
+
+/// Gate C v3: held-out crates, **neutral package IDs**, blind mapping.
+///
+/// Matcher sees rustdoc + signature, never the folder name. Forge success is
+/// native export + profile (when a profile exists), not cargo check alone.
+pub fn run_gate_c_external_v3(
+    external_root: impl AsRef<Path>,
+    ontology: Option<&[OntologyCapability]>,
+    run_compile: bool,
+    human_minutes: Option<f64>,
+) -> Result<GateCReport, ForgeError> {
+    run_gate_c_external_ex(
+        external_root,
+        ontology,
+        run_compile,
+        human_minutes,
+        true,
+        true,
+    )
 }
 
 fn run_gate_c_external_ex(
@@ -270,10 +306,12 @@ fn run_gate_c_external_ex(
     run_compile: bool,
     human_minutes: Option<f64>,
     blind: bool,
+    neutral: bool,
 ) -> Result<GateCReport, ForgeError> {
     let root = external_root.as_ref();
-    // Prefer v2 label file when blind.
-    let exp_path = if blind && root.join("expectations.v2.json").is_file() {
+    let exp_path = if neutral && root.join("expectations.v3.json").is_file() {
+        root.join("expectations.v3.json")
+    } else if blind && root.join("expectations.v2.json").is_file() {
         root.join("expectations.v2.json")
     } else {
         root.join("expectations.json")
@@ -283,13 +321,25 @@ fn run_gate_c_external_ex(
     } else {
         return Err(ForgeError::Missing(exp_path));
     };
-    let min = if blind { 10 } else { 5 };
+    let min = if neutral {
+        6
+    } else if blind {
+        10
+    } else {
+        5
+    };
     if expectations.len() < min {
         return Err(ForgeError::Parse(
             root.to_path_buf(),
             format!(
                 "Gate C {} needs ≥{min} external cases, got {}",
-                if blind { "v2 blind" } else { "external" },
+                if neutral {
+                    "v3 held-out"
+                } else if blind {
+                    "v2 blind"
+                } else {
+                    "external"
+                },
                 expectations.len()
             ),
         ));
@@ -303,6 +353,7 @@ fn run_gate_c_external_ex(
             human_minutes,
             expectations: Some(expectations),
             blind_mapping: blind,
+            neutral_package_ids: neutral,
         },
     )
 }
@@ -322,6 +373,7 @@ pub fn run_gate_c_pilot(
             human_minutes: None,
             expectations: None,
             blind_mapping: false,
+            neutral_package_ids: false,
         },
     )
 }
@@ -398,12 +450,23 @@ pub fn run_gate_c(
             continue;
         }
 
-        // Select mapping. Gate C v2 blind: never use expected_capability as a hint.
-        // Include package path in the match blob so hex vs base64 / blake3 vs sha256 disambiguate.
+        // v2 blind: never use expected_capability as a hint.
+        // v3: never leak package_rel; rustdoc from source is allowed.
+        let docs = if opts.neutral_package_ids {
+            source_docs(&pkg)
+        } else {
+            String::new()
+        };
         let match_blob = |c: &crate::extract::ApiCandidate| -> (String, String) {
-            let name = format!("{} {} {}", c.name, exp.package_rel, c.path);
-            let sig = format!("{} {}", c.signature, exp.package_rel);
-            (name, sig)
+            if opts.neutral_package_ids {
+                let name = format!("{} {}", c.name, docs);
+                let sig = format!("{} {}", c.signature, docs);
+                (name, sig)
+            } else {
+                let name = format!("{} {} {}", c.name, exp.package_rel, c.path);
+                let sig = format!("{} {}", c.signature, exp.package_rel);
+                (name, sig)
+            }
         };
         let mut best = fn_candidates[0];
         let (n0, s0) = match_blob(best);
@@ -608,7 +671,13 @@ pub fn run_gate_c(
         d
     };
 
-    let min_cases = if opts.blind_mapping { 10 } else { 5 };
+    let min_cases = if opts.neutral_package_ids {
+        6
+    } else if opts.blind_mapping {
+        10
+    } else {
+        5
+    };
     let min_domains = if opts.blind_mapping { 3 } else { 2 };
     let full_external_go = opts.external_crates
         && cases.len() >= min_cases
@@ -621,7 +690,9 @@ pub fn run_gate_c(
 
     let mut notes = vec![
         if opts.external_crates {
-            if opts.blind_mapping {
+            if opts.neutral_package_ids {
+                "Gate C v3 HELD-OUT — neutral package IDs; rustdoc allowed; package_rel not fed to matcher.".into()
+            } else if opts.blind_mapping {
                 "Gate C v2 EXTERNAL BLIND — expected_capability not fed to matcher.".into()
             } else {
                 "Gate C EXTERNAL campaign — packages outside Loom product crates/.".into()
@@ -658,7 +729,10 @@ pub fn run_gate_c(
     }
     if full_external_go {
         notes.push(
-            if opts.blind_mapping {
+            if opts.neutral_package_ids {
+                "Full Gate C v3 held-out criteria met (neutral IDs + native/profile forge success)."
+                    .into()
+            } else if opts.blind_mapping {
                 "Full Gate C v2 blind criteria met (metrics + multi-domain + wired compile + human-minutes)."
                     .into()
             } else {
@@ -685,6 +759,15 @@ pub fn run_gate_c(
         human_minutes_estimate,
         external_crates: opts.external_crates,
     })
+}
+
+fn source_docs(pkg: &Path) -> String {
+    let text = std::fs::read_to_string(pkg.join("src/lib.rs")).unwrap_or_default();
+    text.lines()
+        .filter(|l| l.trim_start().starts_with("///"))
+        .map(|l| l.trim_start().trim_start_matches('/').trim())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn kind_rank(k: MappingKind) -> u8 {
@@ -755,5 +838,46 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert!(report.pilot_go, "pilot_go false: {:?}", report.notes);
+    }
+
+    #[test]
+    fn gate_c_v3_heldout_neutral_ids() {
+        let root = default_workspace_root().join("fixtures/gate-c-heldout");
+        let report = run_gate_c_external_v3(&root, None, true, Some(30.0)).unwrap();
+        assert!(
+            report.extraction_recall >= 0.8,
+            "recall={}",
+            report.extraction_recall
+        );
+        assert!(
+            report.mapping_accuracy >= 0.8,
+            "mapping={} cases={:?}",
+            report.mapping_accuracy,
+            report
+                .cases
+                .iter()
+                .map(|c| (
+                    &c.package_rel,
+                    &c.fn_name,
+                    c.mapping_correct,
+                    &c.mapped_capability,
+                    &c.expected_capability
+                ))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(report.false_semantic_mappings, 0);
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| n.contains("v3") || n.contains("HELD-OUT")),
+            "notes={:?}",
+            report.notes
+        );
+        assert!(
+            report.compile_rate >= 0.5,
+            "compile_rate={} (forge success, not cargo check alone)",
+            report.compile_rate
+        );
     }
 }

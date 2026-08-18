@@ -169,11 +169,21 @@ pub fn match_candidate(
             }
         }
         // Function name token in capability id
-        let name_l = candidate_name.to_ascii_lowercase();
+        let name_l = candidate_name
+            .to_ascii_lowercase()
+            .replace("sha-256", "sha256")
+            .replace("sha_256", "sha256");
         if !name_l.is_empty() && cap.id.to_ascii_lowercase().contains(&name_l) {
             score += 20;
             rationale.push("candidate name appears in capability id".into());
         }
+        let looks_decompress = name_l.contains("gunzip")
+            || name_l.contains("decompress")
+            || name_l.contains("inflate");
+        let looks_codec = name_l.contains("hex")
+            || name_l.contains("base64")
+            || name_l.contains("rfc 4648")
+            || name_l.contains("rfc4648");
         // Strong multi-domain disambiguation for identical bytes→bytes shapes
         if (name_l == "digest"
             || name_l.contains("sha256")
@@ -192,7 +202,8 @@ pub fn match_candidate(
                 rationale.push("digest default → sha256".into());
             }
         }
-        if (name_l == "compress" || name_l.contains("gzip"))
+        if (name_l == "compress" || name_l.contains("gzip") || name_l.contains("compress"))
+            && !looks_decompress
             && cap.id.contains("gzip")
             && !cap.id.contains("gunzip")
         {
@@ -202,21 +213,20 @@ pub fn match_candidate(
             }
             rationale.push("compress verb → data.compress.gzip".into());
         }
-        if (name_l == "decompress" || name_l.contains("gunzip") || name_l.contains("decompress"))
-            && cap.id.contains("gunzip")
-        {
+        if looks_decompress && cap.id.contains("gunzip") {
             score += 80;
             if name_l.contains("gunzip") {
                 score += 40;
             }
             rationale.push("decompress verb → data.compress.gunzip".into());
         }
-        // Avoid gzip package matching gunzip
-        if name_l.contains("gzip") && !name_l.contains("gunzip") && cap.id.contains("gunzip") {
+        // Avoid gzip *compress* packages matching gunzip; rustdoc "gzip decompress" is gunzip.
+        if name_l.contains("gzip") && !looks_decompress && cap.id.contains("gunzip") {
             score = score.saturating_sub(100);
         }
-        // text transforms
-        if (name_l == "transform" || name_l.contains("upper") || name_l.contains("lower"))
+        // text transforms — skip when rustdoc is about hex/base64 case (e.g. "lowercase hex")
+        if !looks_codec
+            && (name_l == "transform" || name_l.contains("upper") || name_l.contains("lower"))
             && cap.id.contains("text")
         {
             if name_l.contains("upper") && cap.id.contains("uppercase") {
@@ -257,8 +267,10 @@ pub fn match_candidate(
                 rationale.push("base64 decode → data.codec.base64_decode".into());
             }
         }
-        // Text: package path upper/lower
-        if name_l.contains("text") || name_l.contains("upper") || name_l.contains("lower") {
+        // Text: package path upper/lower (not hex "lowercase" / base64 alphabet)
+        if !looks_codec
+            && (name_l.contains("text") || name_l.contains("upper") || name_l.contains("lower"))
+        {
             if name_l.contains("upper") && cap.id.contains("unicode_uppercase") {
                 score += 100;
                 rationale.push("upper package → unicode_uppercase".into());
@@ -388,7 +400,10 @@ fn blob_has_base64(s: &str) -> bool {
 }
 
 fn family_hint(name: &str, signature: &str) -> Option<&'static str> {
-    let blob = format!("{name} {signature}").to_ascii_lowercase();
+    let blob = format!("{name} {signature}")
+        .to_ascii_lowercase()
+        .replace("sha-256", "sha256")
+        .replace("sha_256", "sha256");
     // Domain verbs first (before generic encode/parse) for multi-domain bytes→bytes.
     if blob.contains("gunzip")
         || blob.contains("decompress")
@@ -680,6 +695,40 @@ mod tests {
             &pilot_ontology(),
         );
         assert_eq!(m.kind, MappingKind::NewProposal);
+    }
+
+    #[test]
+    fn rustdoc_gzip_decompress_is_gunzip_not_gzip() {
+        let shape = CandidateShape {
+            inputs: vec!["bytes".into()],
+            outputs: vec!["bytes".into()],
+            notes: vec![],
+        };
+        let m = match_candidate(
+            "decompress gzip (RFC 1952) decompress.",
+            "pub fn decompress(bytes: &[u8]) -> Result<Vec<u8>, String>",
+            &shape,
+            &crate::economics::pilot_ontology(),
+        );
+        assert!(m.kind.reuses_existing(), "{m:?}");
+        assert_eq!(m.capability_id, "data.compress.gunzip");
+    }
+
+    #[test]
+    fn rustdoc_hex_lowercase_is_hex_not_text() {
+        let shape = CandidateShape {
+            inputs: vec!["bytes".into()],
+            outputs: vec!["bytes".into()],
+            notes: vec![],
+        };
+        let m = match_candidate(
+            "encode RFC 4648 hex encode (lowercase).",
+            "pub fn encode(bytes: &[u8]) -> Result<Vec<u8>, String>",
+            &shape,
+            &crate::economics::pilot_ontology(),
+        );
+        assert!(m.kind.reuses_existing(), "{m:?}");
+        assert_eq!(m.capability_id, "data.codec.hex_encode");
     }
 
     #[test]

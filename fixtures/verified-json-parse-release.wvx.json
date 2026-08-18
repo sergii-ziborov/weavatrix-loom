@@ -1,0 +1,58 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "verified-json-parse-release",
+  "name": "Verified JSON parse release fixture",
+  "entrypoint": "input",
+  "metadata": {
+    "pilot": "false",
+    "trust": "verified-release-e2e"
+  },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.json.parse",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [
+        { "id": "bytes", "type": "bytes", "required": true }
+      ],
+      "outputs": [
+        { "id": "value", "type": "json_value", "required": true }
+      ],
+      "errors": ["invalid-syntax", "invalid-unicode", "depth-limit"],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 56, "y": 120 }
+    },
+    {
+      "id": "parse",
+      "capability": { "id": "data.json.parse", "version": "1" },
+      "implementation": "serde-json.parse-owned@1",
+      "config": {},
+      "ui": { "x": 436, "y": 120 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "parse", "port": "bytes" }
+    }
+  ]
+}

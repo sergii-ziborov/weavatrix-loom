@@ -161,6 +161,23 @@ pub fn preview_patch(project: &Project, patch: &GraphPatch) -> Result<PatchPrevi
 /// Requires `patch.base_revision` to match when set (PATCH-001). On validation failure
 /// returns [`PatchError::ValidationFailed`] with a preview (revision unchanged).
 pub fn commit_patch(project: &Project, patch: &GraphPatch) -> Result<PatchApplyResult, PatchError> {
+    if patch.ops.is_empty() {
+        return Err(PatchError::Graph(crate::GraphError::EmptyPatch));
+    }
+    if patch.base_revision.is_none() {
+        return Err(PatchError::Graph(crate::GraphError::MissingBaseRevision));
+    }
+    // Stale patches must fail on revision before hint/validation checks.
+    check_base_revision(project, patch)?;
+    if !patch.unresolved.is_empty() {
+        return Err(PatchError::Op {
+            index: 0,
+            message: format!(
+                "authoritative commit refuses unresolved hints: {}",
+                patch.unresolved.join(", ")
+            ),
+        });
+    }
     let preview = preview_patch(project, patch)?;
     if !preview.validation.is_ok() {
         let error_count = preview.validation.errors().count();
@@ -224,17 +241,14 @@ fn apply_one(project: &mut Project, op: &GraphOp) -> Result<(), GraphError> {
                 {
                     project.capabilities.push(cap.clone());
                 }
+            } else if project.capability_for(&instance.capability).is_none() {
+                return Err(GraphError::UnknownCapability(instance.capability.as_key()));
             }
             add_instance(project, instance.clone())
         }
         GraphOp::RemoveInstance { id } => remove_instance(project, id),
         GraphOp::Connect { from, to } => connect(project, from.clone(), to.clone()),
-        GraphOp::Disconnect { from, to } => {
-            project
-                .bindings
-                .retain(|b| !(b.from == *from && b.to == *to));
-            Ok(())
-        }
+        GraphOp::Disconnect { from, to } => crate::disconnect(project, from, to),
         GraphOp::SelectImplementation {
             instance_id,
             implementation,
@@ -726,6 +740,9 @@ mod tests {
         project.revision = 1;
         let mut patch = propose_json_pipeline_patch(&[]);
         patch.base_revision = Some(1);
+        // Propose may leave implementation-choice hints; commit is authoritative only
+        // after those are resolved (or explicitly discarded by the caller).
+        patch.unresolved.clear();
         let committed = commit_patch(&project, &patch).unwrap();
         assert!(committed.committed);
         assert_eq!(committed.revision, 2);
@@ -783,6 +800,7 @@ mod tests {
                 }),
             }],
             rationale: "invalid: unbound required input".into(),
+            base_revision: Some(0),
             ..Default::default()
         };
         let err = commit_patch(&project, &patch).unwrap_err();
@@ -797,5 +815,19 @@ mod tests {
             }
             other => panic!("expected ValidationFailed, got {other}"),
         }
+    }
+
+    #[test]
+    fn commit_requires_base_revision_and_nonempty_ops() {
+        let project = Project::new("p", "P");
+        let empty = GraphPatch {
+            ops: vec![],
+            base_revision: Some(0),
+            ..Default::default()
+        };
+        assert!(commit_patch(&project, &empty).is_err());
+        let mut patch = propose_json_pipeline_patch(&[]);
+        patch.base_revision = None;
+        assert!(commit_patch(&project, &patch).is_err());
     }
 }

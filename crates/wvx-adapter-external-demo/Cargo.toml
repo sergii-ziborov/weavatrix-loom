@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Gate F external demo adapter — not listed in pilot match tables"
+description = "Gate F external JSON parser — semantically equivalent, not listed in pilot match tables"
 publish = false
 
 [features]

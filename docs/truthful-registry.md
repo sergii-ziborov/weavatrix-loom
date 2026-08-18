@@ -25,10 +25,15 @@
    cargo run -p wvx-cli -- registry verify-evidence serde-json.parse-owned@1
    ```
 
-   v0.2 requires: digests (source tree, upstream package, Cargo.lock, adapter, capability
+   v0.2 requires: digests (source tree, adapter source closure, Cargo.lock, package
+   checksum, source_ref revision, exact profile case IDs, upstream package, capability
    contract, profile, suite, subject), environment (target, toolchain, features, runner
-   identity), case-by-case results, timestamp. Verifier **loads the profile** and recomputes
-   linkages. v0.1 remains readable for migration.
+   identity), case-by-case results, timestamp. Verifier **loads the profile** and
+   **recomputes** those digests. v0.1 remains readable for migration.
+
+   Public `promote` does not accept invented `ok=true` cases or evidence booleans.
+   It runs live collectors (or HMAC-signed reports) and writes via staging + lock
+   + atomic rename. Dry-run is read-only.
 
 5. **Unified promotion** (`registry promote`) is the single transaction:
 
@@ -68,5 +73,7 @@ cargo run -p wvx-cli -- registry check
 
 ## Example conformant
 
-`serde-json.parse-owned@1` ships with a sample evidence artifact (Gate A pilot suite).  
-All other pilot impls are intentionally **`candidate`** until suites are recorded.
+`serde-json.parse-owned@1` is the first **live-promotable** parse implementation
+(`json-rfc8259-core-v1`). A checked-in sample artifact is not a substitute for
+`wvx registry promote` / the `verified_release_e2e` CI gate. All other pilot impls
+remain **`candidate`** until a live suite artifact exists.

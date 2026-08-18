@@ -10,17 +10,18 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use wvx_command_bus::{
     forge_cargo_search, forge_compile, forge_draft, forge_draft_facts, forge_export_facts,
-    forge_extract, forge_facts_to_extract, forge_gate_c, forge_inventory, forge_match,
+    forge_extract, forge_facts_to_extract, forge_gate_c_ex3, forge_inventory, forge_match,
     forge_match_facts, forge_register_candidates, graph_apply_patch, graph_commit_patch,
     graph_preview_patch, graph_propose_intent, graph_propose_patch, graph_validate_patch,
     implementations_list, pilot_catalog, project_export_rust_hydrated, project_run_hydrated,
-    project_validate_hydrated, registry_admission_audit, registry_families, registry_implementations,
-    registry_inspect, registry_profiles, registry_resolve, registry_search, registry_summary,
-    registry_truthful_audit, registry_verify_evidence, BusError, BusResponse, PROTOCOL_VERSION,
+    project_validate_hydrated, registry_admission_audit, registry_families,
+    registry_implementations, registry_inspect, registry_profiles, registry_resolve,
+    registry_search, registry_summary, registry_truthful_audit, registry_verify_evidence, BusError,
+    BusResponse, PROTOCOL_VERSION,
 };
-use wvx_ir::{ResolverPolicy, TargetProfile};
 use wvx_forge::WeavatrixFactsBundle;
 use wvx_ir::Project;
+use wvx_ir::{ResolverPolicy, TargetProfile};
 use wvx_project_graph::GraphPatch;
 
 use crate::AppState;
@@ -318,15 +319,13 @@ struct ResolveBody {
 
 /// Explainable resolve (TargetProfile + ResolverPolicy). Does not auto-admit.
 async fn reg_resolve(State(state): State<AppState>, Json(body): Json<ResolveBody>) -> Response {
-    let policy = body.policy.or_else(|| {
-        match body.policy_preset.as_deref() {
-            Some("release") => Some(ResolverPolicy::release()),
-            Some("dev") | None => Some(ResolverPolicy::default()),
-            Some(other) => Some(ResolverPolicy {
-                id: other.into(),
-                ..ResolverPolicy::default()
-            }),
-        }
+    let policy = body.policy.or_else(|| match body.policy_preset.as_deref() {
+        Some("release") => Some(ResolverPolicy::release()),
+        Some("dev") | None => Some(ResolverPolicy::default()),
+        Some(other) => Some(ResolverPolicy {
+            id: other.into(),
+            ..ResolverPolicy::default()
+        }),
     });
     match registry_resolve(
         state.registry.as_ref(),
@@ -340,10 +339,7 @@ async fn reg_resolve(State(state): State<AppState>, Json(body): Json<ResolveBody
 }
 
 /// Verify evidence artifact for an implementation full id.
-async fn reg_verify_evidence(
-    State(state): State<AppState>,
-    Path(key): Path<String>,
-) -> Response {
+async fn reg_verify_evidence(State(state): State<AppState>, Path(key): Path<String>) -> Response {
     match registry_verify_evidence(state.registry.as_ref(), &key) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
@@ -725,6 +721,14 @@ async fn forge_compile_handler(
 struct ForgeGateCBody {
     #[serde(default)]
     workspace: Option<String>,
+    /// External package tree (Gate C v1/v2) or held-out root (v3).
+    #[serde(default)]
+    external: Option<String>,
+    /// `v2` | `v3` (default pilot / v1 when omitted).
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    human_minutes: Option<f64>,
     /// Run cargo check on compileable adapters (default true).
     #[serde(default = "default_true")]
     check: bool,
@@ -744,7 +748,24 @@ async fn forge_gate_c_handler(
             return path_denied(p);
         }
     }
-    match forge_gate_c(ws.as_deref(), Some(state.registry.as_ref()), body.check) {
+    let ext = body.external.as_ref().map(std::path::PathBuf::from);
+    if let Some(ref p) = ext {
+        if !state.security.path_allowed(p) {
+            return path_denied(p);
+        }
+    }
+    let ver = body.version.as_deref().unwrap_or("");
+    let heldout_v3 = ver == "v3";
+    let blind_v2 = ver == "v2";
+    match forge_gate_c_ex3(
+        ws.as_deref(),
+        ext.as_deref(),
+        Some(state.registry.as_ref()),
+        body.check,
+        body.human_minutes,
+        blind_v2,
+        heldout_v3,
+    ) {
         Ok(resp) => Json(resp).into_response(),
         Err(e) => bus_error(e),
     }
@@ -933,7 +954,10 @@ mod tests {
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["ok"], true);
-        assert!(v["data"]["capability_key"].as_str().unwrap().contains("parse"));
+        assert!(v["data"]["capability_key"]
+            .as_str()
+            .unwrap()
+            .contains("parse"));
     }
 
     #[tokio::test]

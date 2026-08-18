@@ -11,12 +11,16 @@
 
 pub mod admission;
 pub mod admit;
+pub mod collect;
 pub mod evidence_artifact;
 pub mod promote;
 pub mod provenance;
 pub mod requalify;
 pub mod resolve;
+pub mod signed;
+pub mod temp_registry;
 pub mod verified;
+pub mod workspace;
 
 pub use admission::{
     audit_implementations, check_implementation, justified_status, AdmissionReport,
@@ -25,15 +29,17 @@ pub use admission::{
 pub use admit::{admit_implementation, AdmitRequest, AdmitResult};
 pub use evidence_artifact::{
     audit_truthful_registry, capture_environment, compute_digests, default_artifact_relpath,
-    load_artifact, load_profile, mint_and_write, mint_artifact, sha256_hex, subject_digest,
-    subject_digest_fnv, subject_digest_sha256, suite_digest_for_profile, verify_artifact,
-    write_artifact, ArtifactCheck, CaseResult, ConformanceProfileDoc, DigestContext,
-    EvidenceArtifact, EvidenceDigests, EvidenceEnvironment, MintRequest, SuiteResult,
-    TruthfulAuditItem, TruthfulAuditReport, EVIDENCE_SCHEMA, EVIDENCE_SCHEMA_V01,
+    load_artifact, load_profile, mint_and_write, mint_artifact, profile_case_ids,
+    profile_case_ids_digest, sha256_hex, subject_digest, subject_digest_fnv, subject_digest_sha256,
+    suite_digest_for_profile, verify_artifact, verify_loaded_artifact, write_artifact,
+    ArtifactCheck, CaseResult, ConformanceProfileDoc, DigestContext, EvidenceArtifact,
+    EvidenceDigests, EvidenceEnvironment, MintRequest, SuiteResult, TruthfulAuditItem,
+    TruthfulAuditReport, EVIDENCE_SCHEMA, EVIDENCE_SCHEMA_V01,
 };
 pub use promote::{
-    promote_from_admit, promote_implementation, write_implementation_manifest, HumanSignature,
-    PromoteRequest, PromoteResult, PromoteStep,
+    promote_from_admit, promote_implementation, promote_implementation_with_collector,
+    write_implementation_manifest, HumanSignature, ProfileSuiteCollector, PromoteRequest,
+    PromoteResult, PromoteStep,
 };
 pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
@@ -41,6 +47,10 @@ pub use provenance::{
 };
 pub use requalify::{requalify_implementation, RequalifyReport};
 pub use resolve::resolve_implementation;
+pub use signed::{
+    hmac_sha256, sign_reports, verify_signed_reports, SignedPromotionReports, SIGNED_REPORTS_SCHEMA,
+};
+pub use temp_registry::{materialize_temp_registry, snapshot_files};
 pub use verified::{verify_all_conformant, verify_implementation, VerifiedImplementation};
 
 use serde::{Deserialize, Serialize};
@@ -213,8 +223,7 @@ impl LocalRegistry {
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
             }
-            let text =
-                fs::read_to_string(&path).map_err(|e| RegistryError::Io(path.clone(), e))?;
+            let text = fs::read_to_string(&path).map_err(|e| RegistryError::Io(path.clone(), e))?;
             let v: serde_json::Value = serde_json::from_str(&text)
                 .map_err(|e| RegistryError::Parse(path.clone(), e.to_string()))?;
             let id = v
@@ -243,11 +252,7 @@ impl LocalRegistry {
                     .and_then(|x| x.as_str())
                     .unwrap_or("")
                     .into(),
-                title: v
-                    .get("title")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("")
-                    .into(),
+                title: v.get("title").and_then(|x| x.as_str()).unwrap_or("").into(),
                 path: rel,
             });
         }

@@ -357,7 +357,7 @@ pub struct SdkEmit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crate_path: Option<String>,
     /// Call template with `{port_id}` placeholders, e.g.
-    /// `wvx_adapter_external_demo::upper_parse({bytes}.as_slice())?`
+    /// `wvx_adapter_external_demo::parse({bytes}.as_slice())?`
     pub template: String,
 }
 

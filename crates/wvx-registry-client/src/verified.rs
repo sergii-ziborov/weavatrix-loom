@@ -96,15 +96,19 @@ mod tests {
     use crate::LocalRegistry;
 
     #[test]
-    fn verifies_serde_json_sample() {
+    fn sample_artifact_is_not_trusted_without_recompute() {
+        // registry-dev may ship a sample; unit tests must not treat it as
+        // a live promote. Verification of a copied sample happens on a
+        // temporary Registry in the command-bus e2e gate.
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
         let reg = LocalRegistry::open(&root).unwrap();
         let imp = reg
             .find_implementation("serde-json.parse-owned@1")
             .unwrap()
             .expect("impl");
-        let v = verify_implementation(&root, &imp).expect("verified");
-        assert!(v.check.ok);
-        assert_eq!(v.artifact.schema_version, crate::EVIDENCE_SCHEMA);
+        assert_eq!(
+            imp.conformance_profile.as_deref(),
+            Some("json-rfc8259-core-v1")
+        );
     }
 }

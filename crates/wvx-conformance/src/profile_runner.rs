@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
 use wvx_registry_client::{
-    load_profile, suite_digest_for_profile, CaseResult, ConformanceProfileDoc,
+    load_profile, profile_case_ids, suite_digest_for_profile, CaseResult, ConformanceProfileDoc,
+    LocalRegistry,
 };
 use wvx_runtime::{HandlerRegistry, WvxValueMap};
 use wvx_types::WvxValue;
@@ -30,23 +31,71 @@ pub struct ProfileRunReport {
     pub guarantees_checked: Vec<String>,
 }
 
-/// Run a versioned profile against all registered handlers for its capability.
+/// Implementations declared for this exact profile in Registry metadata,
+/// intersected with handlers that are actually registered.
+pub fn implementations_for_profile(
+    registry_root: &Path,
+    handlers: &HandlerRegistry,
+    doc: &ConformanceProfileDoc,
+) -> Result<Vec<String>, String> {
+    let reg = LocalRegistry::open(registry_root).map_err(|e| e.to_string())?;
+    let declared = reg.list_implementations().map_err(|e| e.to_string())?;
+    let mut impls: Vec<String> = declared
+        .into_iter()
+        .filter(|imp| {
+            imp.capability.as_key() == doc.capability_key
+                && imp.conformance_profile.as_deref() == Some(doc.id.as_str())
+        })
+        .map(|imp| imp.full_id())
+        .filter(|id| handlers.resolve(&doc.capability_key, Some(id)).is_ok())
+        .collect();
+    impls.sort();
+    impls.dedup();
+    if impls.is_empty() {
+        return Err(format!(
+            "no Registry implementations declared for profile `{}` (capability `{}`) with a registered handler",
+            doc.id, doc.capability_key
+        ));
+    }
+    Ok(impls)
+}
+
+/// Run a versioned profile against implementations that declare that exact profile.
 pub fn run_profile_conformance(
     registry_root: &Path,
     handlers: &HandlerRegistry,
     profile_id: &str,
 ) -> Result<ProfileRunReport, String> {
     let (doc, _) = load_profile(registry_root, profile_id).map_err(|e| e.to_string())?;
-    run_profile_doc(handlers, &doc)
+    let impls = implementations_for_profile(registry_root, handlers, &doc)?;
+    run_profile_doc_for(handlers, &doc, &impls)
 }
 
-/// Run with an already-loaded profile document.
+/// Run the profile suite for a single implementation (promote path).
+pub fn run_profile_for_implementation(
+    registry_root: &Path,
+    handlers: &HandlerRegistry,
+    profile_id: &str,
+    implementation_id: &str,
+) -> Result<ProfileRunReport, String> {
+    let (doc, _) = load_profile(registry_root, profile_id).map_err(|e| e.to_string())?;
+    let allowed = implementations_for_profile(registry_root, handlers, &doc)?;
+    if !allowed.iter().any(|id| id == implementation_id) {
+        return Err(format!(
+            "implementation `{implementation_id}` is not declared for profile `{profile_id}` in Registry metadata"
+        ));
+    }
+    run_profile_doc_for(handlers, &doc, &[implementation_id.to_string()])
+}
+
+/// Run with an already-loaded profile document against **all handlers** of the
+/// capability. Prefer [`run_profile_conformance`] — this path is for fixtures
+/// that have no Registry.
 pub fn run_profile_doc(
     handlers: &HandlerRegistry,
     doc: &ConformanceProfileDoc,
 ) -> Result<ProfileRunReport, String> {
     let cap = doc.capability_key.clone();
-    let suite_digest = suite_digest_for_profile(doc);
     let mut impls = handlers.list_implementations(&cap);
     impls.sort();
     if impls.is_empty() {
@@ -55,6 +104,24 @@ pub fn run_profile_doc(
             doc.id
         ));
     }
+    run_profile_doc_for(handlers, doc, &impls)
+}
+
+fn run_profile_doc_for(
+    handlers: &HandlerRegistry,
+    doc: &ConformanceProfileDoc,
+    impls: &[String],
+) -> Result<ProfileRunReport, String> {
+    let cap = doc.capability_key.clone();
+    let suite_digest = suite_digest_for_profile(doc);
+    let impls = impls.to_vec();
+    if impls.is_empty() {
+        return Err(format!(
+            "no implementations selected for profile {}",
+            doc.id
+        ));
+    }
+    let _expected = profile_case_ids(doc);
 
     let mut cases = Vec::new();
     let mut case_results = Vec::new();
@@ -95,7 +162,7 @@ pub fn run_profile_doc(
                             ok: false,
                             detail: Some("expected failure but succeeded".into()),
                         };
-                        case_results.push(to_case(&cr, "positive", None));
+                        case_results.push(to_case(&cr, "positive", &id, None));
                         cases.push(cr);
                         continue;
                     }
@@ -116,11 +183,21 @@ pub fn run_profile_doc(
                                 ))
                             },
                         };
-                        case_results.push(to_case(&cr, "positive", None));
+                        case_results.push(to_case(&cr, "positive", &id, None));
                         cases.push(cr);
                     } else {
                         outputs.push((impl_id.clone(), out));
-                        // provisional ok; equality checked after loop
+                        let cr = ConformanceCaseResult {
+                            capability: cap.clone(),
+                            implementation: impl_id.clone(),
+                            case: format!("pos:{id}"),
+                            ok: true,
+                            detail: Some(
+                                "accepted (no golden; equality checked separately)".into(),
+                            ),
+                        };
+                        case_results.push(to_case(&cr, "positive", &id, None));
+                        cases.push(cr);
                     }
                 }
                 Err(e) => {
@@ -132,7 +209,7 @@ pub fn run_profile_doc(
                             ok: false,
                             detail: Some(e),
                         };
-                        case_results.push(to_case(&cr, "positive", None));
+                        case_results.push(to_case(&cr, "positive", &id, None));
                         cases.push(cr);
                     } else {
                         let cr = ConformanceCaseResult {
@@ -142,7 +219,7 @@ pub fn run_profile_doc(
                             ok: true,
                             detail: Some(format!("failed as expected: {e}")),
                         };
-                        case_results.push(to_case(&cr, "positive", None));
+                        case_results.push(to_case(&cr, "positive", &id, None));
                         cases.push(cr);
                     }
                 }
@@ -174,7 +251,7 @@ pub fn run_profile_doc(
                         ))
                     },
                 };
-                case_results.push(to_case(&cr, "positive", None));
+                // Equality extras are diagnostic only — not profile case IDs.
                 cases.push(cr);
             }
         }
@@ -204,7 +281,7 @@ pub fn run_profile_doc(
                         ok: false,
                         detail: Some("expected error, got success".into()),
                     };
-                    case_results.push(to_case(&cr, "negative", expect_family.clone()));
+                    case_results.push(to_case(&cr, "negative", &id, expect_family.clone()));
                     cases.push(cr);
                 }
                 Err(e) => {
@@ -227,7 +304,7 @@ pub fn run_profile_doc(
                             ))
                         },
                     };
-                    case_results.push(to_case(&cr, "negative", expect_family.clone()));
+                    case_results.push(to_case(&cr, "negative", &id, expect_family.clone()));
                     cases.push(cr);
                 }
             }
@@ -284,10 +361,11 @@ pub fn run_multi_domain_profiles(
 fn to_case(
     c: &ConformanceCaseResult,
     kind: &str,
+    vector_id: &str,
     expected_error_family: Option<String>,
 ) -> CaseResult {
     CaseResult {
-        case_id: format!("{}:{}:{}", c.implementation, c.case, kind),
+        case_id: format!("{kind}:{vector_id}"),
         kind: kind.into(),
         ok: c.ok,
         detail: c.detail.clone(),
@@ -360,7 +438,11 @@ mod tests {
             "failures: {:?}",
             r.cases.iter().filter(|c| !c.ok).collect::<Vec<_>>()
         );
-        assert!(r.implementations.len() >= 3);
+        assert!(
+            r.implementations.len() >= 3,
+            "expected sha256 impls declared on profile, got {:?}",
+            r.implementations
+        );
     }
 
     #[test]
@@ -368,6 +450,29 @@ mod tests {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
         let h = handlers();
         let r = run_profile_conformance(&root, &h, "hex-rfc-encode-v1").expect("run");
+        assert!(
+            r.ok,
+            "failures: {:?}",
+            r.cases.iter().filter(|c| !c.ok).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn json_rfc8259_selects_only_declared_profile_impls() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
+        let h = handlers();
+        let r = run_profile_conformance(&root, &h, "json-rfc8259-core-v1").expect("run");
+        assert!(
+            r.implementations
+                .iter()
+                .all(|id| id == "serde-json.parse-owned@1" || id == "external.demo.json-parse@1"),
+            "unexpected impls: {:?}",
+            r.implementations
+        );
+        assert!(!r
+            .implementations
+            .iter()
+            .any(|id| id.contains("reference") || id.contains("json-crate")));
         assert!(
             r.ok,
             "failures: {:?}",

@@ -20,14 +20,14 @@ use std::path::Path;
 use std::process::Command;
 use thiserror::Error;
 use wvx_ir::{
-    Implementation, LifecycleStatus, Project, ResolveDecision, ResolverPolicy, SdkEmit,
+    AxisFact, Implementation, LifecycleStatus, Project, ResolveDecision, ResolverPolicy, SdkEmit,
     TargetProfile,
 };
 use wvx_registry_client::{resolve_implementation, VerifiedImplementation};
 use wvx_validator::{validate_project, validate_project_with, ValidateOptions, ValidationReport};
 
 pub use adapters::{
-    built_in_sdk_emit as adapters_built_in_sdk_emit, default_implementation,
+    built_in_sdk_emit as adapters_built_in_sdk_emit, default_implementation, is_passthrough_io,
     known_implementation_ids,
 };
 
@@ -236,6 +236,44 @@ pub fn compile_release(
     }
     let mut policy = CompilePolicy::release();
     policy.implementations = verified.iter().map(|v| v.implementation.clone()).collect();
+    // I/O passthrough is not VerifiedImplementation; inject explicit I/O ids
+    // so release validation does not treat them as unknown.
+    for inst in &project.instances {
+        let cap = inst.capability.as_key();
+        if !adapters::is_passthrough_io(&cap) {
+            continue;
+        }
+        let id = inst
+            .implementation
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| default_implementation(&cap).map(str::to_string));
+        let Some(id) = id else {
+            continue;
+        };
+        if policy.implementations.iter().any(|i| i.full_id() == id) {
+            continue;
+        }
+        policy.implementations.push(Implementation {
+            id: id.rsplit_once('@').map(|(a, _)| a).unwrap_or(&id).into(),
+            version: id.rsplit_once('@').map(|(_, v)| v).unwrap_or("1").into(),
+            capability: inst.capability.clone(),
+            source: Default::default(),
+            adapter: None,
+            status: LifecycleStatus::Conformant,
+            evidence: wvx_ir::ImplementationEvidence {
+                build: AxisFact::Pass,
+                conformance: AxisFact::Pass,
+                license: AxisFact::Pass,
+                ..Default::default()
+            },
+            notes: Some("passthrough I/O".into()),
+            sdk: None,
+            conformance_profile: None,
+            evidence_artifact: None,
+            source_ref: None,
+        });
+    }
     // Ensure every non-IO instance maps to a verified id
     let verified_ids: BTreeSet<String> = verified.iter().map(|v| v.full_id()).collect();
     for inst in &project.instances {
@@ -266,6 +304,20 @@ pub fn compile_release(
         }
     }
     compile_with_policy(project, sdk_emits, &policy)
+}
+
+/// Write a [`compile_release`] workspace to disk, optionally `cargo check` / `cargo run`.
+pub fn export_release_to_directory(
+    project: &Project,
+    verified: &[VerifiedImplementation],
+    out_dir: &Path,
+    check: bool,
+    run_input: Option<&[u8]>,
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+) -> Result<ExportReport, CompileError> {
+    let report = compile_release(project, verified, sdk_emits)?;
+    let policy = CompilePolicy::release();
+    write_compiled_workspace(&report, out_dir, &policy, check, run_input)
 }
 
 /// Compile with explicit policy (release/dev), digests, and resolution explanations.
@@ -439,6 +491,16 @@ pub fn export_to_directory_with_policy(
     policy: &CompilePolicy,
 ) -> Result<ExportReport, CompileError> {
     let report = compile_with_policy(project, sdk_emits, policy)?;
+    write_compiled_workspace(&report, out_dir, policy, check, run_input)
+}
+
+fn write_compiled_workspace(
+    report: &CompileReport,
+    out_dir: &Path,
+    policy: &CompilePolicy,
+    check: bool,
+    run_input: Option<&[u8]>,
+) -> Result<ExportReport, CompileError> {
     let ws = &report.workspace;
     if out_dir.exists() {
         if out_dir.join("weavatrix.lock").exists() {
@@ -478,6 +540,7 @@ pub fn export_to_directory_with_policy(
         out_dir: out_dir.display().to_string(),
         files: ws.files.len(),
         check_ok: None,
+        run_output: None,
         run_stdout: None,
         digests: report.digests.clone(),
         cargo_lock_generated: false,
@@ -515,23 +578,25 @@ pub fn export_to_directory_with_policy(
     }
 
     if let Some(input) = run_input {
+        let input_path = out_dir.join(".wvx-input.bin");
+        fs::write(&input_path, input).map_err(|e| CompileError::Io(e.to_string()))?;
         let output = Command::new("cargo")
             .arg("run")
             .arg("--quiet")
-            .env(
-                "WVX_PIPELINE_INPUT",
-                String::from_utf8_lossy(input).as_ref(),
-            )
+            .env("WVX_PIPELINE_INPUT_FILE", &input_path)
+            .env_remove("WVX_PIPELINE_INPUT")
             .current_dir(out_dir)
             .output()
             .map_err(|e| CompileError::Cargo(e.to_string()))?;
+        let _ = fs::remove_file(&input_path);
         if !output.status.success() {
             return Err(CompileError::Cargo(format!(
                 "cargo run failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
-        export.run_stdout = Some(String::from_utf8_lossy(&output.stdout).into_owned());
+        export.run_output = Some(output.stdout.clone());
+        export.run_stdout = String::from_utf8(output.stdout).ok();
     }
 
     Ok(export)
@@ -543,6 +608,10 @@ pub struct ExportReport {
     pub out_dir: String,
     pub files: usize,
     pub check_ok: Option<bool>,
+    /// Raw pipeline stdout (binary-safe). Prefer this over `run_stdout`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_output: Option<Vec<u8>>,
+    /// UTF-8 interpretation of stdout when valid; absent for binary payloads.
     pub run_stdout: Option<String>,
     #[serde(default)]
     pub digests: BTreeMap<String, String>,
@@ -753,6 +822,7 @@ mod tests {
             sdk: None,
             conformance_profile: None,
             evidence_artifact: None,
+            source_ref: None,
         }];
         // Also need other impls or leave them without pool entries (explicit still works)
         // path_set and serialize without pool entries use explicit from project

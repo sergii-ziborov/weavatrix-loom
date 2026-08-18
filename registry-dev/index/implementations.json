@@ -35,7 +35,7 @@
     "sha2.sha256-update-all@1"
   ],
   "data.json.parse@1": [
-    "external.demo.upper-parse@1",
+    "external.demo.json-parse@1",
     "json-crate.parse@1",
     "serde-json.parse-owned@1",
     "wvx.reference.json-parse@1"

@@ -10,7 +10,7 @@ use crate::draft::AdapterDraft;
 use crate::ForgeError;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +24,12 @@ pub struct CompileAdapterReport {
     pub status: String,
     pub compile_ok: Option<bool>,
     pub compile_log: Option<String>,
+    /// `cargo run --bin probe` against a known-good input (native export).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_export_ok: Option<bool>,
+    /// Profile vectors executed against the compiled adapter (when a profile exists).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_ok: Option<bool>,
     pub files_written: usize,
     /// SDK emit template for Gate F compiler (when shape known).
     pub sdk_emit_template: Option<String>,
@@ -90,6 +96,8 @@ pub fn compile_adapter_from_draft(
     ];
     let mut compile_ok = None;
     let mut compile_log = None;
+    let mut native_export_ok = None;
+    let mut profile_ok = None;
     let mut status = "inventory_only".to_string();
 
     if run_cargo_check {
@@ -122,9 +130,23 @@ pub fn compile_adapter_from_draft(
             );
         }
         if effective_ok {
-            status = "candidate".into();
-            notes.push("cargo check passed → local status candidate (not registry admit).".into());
+            notes.push("cargo check passed (not yet forge success).".into());
             notes.push("wired_upstream=true".into());
+            let (n_ok, p_ok, extra) = run_native_and_profile(&root, shape, &draft.capability_id);
+            native_export_ok = n_ok;
+            profile_ok = p_ok;
+            notes.extend(extra);
+            let forge_ok = n_ok == Some(true) && p_ok != Some(false);
+            if forge_ok {
+                status = "candidate".into();
+                notes.push("forge_success=true (native export + profile when required).".into());
+            } else {
+                compile_ok = Some(false);
+                notes.push(
+                    "forge_success=false — cargo check alone is not Forge success (need native export + profile)."
+                        .into(),
+                );
+            }
         } else if !ok {
             notes.push(
                 "cargo check failed — keep inventory_only; fix path/signature manually.".into(),
@@ -144,6 +166,8 @@ pub fn compile_adapter_from_draft(
         status,
         compile_ok,
         compile_log,
+        native_export_ok,
+        profile_ok,
         files_written: 5,
         sdk_emit_template: sdk_template,
         notes,
@@ -182,6 +206,8 @@ pub fn compile_adapters_batch(
                 status: "inventory_only".into(),
                 compile_ok: Some(false),
                 compile_log: Some(e.to_string()),
+                native_export_ok: None,
+                profile_ok: None,
                 files_written: 0,
                 sdk_emit_template: None,
                 notes: vec![format!("compile_adapter error: {e}")],
@@ -461,6 +487,252 @@ pub fn not_wired() -> Result<(), String> {{
     }
 }
 
+/// Native probe + optional profile suite against the compiled adapter crate.
+///
+/// `profile_ok = None` means no profile applies (native export is still required).
+/// `profile_ok = Some(false)` fails Forge success.
+fn run_native_and_profile(
+    root: &Path,
+    shape: AdapterShape,
+    capability_key: &str,
+) -> (Option<bool>, Option<bool>, Vec<String>) {
+    let mut notes = Vec::new();
+    if matches!(shape, AdapterShape::Unknown | AdapterShape::JsonToJson) {
+        notes.push("native/profile skipped (shape not probeable)".into());
+        return (None, None, notes);
+    }
+
+    let rust_crate = root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("adapter")
+        .replace('-', "_");
+    if let Err(e) = write_probe_bin(root, &rust_crate, shape) {
+        notes.push(format!("probe write failed: {e}"));
+        return (Some(false), None, notes);
+    }
+
+    let smoke = match shape {
+        AdapterShape::BytesToJson | AdapterShape::JsonToBytes => br#"{"a":1}"#.to_vec(),
+        _ => b"abc".to_vec(),
+    };
+    let native_ok = run_probe(root, &smoke);
+    notes.push(format!("native_export_ok={native_ok}"));
+
+    let profile_ok = match profile_id_for_capability(capability_key) {
+        None => {
+            notes.push("no versioned profile for capability — profile step not required".into());
+            None
+        }
+        Some(pid) => match load_profile_vectors(pid) {
+            None => {
+                notes.push(format!("profile `{pid}` not found on disk"));
+                Some(false)
+            }
+            Some(vecs) => {
+                let mut ok_n = 0usize;
+                for (id, input, expect_ok) in &vecs {
+                    let ok = run_probe(root, input);
+                    if ok == *expect_ok {
+                        ok_n += 1;
+                    } else {
+                        notes.push(format!(
+                            "profile `{pid}` case `{id}` expected ok={expect_ok} got {ok}"
+                        ));
+                    }
+                }
+                notes.push(format!("profile `{pid}` {ok_n}/{} vectors", vecs.len()));
+                Some(ok_n == vecs.len() && !vecs.is_empty())
+            }
+        },
+    };
+
+    (Some(native_ok), profile_ok, notes)
+}
+
+fn write_probe_bin(root: &Path, rust_crate: &str, shape: AdapterShape) -> Result<(), ForgeError> {
+    let dir = root.join("src").join("bin");
+    fs::create_dir_all(&dir).map_err(|e| ForgeError::Io(dir.clone(), e))?;
+    let body = match shape {
+        AdapterShape::BytesToJson => format!(
+            r#"fn main() {{
+    let input = read_input();
+    match {rust_crate}::transform(&input) {{
+        Ok(v) => {{
+            let bytes = serde_json::to_vec(&v).expect("json");
+            let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes);
+        }}
+        Err(e) => {{
+            eprintln!("{{e}}");
+            std::process::exit(2);
+        }}
+    }}
+}}
+{READ_INPUT}
+"#
+        ),
+        AdapterShape::JsonToBytes => format!(
+            r#"fn main() {{
+    let input = read_input();
+    let value: serde_json::Value = serde_json::from_slice(&input).unwrap_or(serde_json::json!(null));
+    match {rust_crate}::transform(&value) {{
+        Ok(bytes) => {{
+            let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes);
+        }}
+        Err(e) => {{
+            eprintln!("{{e}}");
+            std::process::exit(2);
+        }}
+    }}
+}}
+{READ_INPUT}
+"#
+        ),
+        AdapterShape::BytesToBytes => format!(
+            r#"fn main() {{
+    let input = read_input();
+    match {rust_crate}::transform(&input) {{
+        Ok(bytes) => {{
+            let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes);
+        }}
+        Err(e) => {{
+            eprintln!("{{e}}");
+            std::process::exit(2);
+        }}
+    }}
+}}
+{READ_INPUT}
+"#
+        ),
+        AdapterShape::JsonToJson | AdapterShape::Unknown => {
+            return Ok(());
+        }
+    };
+    write(&dir.join("probe.rs"), &body)
+}
+
+const READ_INPUT: &str = r#"
+fn read_input() -> Vec<u8> {
+    if let Ok(path) = std::env::var("WVX_PIPELINE_INPUT_FILE") {
+        return std::fs::read(path).unwrap_or_default();
+    }
+    let mut buf = Vec::new();
+    let _ = std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf);
+    buf
+}
+"#;
+
+fn run_probe(root: &Path, input: &[u8]) -> bool {
+    let input_path = root.join(".wvx-probe-input.bin");
+    if fs::write(&input_path, input).is_err() {
+        return false;
+    }
+    let output = Command::new("cargo")
+        .args(["run", "--quiet", "--bin", "probe", "--offline"])
+        .env("WVX_PIPELINE_INPUT_FILE", &input_path)
+        .current_dir(root)
+        .output();
+    let _ = fs::remove_file(&input_path);
+    match output {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
+    }
+}
+
+fn profile_id_for_capability(cap: &str) -> Option<&'static str> {
+    let key = if cap.contains('@') {
+        cap.to_string()
+    } else {
+        format!("{cap}@1")
+    };
+    match key.as_str() {
+        "data.json.parse@1" => Some("json-rfc8259-core-v1"),
+        "data.hash.sha256@1" => Some("sha256-fips180-4-v1"),
+        "data.codec.hex_encode@1" => Some("hex-rfc-encode-v1"),
+        "data.codec.hex_decode@1" => Some("hex-rfc-decode-v1"),
+        "data.codec.base64_encode@1" => Some("base64-rfc4648-standard-v1"),
+        "data.text.unicode_uppercase@1" => Some("unicode-uppercase-15.1-v1"),
+        "data.text.ascii_uppercase@1" => Some("ascii-uppercase-v1"),
+        _ => None,
+    }
+}
+
+fn load_profile_vectors(profile_id: &str) -> Option<Vec<(String, Vec<u8>, bool)>> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../registry-dev/profiles")
+        .join(format!("{profile_id}.json"));
+    let text = fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let mut out = Vec::new();
+    if let Some(arr) = v.get("vectors").and_then(|x| x.as_array()) {
+        for item in arr {
+            let id = item
+                .get("id")
+                .and_then(|x| x.as_str())
+                .unwrap_or("v")
+                .to_string();
+            let expect_ok = item
+                .get("expect_ok")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(true);
+            let b64 = item.get("input_b64").and_then(|x| x.as_str()).unwrap_or("");
+            out.push((id, decode_b64(b64), expect_ok));
+        }
+    }
+    if let Some(arr) = v.get("negative_vectors").and_then(|x| x.as_array()) {
+        for item in arr {
+            let id = item
+                .get("id")
+                .and_then(|x| x.as_str())
+                .unwrap_or("n")
+                .to_string();
+            let b64 = item.get("input_b64").and_then(|x| x.as_str()).unwrap_or("");
+            out.push((id, decode_b64(b64), false));
+        }
+    }
+    Some(out)
+}
+
+fn decode_b64(s: &str) -> Vec<u8> {
+    if s.is_empty() {
+        return Vec::new();
+    }
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            b'=' => Some(0),
+            _ => None,
+        }
+    }
+    let cleaned: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    if cleaned.len() % 4 != 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for chunk in cleaned.as_bytes().chunks(4) {
+        let (Some(b0), Some(b1), Some(b2), Some(b3)) = (
+            val(chunk[0]),
+            val(chunk[1]),
+            val(chunk.get(2).copied().unwrap_or(b'=')),
+            val(chunk.get(3).copied().unwrap_or(b'=')),
+        ) else {
+            return Vec::new();
+        };
+        out.push((b0 << 2) | (b1 >> 4));
+        if chunk.get(2).copied() != Some(b'=') {
+            out.push((b1 << 4) | (b2 >> 2));
+        }
+        if chunk.get(3).copied() != Some(b'=') {
+            out.push((b2 << 6) | b3);
+        }
+    }
+    out
+}
+
 fn sanitize_crate_name(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {
@@ -535,7 +807,7 @@ mod tests {
                 ty: "json_value".into(),
             }],
         }];
-        let report = draft_adapters_with_ontology(&root, Some("upper_parse"), &ontology).unwrap();
+        let report = draft_adapters_with_ontology(&root, Some("parse"), &ontology).unwrap();
         assert!(!report.drafts.is_empty());
         let d = &report.drafts[0];
         assert_eq!(d.mapping_kind, "exact_shape");

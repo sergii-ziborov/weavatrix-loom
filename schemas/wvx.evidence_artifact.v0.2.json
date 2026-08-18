@@ -62,7 +62,10 @@
         "capability_contract": { "type": "string" },
         "profile": { "type": "string" },
         "suite": { "type": "string" },
-        "subject": { "type": "string" }
+        "subject": { "type": "string" },
+        "package_checksum": { "type": "string" },
+        "source_ref_revision": { "type": "string" },
+        "profile_case_ids": { "type": "string" }
       }
     },
     "environment": {

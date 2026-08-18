@@ -78,6 +78,15 @@ pub struct EvidenceDigests {
     /// Legacy-compatible subject pin (emit + package).
     #[serde(default)]
     pub subject: String,
+    /// SHA-256 of adapter crate `Cargo.toml` (or package identity fallback).
+    #[serde(default)]
+    pub package_checksum: String,
+    /// SHA-256 of `source_ref.revision`, or `sha256:absent`.
+    #[serde(default)]
+    pub source_ref_revision: String,
+    /// SHA-256 of exact profile case IDs (sorted `kind:id`).
+    #[serde(default)]
+    pub profile_case_ids: String,
 }
 
 /// Where / who produced the artifact.
@@ -264,6 +273,27 @@ pub fn load_profile(
     Ok((doc, bytes))
 }
 
+/// Exact profile case IDs as `positive:<id>` / `negative:<id>` (sorted).
+pub fn profile_case_ids(doc: &ConformanceProfileDoc) -> Vec<String> {
+    let mut ids = Vec::new();
+    for vec in &doc.vectors {
+        let id = vec.get("id").and_then(|v| v.as_str()).unwrap_or("unnamed");
+        ids.push(format!("positive:{id}"));
+    }
+    for vec in &doc.negative_vectors {
+        let id = vec.get("id").and_then(|v| v.as_str()).unwrap_or("neg");
+        ids.push(format!("negative:{id}"));
+    }
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+/// Digest of exact profile case IDs.
+pub fn profile_case_ids_digest(doc: &ConformanceProfileDoc) -> String {
+    sha256_hex(profile_case_ids(doc).join("\n").as_bytes())
+}
+
 /// Suite digest: use profile field unless placeholder; else hash vectors.
 pub fn suite_digest_for_profile(doc: &ConformanceProfileDoc) -> String {
     let d = doc.suite_digest.trim();
@@ -298,6 +328,8 @@ pub struct DigestContext {
     pub adapter_source_path: Option<PathBuf>,
     /// Absolute path to implementation source tree (optional).
     pub source_tree_path: Option<PathBuf>,
+    /// Workspace root (Cargo.lock + adapter crates). Auto-discovered when absent.
+    pub workspace_root: Option<PathBuf>,
 }
 
 fn file_sha256(path: &Path) -> Result<String, String> {
@@ -313,7 +345,7 @@ fn path_digest_or_absent(path: Option<&Path>) -> String {
     }
 }
 
-fn hash_tree(root: &Path) -> Result<String, String> {
+pub fn hash_tree(root: &Path) -> Result<String, String> {
     let mut entries: Vec<PathBuf> = Vec::new();
     walk_collect(root, &mut entries)?;
     entries.sort();
@@ -368,7 +400,15 @@ pub fn compute_digests(
         )
         .as_bytes(),
     );
-    let adapter = {
+
+    let workspace = ctx
+        .workspace_root
+        .clone()
+        .or_else(|| crate::workspace::workspace_root_near(registry_root));
+
+    let adapter = if let Some(ws) = &workspace {
+        crate::workspace::adapter_source_closure_digest(ws, imp)
+    } else {
         let template = imp
             .sdk
             .as_ref()
@@ -408,34 +448,48 @@ pub fn compute_digests(
         .unwrap_or_else(|| profile_path(registry_root, &profile_id));
     let profile_digest = path_digest_or_absent(Some(&prof_path));
 
-    let suite = if let Some(p) = profile {
-        suite_digest_for_profile(p)
+    let (suite, case_ids_digest) = if let Some(p) = profile {
+        (suite_digest_for_profile(p), profile_case_ids_digest(p))
     } else if let Ok((doc, _)) = load_profile(registry_root, &profile_id) {
-        suite_digest_for_profile(&doc)
+        (
+            suite_digest_for_profile(&doc),
+            profile_case_ids_digest(&doc),
+        )
     } else {
-        "sha256:absent".into()
+        ("sha256:absent".into(), "sha256:absent".into())
     };
 
-    let cargo_lock = path_digest_or_absent(ctx.cargo_lock_path.as_deref().or_else(|| {
-        // Walk up from registry for monorepo Cargo.lock
-        None
-    }));
-    let cargo_lock = if cargo_lock == "sha256:absent" {
-        // try monorepo root relative to registry-dev
+    let cargo_lock = if let Some(p) = &ctx.cargo_lock_path {
+        path_digest_or_absent(Some(p))
+    } else if let Some(ws) = &workspace {
+        crate::workspace::cargo_lock_digest(ws)
+    } else {
         let guess = registry_root.join("../Cargo.lock");
         path_digest_or_absent(Some(&guess))
-    } else {
-        cargo_lock
     };
 
     let source_tree = if let Some(p) = &ctx.source_tree_path {
         path_digest_or_absent(Some(p))
     } else if let Some(p) = &ctx.adapter_source_path {
         path_digest_or_absent(Some(p))
+    } else if let Some(ws) = &workspace {
+        crate::workspace::implementation_source_tree_digest(ws, imp)
     } else {
-        // Logical source tree pin = identity + adapter binding
         sha256_hex(format!("tree|{subject}|{adapter}|{upstream}").as_bytes())
     };
+
+    let pkg = if let Some(ws) = &workspace {
+        crate::workspace::package_checksum(ws, imp)
+    } else {
+        sha256_hex(
+            format!(
+                "pkg|{}|{}@{}",
+                imp.source.kind, imp.source.package, imp.source.package_version
+            )
+            .as_bytes(),
+        )
+    };
+    let src_rev = crate::workspace::source_ref_revision_digest(imp);
 
     EvidenceDigests {
         implementation_source_tree: source_tree,
@@ -446,6 +500,9 @@ pub fn compute_digests(
         profile: profile_digest,
         suite,
         subject,
+        package_checksum: pkg,
+        source_ref_revision: src_rev,
+        profile_case_ids: case_ids_digest,
     }
 }
 
@@ -600,33 +657,39 @@ pub fn mint_and_write(
 /// For v0.2 the verifier **loads the profile** and recomputes digests.
 pub fn verify_artifact(registry_root: &Path, imp: &Implementation) -> ArtifactCheck {
     let full_id = imp.full_id();
-    let mut findings = Vec::new();
     let path = artifact_path(registry_root, imp);
 
     if !path.is_file() {
-        findings.push(format!("missing evidence artifact at {}", path.display()));
         return ArtifactCheck {
             full_id,
             ok: false,
-            findings,
+            findings: vec![format!("missing evidence artifact at {}", path.display())],
             justified: LifecycleStatus::Candidate.as_str().into(),
             schema_version: String::new(),
         };
     }
 
-    let art = match load_artifact(&path) {
-        Ok(a) => a,
-        Err(e) => {
-            findings.push(format!("artifact unreadable: {e}"));
-            return ArtifactCheck {
-                full_id,
-                ok: false,
-                findings,
-                justified: LifecycleStatus::InventoryOnly.as_str().into(),
-                schema_version: String::new(),
-            };
-        }
-    };
+    match load_artifact(&path) {
+        Ok(art) => verify_loaded_artifact(registry_root, imp, &art),
+        Err(e) => ArtifactCheck {
+            full_id,
+            ok: false,
+            findings: vec![format!("artifact unreadable: {e}")],
+            justified: LifecycleStatus::InventoryOnly.as_str().into(),
+            schema_version: String::new(),
+        },
+    }
+}
+
+/// Verify an already-loaded (or in-memory dry-run) artifact.
+pub fn verify_loaded_artifact(
+    registry_root: &Path,
+    imp: &Implementation,
+    art: &EvidenceArtifact,
+) -> ArtifactCheck {
+    let full_id = imp.full_id();
+    let mut findings = Vec::new();
+    let art = art.clone();
 
     let schema = art.schema_version.clone();
     let is_v2 = schema == EVIDENCE_SCHEMA;
@@ -736,12 +799,41 @@ pub fn verify_artifact(registry_root: &Path, imp: &Implementation) -> ArtifactCh
 
                 let recomputed =
                     compute_digests(registry_root, imp, Some(&doc), &DigestContext::default());
-                // Hard-check digests that must match (subject, adapter, upstream, capability, profile)
+                check_digest(
+                    &mut findings,
+                    "implementation_source_tree",
+                    &art.digests.implementation_source_tree,
+                    &recomputed.implementation_source_tree,
+                );
                 check_digest(
                     &mut findings,
                     "adapter_source",
                     &art.digests.adapter_source,
                     &recomputed.adapter_source,
+                );
+                check_digest(
+                    &mut findings,
+                    "cargo_lock",
+                    &art.digests.cargo_lock,
+                    &recomputed.cargo_lock,
+                );
+                check_digest(
+                    &mut findings,
+                    "package_checksum",
+                    &art.digests.package_checksum,
+                    &recomputed.package_checksum,
+                );
+                check_digest(
+                    &mut findings,
+                    "source_ref_revision",
+                    &art.digests.source_ref_revision,
+                    &recomputed.source_ref_revision,
+                );
+                check_digest(
+                    &mut findings,
+                    "profile_case_ids",
+                    &art.digests.profile_case_ids,
+                    &recomputed.profile_case_ids,
                 );
                 check_digest(
                     &mut findings,
@@ -761,6 +853,21 @@ pub fn verify_artifact(registry_root: &Path, imp: &Implementation) -> ArtifactCh
                     &art.digests.profile,
                     &recomputed.profile,
                 );
+                // Exact profile case IDs (not caller-invented v0..vN).
+                let expected_ids = profile_case_ids(&doc);
+                let recorded: Vec<String> = art
+                    .case_results
+                    .iter()
+                    .map(|c| normalize_case_id(&c.case_id, &c.kind))
+                    .collect();
+                let mut recorded_set = recorded.clone();
+                recorded_set.sort();
+                recorded_set.dedup();
+                if recorded_set != expected_ids {
+                    findings.push(format!(
+                        "exact profile case IDs mismatch: artifact {recorded_set:?} vs profile {expected_ids:?}"
+                    ));
+                }
                 // suite: use recomputed expected_suite
                 if !art.digests.suite.is_empty() && art.digests.suite != expected_suite {
                     findings.push(format!(
@@ -837,6 +944,33 @@ pub fn verify_artifact(registry_root: &Path, imp: &Implementation) -> ArtifactCh
         justified,
         schema_version: schema,
     }
+}
+
+/// Strip implementation prefix from runner case ids (`impl:pos:id` → `positive:id`).
+pub fn normalize_case_id(case_id: &str, kind: &str) -> String {
+    let kind = if kind == "negative" {
+        "negative"
+    } else {
+        "positive"
+    };
+    // Already normalized
+    if let Some(rest) = case_id.strip_prefix("positive:") {
+        return format!("positive:{rest}");
+    }
+    if let Some(rest) = case_id.strip_prefix("negative:") {
+        return format!("negative:{rest}");
+    }
+    // Runner form: `{impl}:pos:{id}` / `{impl}:neg:{id}` / `{impl}:pos:{id}:eq`
+    let parts: Vec<&str> = case_id.split(':').collect();
+    if parts.len() >= 3 && (parts[1] == "pos" || parts[1] == "neg") {
+        let k = if parts[1] == "neg" {
+            "negative"
+        } else {
+            "positive"
+        };
+        return format!("{k}:{}", parts[2]);
+    }
+    format!("{kind}:{case_id}")
 }
 
 fn check_digest(findings: &mut Vec<String>, name: &str, artifact: &str, expected: &str) {
@@ -991,37 +1125,53 @@ mod tests {
 
     #[test]
     fn mint_v2_and_verify_serde_json_parse() {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
-        let reg = LocalRegistry::open(&root).expect("registry-dev");
+        let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
+        let dest = std::env::temp_dir().join(format!(
+            "wvx-mint-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        crate::temp_registry::materialize_temp_registry(
+            &src,
+            &dest,
+            &["data.json.parse@1"],
+            &["json-rfc8259-core-v1"],
+            &["serde-json.parse-owned@1"],
+        )
+        .unwrap();
+        let reg = LocalRegistry::open(&dest).expect("temp registry");
         let mut imp = reg
             .find_implementation("serde-json.parse-owned@1")
             .unwrap()
             .expect("impl");
         imp.conformance_profile = Some("json-rfc8259-core-v1".into());
         imp.status = LifecycleStatus::Conformant;
-        // Unique path so parallel tests do not clobber the sample artifact.
-        let rel = format!(
-            "evidence/artifacts/_test_mint_{}.json",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        );
-        imp.evidence_artifact = Some(rel.clone());
+        imp.evidence_artifact = Some("evidence/artifacts/serde-json.parse-owned@1.json".into());
 
-        let cases: Vec<CaseResult> = (0..8)
-            .map(|i| CaseResult {
-                case_id: format!("case_{i}"),
-                kind: "positive".into(),
-                ok: true,
-                detail: None,
-                expected_error_family: None,
+        let (doc, _) = load_profile(&dest, "json-rfc8259-core-v1").unwrap();
+        let cases: Vec<CaseResult> = profile_case_ids(&doc)
+            .into_iter()
+            .map(|id| {
+                let kind = if id.starts_with("negative:") {
+                    "negative"
+                } else {
+                    "positive"
+                };
+                CaseResult {
+                    case_id: id,
+                    kind: kind.into(),
+                    ok: true,
+                    detail: None,
+                    expected_error_family: None,
+                }
             })
             .collect();
 
         let req = MintRequest {
             runner_identity: "wvx-registry-client@test".into(),
-            case_results: cases,
+            case_results: cases.clone(),
             axes: ImplementationEvidence {
                 build: AxisFact::Pass,
                 conformance: AxisFact::Pass,
@@ -1034,20 +1184,21 @@ mod tests {
             profile_id: Some("json-rfc8259-core-v1".into()),
         };
 
-        let (art, path) = mint_and_write(&root, &imp, &req).expect("mint");
+        let (art, path) = mint_and_write(&dest, &imp, &req).expect("mint");
         assert_eq!(art.schema_version, EVIDENCE_SCHEMA);
         assert!(!art.digests.subject.is_empty());
         assert!(!art.digests.profile.is_empty());
         assert!(!art.digests.suite.is_empty());
+        assert!(!art.digests.profile_case_ids.is_empty());
         assert!(!art.environment.runner_identity.is_empty());
-        assert_eq!(art.case_results.len(), 8);
+        assert_eq!(art.case_results.len(), cases.len());
         assert!(path.is_file());
 
-        let check = verify_artifact(&root, &imp);
+        let check = verify_artifact(&dest, &imp);
         assert!(check.ok, "verify failed: {:?}", check.findings);
         assert_eq!(check.justified, "conformant");
         assert_eq!(check.schema_version, EVIDENCE_SCHEMA);
-        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir_all(&dest);
     }
 
     #[test]

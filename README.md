@@ -79,7 +79,9 @@ feeds signatures/spans (ADR-0012).
 
 > **Status:** **v0.2 beta** — multi-domain pilots (JSON · text · hash · compress · codec),
 > **M1 Truthful Registry**, **M2 Safe Semantic Core**, **EvidenceArtifact v0.2**,
-> unified **promote** transaction, `compile_release` + `VerifiedImplementation`.  
+> **P0 trust closure** (live promote / signed reports only — no claimed `ok=true`),
+> **P1** Gate C v3 + Facts v0.2 + Draft 2020-12 + binary-safe export + MSRV 1.78 CI.  
+> Public release path is `VerifiedImplementation` → `compile_release` only.  
 > Not a hosted marketplace. Details:
 > **[docs/beta-prototype.md](docs/beta-prototype.md)** ·
 > **[docs/truthful-registry.md](docs/truthful-registry.md)** ·
@@ -148,7 +150,7 @@ types internally; adapters normalize them at the component boundary.
 
 | Path | What |
 | --- | --- |
-| [`schemas/`](schemas/) | JSON Schema for project, capability, GraphPatch, **evidence v0.1/v0.2** |
+| [`schemas/`](schemas/) | JSON Schema (Draft 2020-12) for project, capability, GraphPatch, **facts v0.2**, **evidence v0.2** |
 | [`docs/adr/`](docs/adr/) | ADRs — especially **[0012 ecosystem boundaries](docs/adr/0012-ecosystem-boundaries.md)** |
 | [`docs/ecosystem-distribution.md`](docs/ecosystem-distribution.md) | Ownership matrix (Weavatrix / Loom / Realforge / FerroSift / Cortex) |
 | [`docs/truthful-registry.md`](docs/truthful-registry.md) | M1 truthful rules + EvidenceArtifact v0.2 + promote |
@@ -187,10 +189,10 @@ embed it.
 | `wvx-mcp` | Optional **agent-only** MCP adapter (`mcport`) — not used by Studio |
 | `wvx-adapters` | Pilot adapters: JSON · text · hash · compress · **codec** (**lib**) |
 | `wvx-component-sdk` | Gate F adapter ABI (plugin register + emit templates) (**lib**) |
-| `wvx-adapter-external-demo` | External fixture (`upper_parse`) — demo only |
+| `wvx-adapter-external-demo` | External Gate F fixture (`parse`) — semantically equivalent JSON parser |
 | `wvx-forge` | Thin Forge: bootstrap inventory + **semantic match/draft** (**lib**; deep code facts → Weavatrix; ADR-0012) |
 | `wvx-conformance` | Pilot + **profile-driven** suites + multi-domain golden (**lib**) |
-| `wvx-schema-contract` | JSON Schema required-fields + Rust serde roundtrips (**test crate**) |
+| `wvx-schema-contract` | Draft 2020-12 evaluator + required-fields + serde roundtrips (**test crate**) |
 | `wvx-cortex` | Intent → GraphPatch (heuristics + optional xAI LLM; ops only) (**lib** bridge) |
 | `loom-server` | Local HTTP API for Studio (`127.0.0.1:43917`) (**product host**) |
 
@@ -200,10 +202,11 @@ GitHub Actions on push/PR to `main`:
 
 | Workflow | Checks |
 | --- | --- |
-| **ci.yml** | `fmt`, `clippy -D warnings`, `check`, `test` (skip long golden), **schema contracts** |
-| **ci.yml gates** | conformance, golden, truthful, promote artifacts, Gate C v1 + **v2 blind** |
+| **ci.yml** | `fmt` + `clippy -D warnings` (Linux); `cargo test --lib` on **ubuntu / windows / macos** |
+| **ci.yml gates** | conformance + profile runner, schema contracts, **`verified_release_e2e`**, truthful registry |
+| **msrv** | `cargo check --workspace` on **Rust 1.78.0** |
 | **security.yml** | **cargo-deny** (licenses/sources) + **cargo-audit** (advisories) |
-| **HTTP (P2)** | `/registry/truthful` · `/profiles` · `/families` · `/resolve` · `/verify-evidence` · `/pilot/catalog` |
+| **HTTP (Studio)** | `/registry/truthful` · `/profiles` · `/families` · `/resolve` · `/verify-evidence` · `/pilot/catalog` |
 
 Local:
 
@@ -292,6 +295,7 @@ cargo run -p wvx-cli -- export-rust fixtures/pilot-json-pipeline.wvx.json \
 
 The export is a normal Cargo package with `run_pipeline(&[u8]) -> Result<Vec<u8>, String>`  
 (raw stdout bytes — works for JSON **and** binary digests).  
+Input is binary-safe: `WVX_PIPELINE_INPUT_FILE` (raw path) or `WVX_PIPELINE_INPUT_B64`.  
 API **`compile_release`** requires a `VerifiedImplementation` pool (not raw manifests).
 
 ## Domains (pilots)
@@ -325,8 +329,8 @@ cargo run -p wvx-cli -- registry truthful
 # EvidenceArtifact v0.2
 cargo run -p wvx-cli -- registry mint-evidence serde-json.parse-owned@1 --profile json-rfc8259-core-v1
 cargo run -p wvx-cli -- registry verify-evidence serde-json.parse-owned@1
-# Unified promotion (build → suite → artifact → audit)
-cargo run -p wvx-cli -- registry promote serde-json.parse-owned@1 --profile json-rfc8259-core-v1 --cases 8
+# Unified promotion (Loom runs collectors — no claimed ok=true / --cases)
+cargo run -p wvx-cli -- registry promote serde-json.parse-owned@1 --profile json-rfc8259-core-v1
 ```
 
 Override the path with `--path` or `WVX_REGISTRY`.  
@@ -374,7 +378,7 @@ cargo run -p loom-server
 Weavatrix (code facts) → Forge (match / draft) → Registry
 ```
 
-**Preferred:** ingest a Weavatrix facts bundle (`wvx.facts.v0.1`). Local Cargo inventory/AST
+**Preferred:** ingest a Weavatrix facts bundle (`wvx.facts.v0.2`; v0.1 still accepted). Local Cargo inventory/AST
 extract remains **bootstrap** when facts are unavailable.
 
 ```bash
@@ -389,8 +393,10 @@ cargo run -p wvx-cli -- forge extract crates/wvx-adapters
 cargo run -p wvx-cli -- forge match crates/wvx-adapters
 cargo run -p wvx-cli -- forge export-facts crates/wvx-adapters -o /tmp/facts.json
 cargo run -p wvx-cli -- forge draft crates/wvx-adapters --name parse -o /tmp/loom-drafts
-cargo run -p wvx-cli -- forge compile crates/wvx-adapter-external-demo -o /tmp/fa --name upper --check
+cargo run -p wvx-cli -- forge compile crates/wvx-adapter-external-demo -o /tmp/fa --name parse --check
 cargo run -p wvx-cli -- forge gate-c --workspace .
+# Gate C v3 held-out (neutral package IDs; rustdoc only)
+cargo run -p wvx-cli -- forge gate-c --v3 --human-minutes 30 --check
 ```
 
 HTTP: `POST /api/v1/forge/facts`, and `match`/`draft` accept `facts` | `facts_json` | `facts_path`.
@@ -445,7 +451,7 @@ cargo run -p wvx-cli -- conformance
 cargo run -p wvx-cli -- conformance --profiles
 cargo run -p wvx-cli -- conformance --profile sha256-fips180-4-v1
 
-# Dynamic playground ≡ static export (JSON combos + hash/codec/text)
+# Dynamic playground ≡ static export (JSON + hash/codec/text/compress matrix)
 cargo run -p wvx-cli -- conformance --golden
 
 # Or as unit tests
@@ -459,8 +465,9 @@ cargo test -p wvx-conformance
 | **M1** Truthful Registry | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — artifacts, truthful CI |
 | **M2** Safe Semantic Core | [beta-prototype.md](docs/beta-prototype.md) | **Landed** — validator passes, preview/commit, CompilePolicy |
 | **Trust** Evidence v0.2 + promote | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — mint/verify/promote, `compile_release` |
-| **P1** Profile runner + multi-domain golden + Gate C v2 + schema contracts + CI | this section | **Landed** |
-| **P2** Multi-domain Studio surface + HTTP trust/resolve/profiles | this section | **Landed** |
+| **P0** Live promote / signed reports / `VerifiedImplementation` → `compile_release` | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — no claimed `ok=true`; e2e CI gate |
+| **P1** Gate C v3 held-out + Forge native/profile success + full dynamic≡static + Facts v0.2 + Draft 2020-12 + GraphPatch + MSRV/OS CI | this section | **Landed** |
+| **Studio P2** Multi-domain Studio surface + HTTP trust/resolve/profiles | this section | **Landed** |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 
 Go/No-Go evidence:
@@ -468,7 +475,7 @@ Go/No-Go evidence:
 | Gate | Doc | Pilot verdict |
 | --- | --- | --- |
 | **A** / **D** | [`docs/go-no-go-a-d-pilot-json.md`](docs/go-no-go-a-d-pilot-json.md) | **Go** transform interchange + dynamic≡static |
-| **C** | [`docs/go-no-go-c-pilot.md`](docs/go-no-go-c-pilot.md) | **Go (external)** 6 pkgs · multi-domain · human-minutes |
+| **C** | [`docs/go-no-go-c-pilot.md`](docs/go-no-go-c-pilot.md) | **Go** external + **v3 held-out** (8 opaque pkgs, native+profile) |
 | **E** | [`docs/go-no-go-e-pilot.md`](docs/go-no-go-e-pilot.md) | **Go (pilot lab)** bench + provenance + human admit / promote |
 | **F** | [`docs/go-no-go-f-pilot.md`](docs/go-no-go-f-pilot.md) | **Go (pilot fixture)** SDK external adapter without pilot match arms |
 
@@ -477,8 +484,10 @@ cargo run -p wvx-cli -- bench -o .lab/bench.json
 cargo run -p wvx-cli -- registry check
 cargo run -p wvx-cli -- registry truthful
 cargo run -p wvx-cli -- forge gate-c --external fixtures/gate-c-external --human-minutes 50 --check
-# Gate C v2 BLIND (12 packages, expected_capability not fed to matcher)
+# Gate C v2 BLIND (expected_capability not fed to matcher)
 cargo run -p wvx-cli -- forge gate-c --external fixtures/gate-c-external --blind --human-minutes 60 --check
+# Gate C v3 held-out (neutral package IDs, rustdoc only)
+cargo run -p wvx-cli -- forge gate-c --v3 --human-minutes 30 --check
 ```
 
 ### Intent → GraphPatch (thin Cortex bridge)

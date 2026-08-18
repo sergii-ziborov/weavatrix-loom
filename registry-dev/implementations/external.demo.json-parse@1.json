@@ -1,0 +1,41 @@
+{
+  "id": "external.demo.json-parse",
+  "version": "1",
+  "capability": {
+    "id": "data.json.parse",
+    "version": "1"
+  },
+  "source": {
+    "kind": "gate-f-external",
+    "package": "wvx-adapter-external-demo",
+    "package_version": "0.1.1",
+    "notes": "Gate F fixture — semantically equivalent JSON parser; not in pilot match tables"
+  },
+  "adapter": {
+    "crate_name": "wvx-adapter-external-demo",
+    "execution": "native-rust"
+  },
+  "status": "candidate",
+  "evidence": {
+    "conformance": "absent",
+    "benchmark": "absent",
+    "security": "absent",
+    "build": "pass",
+    "license": "pass"
+  },
+  "notes": "Gate F external demo. Semantically equivalent parser. Candidate until suite artifact.",
+  "sdk": {
+    "emit": {
+      "crate_name": "wvx-adapter-external-demo",
+      "crate_path": "crates/wvx-adapter-external-demo",
+      "template": "wvx_adapter_external_demo::parse({bytes}.as_slice())?"
+    }
+  },
+  "conformance_profile": "json-rfc8259-core-v1",
+  "source_ref": {
+    "provider": "manual",
+    "entity_id": "wvx:external-demo:fn:parse",
+    "path": "wvx_adapter_external_demo::parse",
+    "notes": "Gate F external crate; not a dual code graph"
+  }
+}

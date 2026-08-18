@@ -7,20 +7,20 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use wvx_command_bus::{
     forge_compile, forge_draft, forge_draft_facts, forge_export_facts, forge_extract,
-    forge_facts_file, forge_gate_c_ex2, forge_inventory, forge_match, forge_match_facts,
+    forge_facts_file, forge_gate_c_ex3, forge_inventory, forge_match, forge_match_facts,
     graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
-    implementations_list, load_project_path, pilot_bench, pilot_parse_case_results,
-    project_export_rust, project_export_to_dir_with_policy, project_export_to_dir_with_registry,
-    project_run, project_validate, registry_admission_audit, registry_human_admit,
-    registry_implementations, registry_inspect, registry_mint_evidence, registry_promote,
-    registry_requalify, registry_resolve, registry_search, registry_summary,
-    registry_truthful_audit, registry_verify_evidence, BusError, CompilePolicy,
+    implementations_list, load_project_path, pilot_bench, project_export_rust_hydrated,
+    project_export_to_dir_release, project_export_to_dir_with_policy, project_run,
+    project_validate, registry_admission_audit, registry_human_admit, registry_implementations,
+    registry_inspect, registry_mint_evidence, registry_promote, registry_requalify,
+    registry_resolve, registry_search, registry_summary, registry_truthful_audit,
+    registry_verify_evidence, BusError, CompilePolicy,
 };
 use wvx_forge::load_facts_file;
 use wvx_project_graph::GraphPatch;
 use wvx_registry_client::AdmitRequest;
 use wvx_registry_client::LocalRegistry;
-use wvx_registry_client::{CaseResult, HumanSignature, PromoteRequest};
+use wvx_registry_client::{HumanSignature, PromoteRequest};
 use wvx_types::WvxValue;
 
 fn main() -> ExitCode {
@@ -71,17 +71,17 @@ Usage:
   wvx validate <project.wvx.json>
   wvx run <project.wvx.json> [options]
   wvx implementations
-  wvx export-rust <project.wvx.json> [-o <dir>] [--check] [--run] [--impl id=impl]...
+  wvx export-rust <project.wvx.json> [-o <dir>] [--check] [--run] [--dev] [--impl id=impl]...
   wvx registry summary [--path <dir>]
   wvx registry search [query] [--path <dir>]
   wvx registry implementations [--capability key] [query] [--path <dir>]
   wvx registry inspect <key> [--path <dir>]
   wvx registry check|audit [--path <dir>]   lifecycle vs evidence (overclaim fail)
   wvx registry truthful [--path <dir>]      evidence artifacts required for conformant+
-  wvx registry mint-evidence <impl-id> [--profile id] [--cases N] [--path <dir>]
+  wvx registry mint-evidence <impl-id> [--profile id] [--path <dir>]
   wvx registry verify-evidence <impl-id> [--path <dir>]
-  wvx registry promote <impl-id> [--profile id] [--cases N] [--status conformant|admitted] \\
-      [--bench] [--security] [--apply] [--reviewer … --human-ack … --security-ack … --reason …]
+  wvx registry promote <impl-id> [--profile id] [--status conformant|admitted] [--apply] \\
+      [--reviewer … --human-ack … --security-ack … --reason …]
   wvx registry admit <impl-id> --reviewer <name> --human-ack <text> --security-ack <text> \\
       --reason <text> --bench-file <path> [--apply] [--path <dir>]
   wvx forge inventory <crate-or-workspace-path>
@@ -105,7 +105,8 @@ Export options:
   -o, --out <dir>               write Cargo package to directory
   --check                       run cargo check after write
   --run                         cargo run after check (uses same input as run)
-  --release                     CompilePolicy::release (no candidates; digests + Cargo.lock)
+  --release                     release export (VerifiedImplementation + compile_release; default)
+  --dev                         playground compile (not a release path)
 
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
@@ -378,7 +379,9 @@ fn cmd_forge(args: &[String]) -> ExitCode {
         "extract" => {
             let Some(path) = args.get(1) else {
                 eprintln!("usage: wvx forge extract <crate-path>");
-                eprintln!("note: bootstrap AST only — prefer: wvx forge facts <weavatrix-facts.json>");
+                eprintln!(
+                    "note: bootstrap AST only — prefer: wvx forge facts <weavatrix-facts.json>"
+                );
                 return ExitCode::FAILURE;
             };
             eprintln!(
@@ -647,12 +650,13 @@ fn cmd_forge(args: &[String]) -> ExitCode {
             }
         }
         "gate-c" | "economics" => {
-            // wvx forge gate-c [--workspace root] [--external path] [--blind|--v2] [--human-minutes N] [--check]
+            // wvx forge gate-c [--workspace root] [--external path] [--blind|--v2|--v3] [--human-minutes N] [--check]
             let mut workspace: Option<&str> = None;
             let mut external: Option<&str> = None;
             let mut human_minutes: Option<f64> = None;
             let mut check = true;
             let mut blind_v2 = false;
+            let mut heldout_v3 = false;
             let mut i = 1;
             while i < args.len() {
                 if args[i] == "--workspace" || args[i] == "-w" {
@@ -667,6 +671,11 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                 }
                 if args[i] == "--blind" || args[i] == "--v2" {
                     blind_v2 = true;
+                    i += 1;
+                    continue;
+                }
+                if args[i] == "--v3" || args[i] == "--heldout" {
+                    heldout_v3 = true;
                     i += 1;
                     continue;
                 }
@@ -688,13 +697,14 @@ fn cmd_forge(args: &[String]) -> ExitCode {
                 i += 1;
             }
             let reg = LocalRegistry::open_default().ok();
-            match forge_gate_c_ex2(
+            match forge_gate_c_ex3(
                 workspace.map(std::path::Path::new),
                 external.map(std::path::Path::new),
                 reg.as_ref(),
                 check,
                 human_minutes,
                 blind_v2,
+                heldout_v3,
             ) {
                 Ok(resp) => {
                     if let Some(r) = &resp.data {
@@ -1060,15 +1070,12 @@ fn cmd_registry(args: &[String]) -> ExitCode {
             let id = rest.first().map(|s| s.as_str()).unwrap_or("");
             if id.is_empty() || id.starts_with("--") {
                 eprintln!(
-                    "usage: wvx registry promote <impl-id> [--profile id] [--cases N] [--status conformant|admitted] [--bench] [--security] [--apply] [--reviewer …]"
+                    "usage: wvx registry promote <impl-id> [--profile id] [--status conformant|admitted] [--apply] [--reviewer …]"
                 );
                 return ExitCode::FAILURE;
             }
             let mut profile: Option<String> = None;
-            let mut cases_n: u32 = 8;
             let mut status = "conformant".to_string();
-            let mut bench = false;
-            let mut security = false;
             let mut apply = false;
             let mut reviewer = String::new();
             let mut human_ack = String::new();
@@ -1081,25 +1088,11 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                         profile = rest.get(i + 1).cloned();
                         i += 2;
                     }
-                    "--cases" => {
-                        if let Some(n) = rest.get(i + 1).and_then(|s| s.parse().ok()) {
-                            cases_n = n;
-                        }
-                        i += 2;
-                    }
                     "--status" => {
                         if let Some(s) = rest.get(i + 1) {
                             status = s.clone();
                         }
                         i += 2;
-                    }
-                    "--bench" => {
-                        bench = true;
-                        i += 1;
-                    }
-                    "--security" => {
-                        security = true;
-                        i += 1;
                     }
                     "--apply" => {
                         apply = true;
@@ -1122,20 +1115,15 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                         i += 2;
                     }
                     "--path" => i += 2,
+                    "--cases" | "--bench" | "--security" => {
+                        eprintln!(
+                            "error: `--{}` is no longer accepted — promote runs live collectors (or HMAC-signed reports)",
+                            rest[i].trim_start_matches('-')
+                        );
+                        return ExitCode::FAILURE;
+                    }
                     _ => i += 1,
                 }
-            }
-            let mut cases: Vec<CaseResult> = pilot_parse_case_results();
-            cases.truncate(cases_n as usize);
-            while (cases.len() as u32) < cases_n {
-                let n = cases.len();
-                cases.push(CaseResult {
-                    case_id: format!("case_{n}"),
-                    kind: "positive".into(),
-                    ok: true,
-                    detail: None,
-                    expected_error_family: None,
-                });
             }
             let human = if status == "admitted" {
                 Some(HumanSignature {
@@ -1150,20 +1138,11 @@ fn cmd_registry(args: &[String]) -> ExitCode {
             let req = PromoteRequest {
                 implementation_id: id.into(),
                 profile_id: profile,
-                case_results: cases,
-                build_ok: true,
-                bench_ok: bench || status == "admitted",
-                bench_fingerprint: if bench || status == "admitted" {
-                    Some("cli-promote-bench".into())
-                } else {
-                    None
-                },
-                license_pass: true,
-                security_pass: security || status == "admitted",
                 target_status: status,
                 human,
                 apply,
                 notes: vec!["wvx registry promote".into()],
+                signed_reports: None,
             };
             return match registry_promote(&reg, req) {
                 Ok(resp) => {
@@ -1200,11 +1179,10 @@ fn cmd_registry(args: &[String]) -> ExitCode {
         "mint-evidence" | "mint_evidence" => {
             let id = rest.first().map(|s| s.as_str()).unwrap_or("");
             if id.is_empty() || id.starts_with("--") {
-                eprintln!("usage: wvx registry mint-evidence <impl-id> [--profile id] [--cases N]");
+                eprintln!("usage: wvx registry mint-evidence <impl-id> [--profile id]");
                 return ExitCode::FAILURE;
             }
             let mut profile: Option<String> = None;
-            let mut cases_n: u32 = 8;
             let mut i = 1;
             while i < rest.len() {
                 match rest[i].as_str() {
@@ -1213,32 +1191,19 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                         i += 2;
                     }
                     "--cases" => {
-                        if let Some(n) = rest.get(i + 1).and_then(|s| s.parse().ok()) {
-                            cases_n = n;
-                        }
-                        i += 2;
+                        eprintln!(
+                            "error: `--cases` is no longer accepted — mint-evidence runs the live profile suite"
+                        );
+                        return ExitCode::FAILURE;
                     }
                     "--path" => i += 2,
                     _ => i += 1,
                 }
             }
-            let mut cases = pilot_parse_case_results();
-            cases.truncate(cases_n as usize);
-            while (cases.len() as u32) < cases_n {
-                let n = cases.len();
-                cases.push(wvx_registry_client::CaseResult {
-                    case_id: format!("case_{n}"),
-                    kind: "positive".into(),
-                    ok: true,
-                    detail: None,
-                    expected_error_family: None,
-                });
-            }
             return match registry_mint_evidence(
                 &reg,
                 id,
                 profile.as_deref(),
-                cases,
                 vec!["minted via wvx registry mint-evidence".into()],
             ) {
                 Ok(resp) => {
@@ -1641,7 +1606,7 @@ fn parse_run_options(flags: &[String]) -> Result<(Vec<u8>, BTreeMap<String, Stri
 fn cmd_export(args: &[String]) -> ExitCode {
     let Some(path) = args.first() else {
         eprintln!(
-            "usage: wvx export-rust <project.wvx.json> [-o dir] [--check] [--run] [--release] [--impl id=impl]"
+            "usage: wvx export-rust <project.wvx.json> [-o dir] [--check] [--run] [--release|--dev] [--impl id=impl]"
         );
         return ExitCode::FAILURE;
     };
@@ -1649,7 +1614,8 @@ fn cmd_export(args: &[String]) -> ExitCode {
     let mut out_dir: Option<PathBuf> = None;
     let mut check = false;
     let mut do_run = false;
-    let mut release = false;
+    let mut release = true;
+    let mut dev = false;
     let mut overrides = BTreeMap::new();
     let mut input = br#"{"hello":"world"}"#.to_vec();
     let mut i = 1;
@@ -1681,6 +1647,11 @@ fn cmd_export(args: &[String]) -> ExitCode {
             }
             "--release" => {
                 release = true;
+                i += 1;
+            }
+            "--dev" => {
+                dev = true;
+                release = false;
                 i += 1;
             }
             "--impl" => {
@@ -1738,7 +1709,7 @@ fn cmd_export(args: &[String]) -> ExitCode {
     if let Some(dir) = out_dir {
         let run_input = if do_run { Some(input.as_slice()) } else { None };
         let reg = LocalRegistry::open_default().ok();
-        let result = if release {
+        let result = if dev {
             project_export_to_dir_with_policy(
                 &project,
                 &dir,
@@ -1748,7 +1719,12 @@ fn cmd_export(args: &[String]) -> ExitCode {
                 policy,
             )
         } else {
-            project_export_to_dir_with_registry(&project, &dir, check, run_input, reg.as_ref())
+            match &reg {
+                Some(r) => project_export_to_dir_release(&project, &dir, check, run_input, r),
+                None => Err(wvx_command_bus::BusError::Compile(
+                    "export-rust requires a registry (WVX_REGISTRY or ./registry-dev)".into(),
+                )),
+            }
         };
         match result {
             Ok(resp) => {
@@ -1770,7 +1746,8 @@ fn cmd_export(args: &[String]) -> ExitCode {
             }
         }
     } else {
-        match project_export_rust(&project) {
+        let reg = LocalRegistry::open_default().ok();
+        match project_export_rust_hydrated(&project, reg.as_ref()) {
             Ok(resp) => {
                 if let Some(ws) = &resp.data {
                     for file in &ws.files {

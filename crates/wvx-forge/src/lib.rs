@@ -34,14 +34,15 @@ pub use draft::{
 };
 pub use economics::{
     default_workspace_root, load_gate_c_expectations_file, pilot_gate_c_expectations,
-    pilot_ontology, run_gate_c, run_gate_c_external, run_gate_c_external_v2, run_gate_c_pilot,
-    GateCCaseResult, GateCOptions, GateCReport,
+    pilot_ontology, run_gate_c, run_gate_c_external, run_gate_c_external_v2,
+    run_gate_c_external_v3, run_gate_c_pilot, GateCCaseResult, GateCOptions, GateCReport,
 };
 pub use extract::{extract_public_api, ApiCandidate, CandidateKind, CandidateShape, ExtractReport};
 pub use facts::{
     extract_from_facts, facts_from_extract, load_facts_file, parse_facts_json, validate_facts,
     write_facts_file, BootstrapAstFactsProvider, FileFactsProvider, JsonFactsProvider,
     WeavatrixFactEntity, WeavatrixFactsBundle, WeavatrixFactsProvider, FACTS_SCHEMA_VERSION,
+    FACTS_SCHEMA_VERSION_V01,
 };
 
 use serde::{Deserialize, Serialize};

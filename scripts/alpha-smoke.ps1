@@ -36,10 +36,10 @@ Step -Name "CLI registry check" -Body {
   cargo run -p wvx-cli --quiet -- registry check | Out-Null
 }
 
-Step -Name "CLI export-rust --check" -Body {
+Step -Name "CLI export-rust --dev --check (playground)" -Body {
   $outDir = Join-Path $env:TEMP "loom-alpha-smoke-export"
   if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
-  cargo run -p wvx-cli --quiet -- export-rust fixtures/pilot-json-pipeline.wvx.json -o $outDir --check | Out-Host
+  cargo run -p wvx-cli --quiet -- export-rust fixtures/pilot-json-pipeline.wvx.json -o $outDir --dev --check | Out-Host
 }
 
 $base = if ($env:WVX_HTTP_ADDR) { "http://$($env:WVX_HTTP_ADDR)" } else { "http://127.0.0.1:43917" }

@@ -7,6 +7,8 @@
 //! Full automatic generation (schemars) can replace hand schemas later;
 //! until then, these tests keep schema and code from drifting.
 
+pub mod draft2020;
+
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
@@ -55,7 +57,11 @@ pub fn schema_required(schema: &Value) -> Result<Vec<String>, ContractError> {
 }
 
 /// Assert every schema-required top-level key is present on `doc`.
-pub fn assert_required_fields(schema: &Value, doc: &Value, label: &str) -> Result<(), ContractError> {
+pub fn assert_required_fields(
+    schema: &Value,
+    doc: &Value,
+    label: &str,
+) -> Result<(), ContractError> {
     let required = schema_required(schema)?;
     let obj = doc
         .as_object()
@@ -80,8 +86,8 @@ pub fn roundtrip_json<T>(value: &T) -> Result<T, ContractError>
 where
     T: Serialize + DeserializeOwned,
 {
-    let json = serde_json::to_value(value)
-        .map_err(|e| ContractError::Fail(format!("serialize: {e}")))?;
+    let json =
+        serde_json::to_value(value).map_err(|e| ContractError::Fail(format!("serialize: {e}")))?;
     let back: T = serde_json::from_value(json.clone())
         .map_err(|e| ContractError::Fail(format!("deserialize: {e}")))?;
     let again = serde_json::to_value(&back)
@@ -101,10 +107,25 @@ pub fn load_schema(name: &str) -> Result<Value, ContractError> {
 }
 
 /// Validate a document path against schema required fields.
-pub fn validate_doc_path(schema_name: &str, doc_path: &Path, label: &str) -> Result<(), ContractError> {
+pub fn validate_doc_path(
+    schema_name: &str,
+    doc_path: &Path,
+    label: &str,
+) -> Result<(), ContractError> {
     let schema = load_schema(schema_name)?;
     let doc = load_json(doc_path)?;
     assert_required_fields(&schema, &doc, label)
+}
+
+/// Full Draft 2020-12 evaluation of a document against a named schema.
+pub fn validate_doc_draft2020(
+    schema_name: &str,
+    doc_path: &Path,
+    label: &str,
+) -> Result<(), ContractError> {
+    let schema = load_schema(schema_name)?;
+    let doc = load_json(doc_path)?;
+    draft2020::validate_instance(&schema, &doc, label)
 }
 
 #[cfg(test)]
@@ -136,15 +157,15 @@ mod tests {
 
     #[test]
     fn implementation_schema_required_matches_registry() {
-        let imp = monorepo_root()
-            .join("registry-dev/implementations/serde-json.parse-owned@1.json");
+        let imp =
+            monorepo_root().join("registry-dev/implementations/serde-json.parse-owned@1.json");
         validate_doc_path("wvx.implementation.v0.1.json", &imp, "serde-parse").unwrap();
     }
 
     #[test]
     fn evidence_v02_schema_required_matches_sample() {
-        let art = monorepo_root()
-            .join("registry-dev/evidence/artifacts/serde-json.parse-owned@1.json");
+        let art =
+            monorepo_root().join("registry-dev/evidence/artifacts/serde-json.parse-owned@1.json");
         validate_doc_path("wvx.evidence_artifact.v0.2.json", &art, "evidence-v2").unwrap();
     }
 
@@ -220,8 +241,8 @@ mod tests {
 
     #[test]
     fn implementation_schema_source_ref_on_sample() {
-        let imp = monorepo_root()
-            .join("registry-dev/implementations/serde-json.parse-owned@1.json");
+        let imp =
+            monorepo_root().join("registry-dev/implementations/serde-json.parse-owned@1.json");
         let doc = load_json(&imp).unwrap();
         assert!(doc.get("source_ref").is_some());
         assert_eq!(doc["source_ref"]["provider"], "manual");
@@ -279,6 +300,9 @@ mod tests {
                 profile: "sha256:6".into(),
                 suite: "sha256:def".into(),
                 subject: "sha256:abc".into(),
+                package_checksum: "sha256:7".into(),
+                source_ref_revision: "sha256:absent".into(),
+                profile_case_ids: "sha256:8".into(),
             },
             environment: EvidenceEnvironment {
                 target: "test".into(),
@@ -340,5 +364,38 @@ mod tests {
         );
         assert_eq!(PROJECT_SCHEMA_VERSION, "wvx.project.v0.1");
         assert_eq!(EVIDENCE_SCHEMA, "wvx.evidence.v0.2");
+    }
+
+    #[test]
+    fn draft2020_validates_project_and_facts() {
+        validate_doc_draft2020(
+            "wvx.project.v0.1.json",
+            &monorepo_root().join("fixtures/pilot-json-pipeline.wvx.json"),
+            "pilot-json",
+        )
+        .unwrap();
+        validate_doc_draft2020(
+            "wvx.facts.v0.1.json",
+            &monorepo_root().join("fixtures/weavatrix-facts-sample.json"),
+            "facts-v01",
+        )
+        .unwrap();
+        let ev_schema = load_schema("wvx.evidence_artifact.v0.2.json").unwrap();
+        let ev_doc = load_json(
+            &monorepo_root().join("registry-dev/evidence/artifacts/serde-json.parse-owned@1.json"),
+        )
+        .unwrap();
+        // Sample artifact may predate new digest fields; required keys still hold.
+        assert_required_fields(&ev_schema, &ev_doc, "sample-artifact").unwrap();
+    }
+
+    #[test]
+    fn draft2020_rejects_missing_const() {
+        let schema = load_schema("wvx.project.v0.1.json").unwrap();
+        let mut doc =
+            load_json(&monorepo_root().join("fixtures/pilot-json-pipeline.wvx.json")).unwrap();
+        doc["schema_version"] = serde_json::json!("wrong");
+        let err = crate::draft2020::validate_instance(&schema, &doc, "bad").unwrap_err();
+        assert!(err.to_string().contains("const"), "{err}");
     }
 }

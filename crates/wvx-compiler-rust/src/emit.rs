@@ -101,6 +101,15 @@ pub fn lockfile_with_meta(
 
 pub fn main_rs() -> String {
     r##"//! Generated Loom binary.
+//!
+//! Binary-safe input (first match wins):
+//!   WVX_PIPELINE_INPUT_FILE  — raw bytes from a path
+//!   WVX_PIPELINE_INPUT_B64   — standard Base64
+//!   argv[1]                  — UTF-8 text argument
+//!   default                  — {"hello":"world"}
+//!
+//! `WVX_PIPELINE_INPUT` is intentionally **not** read: environment strings are
+//! not a binary-safe transport (and must not go through from_utf8_lossy).
 
 mod generated_pipeline;
 
@@ -108,13 +117,15 @@ use std::env;
 use std::io::{self, Write};
 
 fn main() {
-    let input = env::var("WVX_PIPELINE_INPUT")
-        .map(|s| s.into_bytes())
-        .or_else(|_| env::args().nth(1).map(|s| s.into_bytes()).ok_or(()))
-        .unwrap_or_else(|_| br#"{"hello":"world"}"#.to_vec());
+    let input = match read_pipeline_input() {
+        Ok(b) => b,
+        Err(err) => {
+            eprintln!("input error: {err}");
+            std::process::exit(2);
+        }
+    };
 
     match generated_pipeline::run_pipeline(&input) {
-        // Raw bytes so binary domains (hash digests, gzip) round-trip in golden tests.
         Ok(bytes) => {
             let _ = io::stdout().write_all(&bytes);
         }
@@ -123,6 +134,52 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+fn read_pipeline_input() -> Result<Vec<u8>, String> {
+    if let Ok(path) = env::var("WVX_PIPELINE_INPUT_FILE") {
+        return std::fs::read(&path).map_err(|e| format!("{path}: {e}"));
+    }
+    if let Ok(b64) = env::var("WVX_PIPELINE_INPUT_B64") {
+        return decode_b64(&b64);
+    }
+    if let Some(arg) = env::args().nth(1) {
+        return Ok(arg.into_bytes());
+    }
+    Ok(br#"{"hello":"world"}"#.to_vec())
+}
+
+fn decode_b64(input: &str) -> Result<Vec<u8>, String> {
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            b'=' => Some(0),
+            _ => None,
+        }
+    }
+    let cleaned: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    if cleaned.len() % 4 != 0 {
+        return Err("invalid base64 length".into());
+    }
+    let mut out = Vec::with_capacity(cleaned.len() * 3 / 4);
+    for chunk in cleaned.as_bytes().chunks(4) {
+        let b0 = val(chunk[0]).ok_or("invalid base64")?;
+        let b1 = val(chunk[1]).ok_or("invalid base64")?;
+        let b2 = val(chunk[2]).ok_or("invalid base64")?;
+        let b3 = val(chunk[3]).ok_or("invalid base64")?;
+        out.push((b0 << 2) | (b1 >> 4));
+        if chunk[2] != b'=' {
+            out.push((b1 << 4) | (b2 >> 2));
+        }
+        if chunk[3] != b'=' {
+            out.push((b2 << 6) | b3);
+        }
+    }
+    Ok(out)
 }
 "##
     .into()
@@ -165,6 +222,7 @@ pub fn pipeline(
     // port values as rust vars: inst_port
     let mut port_vars: BTreeMap<String, String> = BTreeMap::new();
     let mut final_output: Option<String> = None;
+    let mut last_json_var: Option<String> = None;
 
     for instance_id in order {
         let instance = project
@@ -253,7 +311,10 @@ pub fn pipeline(
             let var = rust_var(instance_id, port);
             let ty = rust_type_for_port(&cap.outputs[0].ty);
             writeln!(out, "    let {var}: {ty} = {call};").ok();
-            port_vars.insert(format!("{instance_id}.{port}"), var);
+            port_vars.insert(format!("{instance_id}.{port}"), var.clone());
+            if port == "value" {
+                last_json_var = Some(var);
+            }
         } else if cap.outputs.is_empty() {
             writeln!(out, "    let _ = {call};").ok();
         } else {
@@ -263,11 +324,26 @@ pub fn pipeline(
         }
     }
 
-    let ret = final_output.ok_or_else(|| {
-        CompileError::Graph(
-            "no io.output.bytes sink found — cannot determine pipeline return value".into(),
-        )
-    })?;
+    let ret = if let Some(r) = final_output {
+        r
+    } else {
+        // Parse-only graphs: last json_value → bytes (no serialize impl required).
+        match last_json_var {
+            Some(var) => {
+                writeln!(
+                    out,
+                    "    let __wvx_sink: Vec<u8> = serde_json::to_vec(&{var}).map_err(|e| e.to_string())?;"
+                )
+                .ok();
+                "__wvx_sink".to_string()
+            }
+            None => {
+                return Err(CompileError::Graph(
+                    "no io.output.bytes sink found — cannot determine pipeline return value".into(),
+                ));
+            }
+        }
+    };
     writeln!(out, "    Ok({ret})").ok();
     writeln!(out, "}}").ok();
     Ok(out)

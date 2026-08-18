@@ -1,37 +1,23 @@
-//! External demo adapter for Gate F.
+//! External Gate F adapter: a **semantically equivalent** JSON parser.
 //!
 //! Deliberately **not** registered in `wvx-runtime` pilot tables or the legacy
 //! compiler `match` arms. Host registration uses feature `host` + SDK plugins.
+//!
+//! Same contract as `serde-json.parse-owned@1` (`data.json.parse@1`):
+//! parse RFC 8259 JSON without transforming values. This proves core-independent
+//! extensibility without claiming a different capability under the same signature.
 
 use serde_json::Value;
 
 /// Implementation id for this external adapter.
-pub const IMPLEMENTATION_ID: &str = "external.demo.upper-parse@1";
+pub const IMPLEMENTATION_ID: &str = "external.demo.json-parse@1";
 pub const CAPABILITY_KEY: &str = "data.json.parse@1";
 
-/// Parse JSON and uppercase all **string leaf values** (demo transform).
-pub fn upper_parse(bytes: &[u8]) -> Result<Value, String> {
-    let text = std::str::from_utf8(bytes).map_err(|e| format!("invalid-unicode: {e}"))?;
-    let mut v: Value = serde_json::from_str(text).map_err(|e| format!("invalid-syntax: {e}"))?;
-    uppercase_strings(&mut v);
-    Ok(v)
-}
-
-fn uppercase_strings(v: &mut Value) {
-    match v {
-        Value::String(s) => *s = s.to_uppercase(),
-        Value::Array(items) => {
-            for i in items {
-                uppercase_strings(i);
-            }
-        }
-        Value::Object(map) => {
-            for (_k, val) in map.iter_mut() {
-                uppercase_strings(val);
-            }
-        }
-        _ => {}
-    }
+/// Parse JSON bytes into a value. Semantically equivalent to `serde_json::from_slice`
+/// after a UTF-8 check (capability error families: `invalid-unicode`, `invalid-syntax`).
+pub fn parse(bytes: &[u8]) -> Result<Value, String> {
+    std::str::from_utf8(bytes).map_err(|e| format!("invalid-unicode: {e}"))?;
+    serde_json::from_slice(bytes).map_err(|e| format!("invalid-syntax: {e}"))
 }
 
 /// Register into the process-wide SDK plugin table (host feature only).
@@ -42,7 +28,7 @@ pub fn register() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         register_plugin(IMPLEMENTATION_ID, CAPABILITY_KEY, || {
-            bytes_to_json_handler(IMPLEMENTATION_ID, CAPABILITY_KEY, upper_parse)
+            bytes_to_json_handler(IMPLEMENTATION_ID, CAPABILITY_KEY, parse)
         });
     });
 }
@@ -52,8 +38,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn uppercases_strings() {
-        let v = upper_parse(br#"{"hello":"world"}"#).unwrap();
-        assert_eq!(v["hello"], "WORLD");
+    fn parses_object_without_transform() {
+        let v = parse(br#"{"hello":"world"}"#).unwrap();
+        assert_eq!(v["hello"], "world");
+    }
+
+    #[test]
+    fn rejects_bad_utf8() {
+        let err = parse(&[0xff]).unwrap_err();
+        assert!(err.starts_with("invalid-unicode"), "{err}");
     }
 }

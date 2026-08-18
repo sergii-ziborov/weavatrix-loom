@@ -20,15 +20,15 @@
     "crate_name": "wvx-adapters",
     "execution": "native-rust"
   },
-  "status": "conformant",
+  "status": "candidate",
   "evidence": {
     "build": "pass",
-    "conformance": "pass",
+    "conformance": "absent",
     "benchmark": "absent",
     "license": "pass",
     "security": "absent"
   },
-  "notes": "serde_json parse. Truthful registry: needs evidence artifact for conformant.",
+  "notes": "serde_json parse. Candidate until promote runs a live profile suite and writes a source-bound artifact.",
   "sdk": {
     "emit": {
       "crate_name": "wvx-adapters",
@@ -36,6 +36,5 @@
       "template": "wvx_adapters::serde_json_parse_owned::parse({bytes}.as_slice())?"
     }
   },
-  "conformance_profile": "json-rfc8259-core-v1",
-  "evidence_artifact": "evidence/artifacts/serde-json.parse-owned@1.json"
+  "conformance_profile": "json-rfc8259-core-v1"
 }

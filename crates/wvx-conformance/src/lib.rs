@@ -18,9 +18,10 @@ pub mod domain_golden;
 pub mod profile_runner;
 
 pub use bench::{run_pilot_bench, BenchProvenance, BenchReport};
-pub use domain_golden::{golden_fixture_bytes, run_domain_goldens};
+pub use domain_golden::{golden_fixture_bytes, run_domain_goldens, run_full_dynamic_static_matrix};
 pub use profile_runner::{
-    run_multi_domain_profiles, run_profile_conformance, run_profile_doc, ProfileRunReport,
+    implementations_for_profile, run_multi_domain_profiles, run_profile_conformance,
+    run_profile_doc, run_profile_for_implementation, ProfileRunReport,
 };
 
 use std::collections::BTreeMap;

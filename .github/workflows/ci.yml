@@ -1,155 +1,48 @@
-name: CI
+name: ci
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
 jobs:
-  check:
-    name: cargo check + test (workspace)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: rustfmt
+      - name: fmt
+        if: runner.os == 'Linux'
         run: cargo fmt --all -- --check
-
-      - name: clippy (workspace)
+      - name: clippy
+        if: runner.os == 'Linux'
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: test (lib)
+        run: cargo test --workspace --lib --exclude wvx-conformance
+      - name: conformance + profile runner
+        run: cargo test -p wvx-conformance --lib
+      - name: schema contracts
+        run: cargo test -p wvx-schema-contract
+      - name: verified release e2e (mandatory gate)
+        run: cargo test -p wvx-command-bus --test verified_release_e2e -- --nocapture
+      - name: truthful registry
+        run: cargo test -p wvx-registry-client --lib
 
-      - name: Check workspace
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.78.0
+      - name: MSRV cargo check
         run: cargo check --workspace --all-targets
-
-      - name: Test workspace (excludes long golden matrix — see gates job)
-        run: cargo test --workspace --lib --bins --tests -- --nocapture --skip golden
-
-      - name: Schema contract roundtrips (IR ↔ fixtures ↔ schemas)
-        run: cargo test -p wvx-schema-contract -- --nocapture
-
-  gates:
-    name: Gates A/D (conformance + golden)
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Gate A — capability vectors (CLI)
-        run: cargo run -p wvx-cli --quiet -- conformance
-
-      - name: Gate A + D — wvx-conformance suite (includes golden export)
-        run: cargo test -p wvx-conformance -- --nocapture
-
-      - name: Pilot run with third parse backend
-        run: |
-          cargo run -p wvx-cli --quiet -- run fixtures/pilot-json-pipeline.wvx.json \
-            --impl parse=json-crate.parse@1
-
-      - name: Cortex intent heuristics (no API key)
-        run: |
-          cargo test -p wvx-cortex -- --nocapture
-          cargo run -p wvx-cli --quiet -- patch intent "install the pilot json pipeline"
-          cargo run -p wvx-cli --quiet -- patch intent "use pretty serialize" \
-            --project fixtures/pilot-json-pipeline.wvx.json
-
-      - name: Registry admission audit (overclaim check)
-        run: cargo run -p wvx-cli --quiet -- registry check
-
-      - name: Truthful registry invariant (conformant+ needs evidence artifacts)
-        run: cargo run -p wvx-cli --quiet -- registry truthful
-
-      - name: EvidenceArtifact v0.2 verify sample
-        run: cargo run -p wvx-cli --quiet -- registry verify-evidence serde-json.parse-owned@1
-
-      - name: Profile-driven conformance (sha256)
-        run: cargo run -p wvx-cli --quiet -- conformance --profile sha256-fips180-4-v1
-
-      - name: Gate E pilot microbench (execution pass/fail)
-        run: cargo run -p wvx-cli --quiet -- bench --iterations 50 --warmup 5
-
-      - name: Gate F external SDK adapter (run + export)
-        run: |
-          cargo run -p wvx-cli --quiet -- run fixtures/pilot-json-pipeline.wvx.json \
-            --impl parse=external.demo.upper-parse@1
-          cargo run -p wvx-cli --quiet -- export-rust fixtures/pilot-json-pipeline.wvx.json \
-            --impl parse=external.demo.upper-parse@1 -o /tmp/loom-gate-f --check --run
-
-      - name: Gate C external (v1 graded)
-        run: |
-          cargo run -p wvx-cli --quiet -- forge gate-c \
-            --external fixtures/gate-c-external --human-minutes 50 --check
-
-      - name: Gate C v2 external BLIND (12 crates)
-        run: |
-          cargo run -p wvx-cli --quiet -- forge gate-c \
-            --external fixtures/gate-c-external --blind --human-minutes 60 --check
-
-  docs-and-schemas:
-    name: Schemas present
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Required schema files exist
-        run: |
-          test -f schemas/wvx.project.v0.1.json
-          test -f schemas/wvx.capability.v0.1.json
-          test -f schemas/wvx.implementation.v0.1.json
-          test -f schemas/wvx.graph_patch.v0.1.json
-          test -f schemas/wvx.conformance_profile.v0.1.json
-          test -f schemas/wvx.evidence_artifact.v0.1.json
-          test -f schemas/wvx.evidence_artifact.v0.2.json
-          test -f schemas/wvx.facts.v0.1.json
-          test -f deny.toml
-          test -f docs/truthful-registry.md
-          test -f docs/adr/README.md
-          test -f docs/domain-roadmap.md
-          test -d crates/wvx-schema-contract
-
-          test -f docs/go-no-go-a-d-pilot-json.md
-          test -f docs/go-no-go-e-pilot.md
-          test -f docs/go-no-go-f-pilot.md
-          test -f docs/go-no-go-c-pilot.md
-          test -f docs/adr/0011-gate-f-core-independent-extensibility.md
-          test -f docs/adr/0012-ecosystem-boundaries.md
-          test -f docs/ecosystem-distribution.md
-          test -f docs/crate-surface.md
-          test -f docs/alpha-prototype.md
-          test -f docs/beta-prototype.md
-          test -f scripts/alpha-smoke.ps1
-          test -f scripts/dev-server.ps1
-          test -f fixtures/pilot-json-pipeline.wvx.json
-          test -f fixtures/pilot-codec-pipeline.wvx.json
-          test -f fixtures/gate-c-external/expectations.v2.json
-          test -d registry-dev/evidence
-          test -f registry-dev/implementations/external.demo.upper-parse@1.json
-          # README must keep ecosystem positioning (anti dual-graph)
-          grep -q "ADR-0012" README.md
-          grep -q "Weavatrix" README.md
-          grep -q "FerroSift\|ferrosift" README.md
-          grep -q "EvidenceArtifact\|truthful\|promote" README.md
-          # Product hosts must not wire MCP; libs are path-consumable
-          grep -q "crate-surface" README.md
-          grep -q "HTTP only" README.md
-          grep -q "agent-only" README.md

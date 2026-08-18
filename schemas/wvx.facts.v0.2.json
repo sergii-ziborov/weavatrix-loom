@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weavatrix.com/schemas/wvx.facts.v0.2.json",
+  "title": "Weavatrix Facts Bundle v0.2",
+  "description": "Code facts export from Weavatrix → Loom Forge. Adds source digest, qualified names, spans, docs, cfg/features, unsafe, effects.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "package_name"],
+  "properties": {
+    "schema_version": { "const": "wvx.facts.v0.2" },
+    "source": { "type": "string" },
+    "package_name": { "type": "string", "minLength": 1 },
+    "package_root": { "type": "string" },
+    "package_version": { "type": "string" },
+    "revision": { "type": "string" },
+    "source_digest": { "type": "string" },
+    "features": { "type": "array", "items": { "type": "string" } },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "name"],
+        "properties": {
+          "kind": { "type": "string" },
+          "name": { "type": "string" },
+          "entity_id": { "type": "string" },
+          "path": { "type": "string" },
+          "line": { "type": "integer", "minimum": 0 },
+          "signature": { "type": "string" },
+          "module_path": { "type": "string" },
+          "qualified_name": { "type": "string" },
+          "span_start": { "type": "integer", "minimum": 0 },
+          "span_end": { "type": "integer", "minimum": 0 },
+          "docs": { "type": "string" },
+          "cfg": { "type": "array", "items": { "type": "string" } },
+          "features": { "type": "array", "items": { "type": "string" } },
+          "is_unsafe": { "type": "boolean" },
+          "effects": { "type": "array", "items": { "type": "string" } },
+          "inputs": { "type": "array", "items": { "type": "string" } },
+          "outputs": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

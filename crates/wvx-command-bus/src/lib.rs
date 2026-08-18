@@ -9,22 +9,22 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use thiserror::Error;
 use wvx_compiler_rust::{
-    compile_release, compile_to_rust_with_sdk, compile_with_policy,
+    compile_release, compile_to_rust_with_sdk, compile_with_policy, export_release_to_directory,
     export_to_directory_with_policy, ExportReport, GeneratedWorkspace,
 };
 
 // Re-export policy / preview types for hosts (CLI, HTTP).
 use std::collections::BTreeMap;
 pub use wvx_compiler_rust::{CompilePolicy, CompileReport};
-use wvx_conformance::{run_pilot_bench, BenchReport};
+use wvx_conformance::{run_pilot_bench, run_profile_for_implementation, BenchReport};
 use wvx_cortex::{propose_from_intent, CortexError, IntentProposeResult};
 use wvx_forge::{
     compile_adapters_batch, default_workspace_root, draft_adapters_with_ontology,
     draft_from_extract_with_ontology, extract_from_facts, extract_public_api, facts_from_extract,
     inventory_path, load_facts_file, match_candidates, parse_facts_json, run_gate_c_external,
-    run_gate_c_external_v2, run_gate_c_pilot, write_draft_files, write_facts_file,
-    CompileBatchReport, DraftReport, ExtractReport, ForgeError, GateCReport, InventoryReport,
-    MatchReport, OntologyCapability, OntologyPort, WeavatrixFactsBundle,
+    run_gate_c_external_v2, run_gate_c_external_v3, run_gate_c_pilot, write_draft_files,
+    write_facts_file, CompileBatchReport, DraftReport, ExtractReport, ForgeError, GateCReport,
+    InventoryReport, MatchReport, OntologyCapability, OntologyPort, WeavatrixFactsBundle,
 };
 use wvx_ir::Project;
 use wvx_ir::SdkEmit;
@@ -35,12 +35,13 @@ use wvx_project_graph::{
     GraphPatch, PatchApplyResult, PatchError,
 };
 use wvx_registry_client::{
-    admit_implementation, audit_truthful_registry, mint_and_write, promote_implementation,
-    requalify_implementation, resolve_implementation, verify_artifact, verify_implementation,
-    AdmissionReport, AdmitRequest, AdmitResult, ArtifactCheck, CapabilityHit, CaseResult,
-    EvidenceArtifact, FamilySummary, ImplementationHit, InstallCandidateResult, LocalRegistry,
-    MintRequest, ProfileSummary, PromoteRequest, PromoteResult, RegistryError, RegistrySummary,
-    RequalifyReport, TruthfulAuditReport, VerifiedImplementation,
+    admit_implementation, audit_truthful_registry, mint_and_write,
+    promote_implementation_with_collector, requalify_implementation, resolve_implementation,
+    verify_artifact, verify_implementation, AdmissionReport, AdmitRequest, AdmitResult,
+    ArtifactCheck, CapabilityHit, CaseResult, EvidenceArtifact, FamilySummary, ImplementationHit,
+    InstallCandidateResult, LocalRegistry, MintRequest, ProfileSuiteCollector, ProfileSummary,
+    PromoteRequest, PromoteResult, RegistryError, RegistrySummary, RequalifyReport,
+    TruthfulAuditReport, VerifiedImplementation,
 };
 use wvx_runtime::{
     apply_implementation_overrides, list_pilot_implementations, run_project, HandlerRegistry,
@@ -178,13 +179,15 @@ pub fn project_validate_with_options(
     }
 }
 
-/// Compile a project to a generated Rust package (in memory).
-pub fn project_export_rust(project: &Project) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
-    project_export_rust_hydrated(project, None)
+/// Playground / structural compile (not a release path).
+pub fn project_export_rust_dev(
+    project: &Project,
+) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
+    project_export_rust_dev_hydrated(project, None)
 }
 
-/// Compile after optionally hydrating capability contracts from a registry.
-pub fn project_export_rust_hydrated(
+/// Playground compile after hydrating capability contracts.
+pub fn project_export_rust_dev_hydrated(
     project: &Project,
     registry: Option<&LocalRegistry>,
 ) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
@@ -195,6 +198,74 @@ pub fn project_export_rust_hydrated(
         Ok(ws) => Ok(BusResponse::ok(ws)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }
+}
+
+/// Public export: **only** [`compile_release`] over a verified pool.
+pub fn project_export_rust(
+    _project: &Project,
+) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
+    Err(BusError::Compile(
+        "public export-rust requires a registry and VerifiedImplementation pool (use project_export_rust_release)".into(),
+    ))
+}
+
+/// Public hydrated export → release compile.
+pub fn project_export_rust_hydrated(
+    project: &Project,
+    registry: Option<&LocalRegistry>,
+) -> Result<BusResponse<GeneratedWorkspace>, BusError> {
+    let Some(reg) = registry else {
+        return Err(BusError::Compile(
+            "export-rust requires a registry so implementations can be verified".into(),
+        ));
+    };
+    let verified = verified_pool_for_project(reg, project)?;
+    let resp = project_export_rust_release(project, &verified, Some(reg))?;
+    match resp.data {
+        Some(report) => Ok(BusResponse::ok(report.workspace)),
+        None => Err(BusError::Compile(resp.diagnostics.join("; "))),
+    }
+}
+
+/// Build a VerifiedImplementation pool for every non-I/O instance in the project.
+pub fn verified_pool_for_project(
+    registry: &LocalRegistry,
+    project: &Project,
+) -> Result<Vec<VerifiedImplementation>, BusError> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for inst in &project.instances {
+        let cap = inst.capability.as_key();
+        if wvx_compiler_rust::is_passthrough_io(&cap) {
+            continue;
+        }
+        let id = inst
+            .implementation
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| wvx_compiler_rust::default_implementation(&cap).map(str::to_string))
+            .ok_or_else(|| {
+                BusError::Compile(format!(
+                    "instance `{}` has no implementation for release export",
+                    inst.id
+                ))
+            })?;
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+        let Some(imp) = registry.find_implementation(&id)? else {
+            return Err(BusError::Compile(format!(
+                "implementation `{id}` not in registry — cannot verify for release export"
+            )));
+        };
+        out.push(verify_implementation(registry.root(), &imp)?);
+    }
+    if out.is_empty() {
+        return Err(BusError::Compile(
+            "compile_release requires a non-empty VerifiedImplementation pool".into(),
+        ));
+    }
+    Ok(out)
 }
 
 /// Compile with explicit policy; returns digests + resolution explanations.
@@ -229,7 +300,7 @@ pub fn project_export_to_dir(
     project_export_to_dir_with_registry(project, out_dir, check, run_input, None)
 }
 
-/// Export with registry SDK emit map (Gate F).
+/// Public directory export: verified pool + [`compile_release`].
 pub fn project_export_to_dir_with_registry(
     project: &Project,
     out_dir: &Path,
@@ -237,14 +308,30 @@ pub fn project_export_to_dir_with_registry(
     run_input: Option<&[u8]>,
     registry: Option<&LocalRegistry>,
 ) -> Result<BusResponse<ExportReport>, BusError> {
-    project_export_to_dir_with_policy(
-        project,
-        out_dir,
-        check,
-        run_input,
-        registry,
-        CompilePolicy::dev(),
-    )
+    let Some(reg) = registry else {
+        return Err(BusError::Compile(
+            "export-rust requires a registry so implementations can be verified".into(),
+        ));
+    };
+    project_export_to_dir_release(project, out_dir, check, run_input, reg)
+}
+
+/// Release export to a directory (VerifiedImplementation + compile_release).
+pub fn project_export_to_dir_release(
+    project: &Project,
+    out_dir: &Path,
+    check: bool,
+    run_input: Option<&[u8]>,
+    registry: &LocalRegistry,
+) -> Result<BusResponse<ExportReport>, BusError> {
+    let mut project = project.clone();
+    hydrate_project(&mut project, Some(registry))?;
+    let verified = verified_pool_for_project(registry, &project)?;
+    let sdk = sdk_emits_from_registry(Some(registry));
+    match export_release_to_directory(&project, &verified, out_dir, check, run_input, &sdk) {
+        Ok(report) => Ok(BusResponse::ok(report)),
+        Err(e) => Err(BusError::Compile(e.to_string())),
+    }
 }
 
 /// Export with full compile policy (release/dev, digests, optional Cargo.lock).
@@ -529,12 +616,11 @@ pub fn registry_truthful_audit(
     Ok(BusResponse::ok(audit_truthful_registry(registry)?))
 }
 
-/// Mint EvidenceArtifact v0.2 for an implementation (profile-linked digests + cases).
+/// Mint EvidenceArtifact v0.2 by **running** the profile suite (no invented cases).
 pub fn registry_mint_evidence(
     registry: &LocalRegistry,
     full_id: &str,
     profile_id: Option<&str>,
-    cases: Vec<CaseResult>,
     notes: Vec<String>,
 ) -> Result<BusResponse<EvidenceArtifact>, BusError> {
     let Some(imp) = registry.find_implementation(full_id)? else {
@@ -542,22 +628,35 @@ pub fn registry_mint_evidence(
             "implementation not found: {full_id}"
         )]));
     };
+    let pid = profile_id
+        .map(str::to_string)
+        .or(imp.conformance_profile.clone())
+        .ok_or_else(|| {
+            BusError::Registry(RegistryError::Parse(
+                registry.root().to_path_buf(),
+                "mint-evidence requires a conformance profile".into(),
+            ))
+        })?;
+    let collector = LivePromotionCollector;
+    let cases = collector
+        .run_profile(registry.root(), &imp.full_id(), &pid)
+        .map_err(|e| BusError::Registry(RegistryError::Parse(registry.root().to_path_buf(), e)))?;
     let mut axes = imp.evidence.clone();
-    if axes.build == wvx_ir::AxisFact::Absent {
-        axes.build = wvx_ir::AxisFact::Pass;
-    }
-    if axes.license == wvx_ir::AxisFact::Absent {
-        axes.license = wvx_ir::AxisFact::Pass;
-    }
+    axes.conformance = if cases.iter().all(|c| c.ok) && !cases.is_empty() {
+        wvx_ir::AxisFact::Pass
+    } else {
+        wvx_ir::AxisFact::Fail
+    };
     let req = MintRequest {
         runner_identity: format!("wvx-command-bus@{}", env!("CARGO_PKG_VERSION")),
         case_results: cases,
         axes,
         notes,
-        digest_ctx: Default::default(),
-        profile_id: profile_id
-            .map(str::to_string)
-            .or(imp.conformance_profile.clone()),
+        digest_ctx: wvx_registry_client::DigestContext {
+            workspace_root: wvx_registry_client::workspace::workspace_root_near(registry.root()),
+            ..Default::default()
+        },
+        profile_id: Some(pid),
     };
     let (art, path) = mint_and_write(registry.root(), &imp, &req)?;
     let mut resp = BusResponse::ok(art);
@@ -586,17 +685,65 @@ pub fn registry_verify_evidence(
     }
 }
 
-/// Mint pilot Gate A style cases for serde-json parse (8 placeholder positives).
-pub fn pilot_parse_case_results() -> Vec<CaseResult> {
-    (0..8)
-        .map(|i| CaseResult {
-            case_id: format!("gate_a_vector_{i}"),
-            kind: "positive".into(),
-            ok: true,
-            detail: Some("pilot suite vector".into()),
-            expected_error_family: None,
-        })
-        .collect()
+/// Live profile + bench collector. Promote never accepts invented `ok=true` cases.
+pub struct LivePromotionCollector;
+
+impl ProfileSuiteCollector for LivePromotionCollector {
+    fn run_profile(
+        &self,
+        registry_root: &Path,
+        implementation_id: &str,
+        profile_id: &str,
+    ) -> Result<Vec<CaseResult>, String> {
+        wvx_adapters::register_pilot_plugins();
+        let handlers = playground_handlers();
+        let report = run_profile_for_implementation(
+            registry_root,
+            &handlers,
+            profile_id,
+            implementation_id,
+        )?;
+        // One result per profile case id for this impl (drop other impls).
+        let mut out = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for c in report.case_results {
+            if seen.insert(c.case_id.clone()) {
+                out.push(c);
+            }
+        }
+        if !report.ok {
+            return Err(format!(
+                "profile `{profile_id}` failed for `{implementation_id}`: {}/{} cases",
+                out.iter().filter(|c| c.ok).count(),
+                out.len()
+            ));
+        }
+        Ok(out)
+    }
+
+    fn run_bench(
+        &self,
+        _registry_root: &Path,
+        implementation_id: &str,
+    ) -> Result<(bool, Option<String>), String> {
+        let report = run_pilot_bench(20, 4);
+        let mine: Vec<_> = report
+            .cases
+            .iter()
+            .filter(|c| c.implementation == implementation_id)
+            .collect();
+        if mine.is_empty() {
+            // Bench harness may not cover this impl — optional for conformant.
+            return Ok((false, None));
+        }
+        let ok = mine.iter().all(|c| c.ok);
+        let fp = Some(format!(
+            "pilot-bench:{}:cases={}",
+            implementation_id,
+            mine.len()
+        ));
+        Ok((ok, fp))
+    }
 }
 
 /// Unified promotion transaction (build → profile → bench → artifact → manifest → audit).
@@ -610,7 +757,9 @@ pub fn registry_promote(
             req.implementation_id
         )]));
     };
-    let result = promote_implementation(registry.root(), imp, &req)?;
+    let collector = LivePromotionCollector;
+    let result =
+        promote_implementation_with_collector(registry.root(), imp, &req, Some(&collector))?;
     if result.ok {
         Ok(BusResponse::ok(result))
     } else {
@@ -1092,7 +1241,7 @@ pub fn forge_gate_c_ex(
     )
 }
 
-/// Gate C with optional **v2 blind** external campaign.
+/// Gate C with optional **v2 blind** or **v3 held-out** campaign.
 pub fn forge_gate_c_ex2(
     workspace_root: Option<&Path>,
     external_root: Option<&Path>,
@@ -1101,13 +1250,40 @@ pub fn forge_gate_c_ex2(
     human_minutes: Option<f64>,
     blind_v2: bool,
 ) -> Result<BusResponse<GateCReport>, BusError> {
+    forge_gate_c_ex3(
+        workspace_root,
+        external_root,
+        registry,
+        run_compile,
+        human_minutes,
+        blind_v2,
+        false,
+    )
+}
+
+/// Gate C v3 held-out (neutral package IDs).
+pub fn forge_gate_c_ex3(
+    workspace_root: Option<&Path>,
+    external_root: Option<&Path>,
+    registry: Option<&LocalRegistry>,
+    run_compile: bool,
+    human_minutes: Option<f64>,
+    blind_v2: bool,
+    heldout_v3: bool,
+) -> Result<BusResponse<GateCReport>, BusError> {
     let ontology = ontology_from_registry(registry)?;
     let ontology_ref = if ontology.is_empty() {
         None
     } else {
         Some(ontology.as_slice())
     };
-    let report = if let Some(ext) = external_root {
+    let report = if heldout_v3 {
+        let ext = external_root
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| default_workspace_root().join("fixtures/gate-c-heldout"));
+        run_gate_c_external_v3(&ext, ontology_ref, run_compile, human_minutes)
+            .map_err(|e| BusError::Forge(e.to_string()))?
+    } else if let Some(ext) = external_root {
         if blind_v2 {
             run_gate_c_external_v2(ext, ontology_ref, run_compile, human_minutes)
                 .map_err(|e| BusError::Forge(e.to_string()))?

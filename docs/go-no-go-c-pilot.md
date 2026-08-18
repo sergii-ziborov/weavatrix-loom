@@ -37,7 +37,7 @@ cargo run -p wvx-cli -- forge match crates/wvx-adapter-external-demo
 
 # Compileable adapters
 cargo run -p wvx-cli -- forge compile crates/wvx-adapter-external-demo \
-  -o /tmp/loom-forge-adapters --name upper --check
+  -o /tmp/loom-forge-adapters --name parse --check
 
 # Gate C pilot harness
 cargo run -p wvx-cli -- forge gate-c --workspace .
@@ -48,7 +48,7 @@ cargo run -p wvx-cli -- forge gate-c --workspace .
 
 | Package | Function | Expected capability |
 |---------|----------|---------------------|
-| `wvx-adapter-external-demo` | `upper_parse` | `data.json.parse@1` |
+| `wvx-adapter-external-demo` | `parse` | `data.json.parse@1` |
 | `wvx-adapters` | `parse` | `data.json.parse@1` |
 | `wvx-adapters` | `serialize` | `data.json.serialize@1` |
 | `wvx-adapters` | `path_set` | `data.json.path_set@1` |

@@ -1,0 +1,18 @@
+{
+  "version": 3,
+  "notes": [
+    "Gate C v3 held-out: package IDs are opaque (no capability leak).",
+    "expected_capability is post-hoc grading only — never fed to the matcher.",
+    "Matcher must not see package_rel. Forge success requires native export + profile when a profile exists."
+  ],
+  "cases": [
+    { "package_rel": "pkg-a7f3", "fn_name": "parse", "expected_capability": "data.json.parse@1", "expect_compile": true },
+    { "package_rel": "pkg-b2c1", "fn_name": "serialize", "expected_capability": "data.json.serialize@1", "expect_compile": true },
+    { "package_rel": "pkg-c9e0", "fn_name": "digest", "expected_capability": "data.hash.sha256@1", "expect_compile": true },
+    { "package_rel": "pkg-d4a8", "fn_name": "digest", "expected_capability": "data.hash.blake3@1", "expect_compile": true },
+    { "package_rel": "pkg-e1b6", "fn_name": "compress", "expected_capability": "data.compress.gzip@1", "expect_compile": true },
+    { "package_rel": "pkg-f0d2", "fn_name": "decompress", "expected_capability": "data.compress.gunzip@1", "expect_compile": true },
+    { "package_rel": "pkg-g8c4", "fn_name": "encode", "expected_capability": "data.codec.base64_encode@1", "expect_compile": true },
+    { "package_rel": "pkg-h3a9", "fn_name": "encode", "expected_capability": "data.codec.hex_encode@1", "expect_compile": true }
+  ]
+}

@@ -21,6 +21,16 @@ pub enum GraphError {
     DuplicateBinding(PortPath, PortPath),
     #[error("self-binding is not allowed on `{0}`")]
     SelfBinding(PortPath),
+    #[error("binding not found: {0} → {1}")]
+    MissingBinding(PortPath, PortPath),
+    #[error("unknown port `{instance}.{port}`")]
+    UnknownPort { instance: String, port: String },
+    #[error("capability `{0}` is not in the project")]
+    UnknownCapability(String),
+    #[error("empty GraphPatch is not an authoritative edit")]
+    EmptyPatch,
+    #[error("authoritative commit requires base_revision")]
+    MissingBaseRevision,
 }
 
 /// Add an instance to the project.
@@ -63,17 +73,13 @@ pub fn move_instance(
     Ok(())
 }
 
-/// Connect two ports. Does not type-check; call `wvx_validator` for that.
+/// Connect two ports. Authoritative: both instances and ports must exist.
 pub fn connect(project: &mut Project, from: PortPath, to: PortPath) -> Result<(), GraphError> {
     if from == to {
         return Err(GraphError::SelfBinding(from));
     }
-    if project.instance(&from.instance).is_none() {
-        return Err(GraphError::MissingInstance(from.instance));
-    }
-    if project.instance(&to.instance).is_none() {
-        return Err(GraphError::MissingInstance(to.instance));
-    }
+    require_instance_port(project, &from.instance, &from.port)?;
+    require_instance_port(project, &to.instance, &to.port)?;
     if project
         .bindings
         .iter()
@@ -85,12 +91,39 @@ pub fn connect(project: &mut Project, from: PortPath, to: PortPath) -> Result<()
     Ok(())
 }
 
-pub fn disconnect(project: &mut Project, from: &PortPath, to: &PortPath) -> bool {
+pub fn disconnect(project: &mut Project, from: &PortPath, to: &PortPath) -> Result<(), GraphError> {
     let before = project.bindings.len();
     project
         .bindings
         .retain(|b| !(b.from == *from && b.to == *to));
-    project.bindings.len() != before
+    if project.bindings.len() == before {
+        return Err(GraphError::MissingBinding(from.clone(), to.clone()));
+    }
+    Ok(())
+}
+
+fn require_instance_port(
+    project: &Project,
+    instance_id: &str,
+    port: &str,
+) -> Result<(), GraphError> {
+    let inst = project
+        .instance(instance_id)
+        .ok_or_else(|| GraphError::MissingInstance(instance_id.into()))?;
+    if let Some(cap) = project.capability_for(&inst.capability) {
+        let known = cap
+            .inputs
+            .iter()
+            .chain(cap.outputs.iter())
+            .any(|p| p.id == port);
+        if !known {
+            return Err(GraphError::UnknownPort {
+                instance: instance_id.into(),
+                port: port.into(),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub fn set_entrypoint(

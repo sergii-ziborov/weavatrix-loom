@@ -15,8 +15,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-/// Schema id for the facts interchange document.
-pub const FACTS_SCHEMA_VERSION: &str = "wvx.facts.v0.1";
+/// Current facts interchange schema.
+pub const FACTS_SCHEMA_VERSION: &str = "wvx.facts.v0.2";
+/// Legacy interchange still accepted by [`validate_facts`].
+pub const FACTS_SCHEMA_VERSION_V01: &str = "wvx.facts.v0.1";
 
 /// Provider of Weavatrix code facts for Forge (ADR-0012).
 ///
@@ -82,6 +84,12 @@ pub struct WeavatrixFactsBundle {
     /// Weavatrix index / export revision (optional; flows into `source_ref.revision`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
+    /// SHA-256 of the source tree / facts payload (`sha256:…`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_digest: Option<String>,
+    /// Feature flags active when facts were collected.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
     /// Fact entities (functions, types, …).
     #[serde(default)]
     pub entities: Vec<WeavatrixFactEntity>,
@@ -119,6 +127,30 @@ pub struct WeavatrixFactEntity {
     /// Output type labels (e.g. `json_value`, `Result<Value, E>`).
     #[serde(default)]
     pub outputs: Vec<String>,
+    /// `crate::module::item` when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qualified_name: Option<String>,
+    /// Inclusive start line (1-based).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_start: Option<usize>,
+    /// Inclusive end line (1-based).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_end: Option<usize>,
+    /// Rustdoc / leading comments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docs: Option<String>,
+    /// `cfg(...)` predicates observed on the item.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cfg: Vec<String>,
+    /// Feature names referenced by cfg/features.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
+    /// Item contains `unsafe`.
+    #[serde(default)]
+    pub is_unsafe: bool,
+    /// Declared effects (`fs`, `net`, `process`, …).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<String>,
     #[serde(default)]
     pub notes: Vec<String>,
 }
@@ -143,10 +175,11 @@ pub fn validate_facts(bundle: &WeavatrixFactsBundle) -> Result<(), String> {
     if bundle.schema_version.trim().is_empty() {
         return Err("facts.schema_version is required".into());
     }
-    if bundle.schema_version != FACTS_SCHEMA_VERSION {
-        // Accept future-compatible prefixes only if documented; for now require exact.
+    if bundle.schema_version != FACTS_SCHEMA_VERSION
+        && bundle.schema_version != FACTS_SCHEMA_VERSION_V01
+    {
         return Err(format!(
-            "unsupported facts schema_version `{}` (expected `{FACTS_SCHEMA_VERSION}`)",
+            "unsupported facts schema_version `{}` (expected `{FACTS_SCHEMA_VERSION}` or `{FACTS_SCHEMA_VERSION_V01}`)",
             bundle.schema_version
         ));
     }
@@ -256,15 +289,24 @@ pub fn facts_from_extract(extract: &ExtractReport, source: &str) -> WeavatrixFac
         .map(|c| WeavatrixFactEntity {
             kind: kind_label(c.kind).into(),
             name: c.name.clone(),
-            entity_id: c.source_entity_id.clone().or_else(|| {
-                Some(format!("{}:{}#{}", c.path, c.line, c.name))
-            }),
+            entity_id: c
+                .source_entity_id
+                .clone()
+                .or_else(|| Some(format!("{}:{}#{}", c.path, c.line, c.name))),
             path: c.path.clone(),
             line: c.line,
             signature: c.signature.clone(),
             module_path: c.module_path.clone(),
             inputs: c.shape.inputs.clone(),
             outputs: c.shape.outputs.clone(),
+            qualified_name: c.module_path.as_ref().map(|m| format!("{m}::{}", c.name)),
+            span_start: Some(c.line),
+            span_end: None,
+            docs: None,
+            cfg: Vec::new(),
+            features: Vec::new(),
+            is_unsafe: c.signature.contains("unsafe"),
+            effects: infer_effects(&c.signature, &c.shape.notes),
             notes: {
                 let mut n = c.shape.notes.clone();
                 n.push(format!("bootstrap_extractor={}", c.extractor));
@@ -280,6 +322,8 @@ pub fn facts_from_extract(extract: &ExtractReport, source: &str) -> WeavatrixFac
         package_root: Some(extract.root.clone()),
         package_version: None,
         revision: None,
+        source_digest: Some(source_digest_for_extract(extract)),
+        features: Vec::new(),
         entities,
         notes: vec![
             format!("exported_from_extract status={}", extract.status),
@@ -287,6 +331,35 @@ pub fn facts_from_extract(extract: &ExtractReport, source: &str) -> WeavatrixFac
             "bootstrap-ast is fallback only — product path is Weavatrix facts (ADR-0012).".into(),
         ],
     }
+}
+
+fn infer_effects(signature: &str, notes: &[String]) -> Vec<String> {
+    let blob = format!("{} {}", signature, notes.join(" ")).to_ascii_lowercase();
+    let mut out = Vec::new();
+    if blob.contains("unsafe") {
+        out.push("unsafe".into());
+    }
+    if blob.contains("fs::") || blob.contains("std::fs") {
+        out.push("fs".into());
+    }
+    if blob.contains("net::") || blob.contains("tcp") || blob.contains("udp") {
+        out.push("net".into());
+    }
+    out
+}
+
+fn source_digest_for_extract(extract: &ExtractReport) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(extract.package_name.as_bytes());
+    for c in &extract.candidates {
+        hasher.update(c.path.as_bytes());
+        hasher.update(c.signature.as_bytes());
+        hasher.update(c.name.as_bytes());
+    }
+    let hash = hasher.finalize();
+    let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+    format!("sha256:{hex}")
 }
 
 fn kind_label(k: CandidateKind) -> &'static str {
@@ -327,6 +400,8 @@ mod tests {
             package_root: Some("/tmp/demo_crate".into()),
             package_version: Some("0.1.0".into()),
             revision: Some("rev-test-1".into()),
+            source_digest: Some("sha256:demo".into()),
+            features: vec![],
             entities: vec![WeavatrixFactEntity {
                 kind: "function".into(),
                 name: "parse".into(),
@@ -337,6 +412,14 @@ mod tests {
                 module_path: Some("lib".into()),
                 inputs: vec!["bytes".into()],
                 outputs: vec!["json_value".into()],
+                qualified_name: Some("lib::parse".into()),
+                span_start: Some(10),
+                span_end: Some(14),
+                docs: Some("Parse JSON bytes.".into()),
+                cfg: vec![],
+                features: vec![],
+                is_unsafe: false,
+                effects: vec![],
                 notes: vec![],
             }],
             notes: vec![],

@@ -49,9 +49,9 @@ pub fn list_pilot_implementations() -> Vec<PilotImplementation> {
             label: "crates.io json crate parse (SDK)",
         },
         PilotImplementation {
-            implementation_id: "external.demo.upper-parse@1",
+            implementation_id: "external.demo.json-parse@1",
             capability_key: "data.json.parse@1",
-            label: "Gate F external upper-parse (SDK)",
+            label: "Gate F external JSON parse (SDK)",
         },
         PilotImplementation {
             implementation_id: "wvx.reference.path-set@1",
@@ -117,10 +117,13 @@ impl ErasedComponent for IoOutputBytes {
         "io.output.bytes@1"
     }
     fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
-        if inputs.get("bytes").is_none() {
+        let Some(v) = inputs.get("bytes") else {
             return Err("io.output.bytes: missing input port `bytes`".into());
-        }
-        Ok(WvxValueMap::new())
+        };
+        // Echo the sink input so playground / golden can read `output.bytes`.
+        let mut out = WvxValueMap::new();
+        out.insert("bytes".into(), v.clone());
+        Ok(out)
     }
 }
 

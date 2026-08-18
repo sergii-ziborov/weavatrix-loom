@@ -332,7 +332,10 @@ fn draft_one(
         let is_weavatrix = c.extractor == "weavatrix" || c.source_entity_id.is_some();
         let provider = if c.extractor == "weavatrix" {
             "weavatrix"
-        } else if is_weavatrix && c.source_entity_id.as_ref().is_some_and(|id| id.starts_with("wvx:"))
+        } else if is_weavatrix
+            && c.source_entity_id
+                .as_ref()
+                .is_some_and(|id| id.starts_with("wvx:"))
         {
             "weavatrix"
         } else if c.extractor == "ast" || c.extractor == "line" {
@@ -340,9 +343,10 @@ fn draft_one(
         } else {
             "weavatrix"
         };
-        let entity_id = c.source_entity_id.clone().unwrap_or_else(|| {
-            format!("{}:{}#{}", c.path, c.line, c.name)
-        });
+        let entity_id = c
+            .source_entity_id
+            .clone()
+            .unwrap_or_else(|| format!("{}:{}#{}", c.path, c.line, c.name));
         serde_json::json!({
             "provider": provider,
             "entity_id": entity_id,
@@ -701,10 +705,10 @@ mod tests {
         }];
         let c = ApiCandidate {
             kind: CandidateKind::Function,
-            name: "upper_parse".into(),
+            name: "parse".into(),
             path: "src/lib.rs".into(),
-            line: 12,
-            signature: "pub fn upper_parse(bytes: &[u8]) -> Result<Value, String> {".into(),
+            line: 18,
+            signature: "pub fn parse(bytes: &[u8]) -> Result<Value, String> {".into(),
             shape: CandidateShape {
                 inputs: vec!["bytes".into()],
                 outputs: vec!["json.value".into()],
@@ -712,7 +716,7 @@ mod tests {
             },
             extractor: "weavatrix".into(),
             module_path: None,
-            source_entity_id: Some("wvx:external-demo:fn:upper_parse".into()),
+            source_entity_id: Some("wvx:external-demo:fn:parse".into()),
             source_revision: Some("facts-rev-1".into()),
         };
         let d = draft_one(
@@ -727,9 +731,11 @@ mod tests {
         assert!(d.capability_json.contains("data.json.parse"));
         assert!(!d
             .capability_json
-            .contains("wvx_adapter_external_demo.upper_parse"));
+            .contains("wvx_adapter_external_demo.parse"));
         assert!(d.implementation_json.contains("data.json.parse"));
-        assert!(d.implementation_json.contains("wvx:external-demo:fn:upper_parse"));
-        assert!(d.implementation_json.contains("\"provider\": \"weavatrix\""));
+        assert!(d.implementation_json.contains("wvx:external-demo:fn:parse"));
+        assert!(d
+            .implementation_json
+            .contains("\"provider\": \"weavatrix\""));
     }
 }

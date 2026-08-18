@@ -78,14 +78,29 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Loopback-friendly bootstrap: returns the session token for Studio (SEC-001).
+/// Loopback-only bootstrap: returns the session token for Studio (SEC-001).
+/// Disabled in remote mode — the token must come from `WVX_SESSION_TOKEN`.
 async fn auth_bootstrap(State(state): State<AppState>) -> impl IntoResponse {
+    if state.security.remote_mode {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "ok": false,
+                "diagnostics": [
+                    "auth bootstrap is disabled in remote mode",
+                    "set WVX_SESSION_TOKEN and send it as X-WVX-Token"
+                ]
+            })),
+        )
+            .into_response();
+    }
     Json(serde_json::json!({
         "ok": true,
         "token": state.security.session_token,
         "header": "X-WVX-Token",
         "note": "Prefer WVX_SESSION_TOKEN env for stable tokens across restarts"
     }))
+    .into_response()
 }
 
 async fn health() -> impl IntoResponse {
@@ -863,6 +878,8 @@ mod tests {
         let registry = Arc::new(LocalRegistry::open(&root).unwrap());
         let security = Arc::new(crate::security::SecurityConfig {
             session_token: "test-token".into(),
+            token_from_env: true,
+            remote_mode: false,
             cors_origins: vec!["http://localhost:5173".into()],
             workspace_roots: vec![root],
         });
@@ -884,6 +901,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn bootstrap_disabled_in_remote_mode() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry-dev");
+        let registry = Arc::new(LocalRegistry::open(&root).unwrap());
+        let security = Arc::new(crate::security::SecurityConfig {
+            session_token: "secret".into(),
+            token_from_env: true,
+            remote_mode: true,
+            cors_origins: vec![],
+            workspace_roots: vec![root],
+        });
+        let app = router(AppState { registry, security });
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/auth/bootstrap")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

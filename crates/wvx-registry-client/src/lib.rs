@@ -11,6 +11,7 @@
 
 pub mod admission;
 pub mod admit;
+pub mod attestation;
 pub mod collect;
 pub mod evidence_artifact;
 pub mod promote;
@@ -27,6 +28,11 @@ pub use admission::{
     ImplementationAdmission,
 };
 pub use admit::{admit_implementation, AdmitRequest, AdmitResult};
+pub use attestation::{
+    append_transparency, read_transparency_log, sbom_from_implementation, sign_attestation,
+    verify_attestation, verify_transparency_log, SignedAttestation, SoftwareBill,
+    TransparencyEntry, TransparencyKind, ATTESTATION_SCHEMA, SBOM_SCHEMA,
+};
 pub use evidence_artifact::{
     audit_truthful_registry, capture_environment, compute_digests, default_artifact_relpath,
     load_artifact, load_profile, mint_and_write, mint_artifact, profile_case_ids,
@@ -45,8 +51,8 @@ pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
     ProvenanceRecord,
 };
-pub use requalify::{requalify_implementation, RequalifyReport};
-pub use resolve::resolve_implementation;
+pub use requalify::{requalify_implementation, RequalTrigger, RequalifyReport};
+pub use resolve::{resolve_implementation, resolve_implementation_ex};
 pub use signed::{
     hmac_sha256, sign_reports, verify_signed_reports, SignedPromotionReports, SIGNED_REPORTS_SCHEMA,
 };

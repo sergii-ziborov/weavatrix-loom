@@ -1053,9 +1053,10 @@ fn cmd_registry(args: &[String]) -> ExitCode {
                 Ok(resp) => {
                     if let Some(r) = &resp.data {
                         eprintln!(
-                            "requalify {}: ok={} overclaim={} declared={} justified={}",
+                            "requalify {}: ok={} stale={} overclaim={} declared={} justified={}",
                             r.implementation_id,
                             r.ok,
+                            r.stale,
                             r.overclaim,
                             r.previous_status,
                             r.justified_status

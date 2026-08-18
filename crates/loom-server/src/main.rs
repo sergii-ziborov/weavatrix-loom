@@ -39,7 +39,20 @@ async fn main() {
         )
         .init();
 
-    let security = Arc::new(SecurityConfig::from_env());
+    let listen: SocketAddr = std::env::var("WVX_HTTP_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:43917".into())
+        .parse()
+        .unwrap_or_else(|e| {
+            tracing::error!("invalid WVX_HTTP_ADDR: {e}");
+            std::process::exit(1);
+        });
+    let security = match SecurityConfig::from_env().with_listen_addr(listen) {
+        Ok(s) => Arc::new(s),
+        Err(e) => {
+            tracing::error!("{e}");
+            std::process::exit(1);
+        }
+    };
     let registry = match open_registry() {
         Ok(r) => Arc::new(r),
         Err(e) => {
@@ -64,23 +77,22 @@ async fn main() {
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
-    let addr: SocketAddr = std::env::var("WVX_HTTP_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:43917".into())
-        .parse()
-        .unwrap_or_else(|e| {
-            tracing::error!("invalid WVX_HTTP_ADDR: {e}");
-            std::process::exit(1);
-        });
+    let addr = listen;
 
     tracing::info!(
         %addr,
+        remote = security.remote_mode,
         registry = %registry.root().display(),
         "loom-server listening"
     );
-    tracing::info!(
-        "session token (set header X-WVX-Token): {}",
-        security.session_token
-    );
+    if security.remote_mode {
+        tracing::info!("remote mode: X-WVX-Token required; auth bootstrap disabled");
+    } else {
+        tracing::info!(
+            "session token (set header X-WVX-Token): {}",
+            security.session_token
+        );
+    }
     tracing::info!("Studio (HTTP only): cd ../loom-studio && npm run dev → http://127.0.0.1:5173");
     tracing::info!("Alpha smoke: powershell -File ./scripts/alpha-smoke.ps1");
     tracing::info!(

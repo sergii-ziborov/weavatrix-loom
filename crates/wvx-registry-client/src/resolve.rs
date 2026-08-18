@@ -4,8 +4,8 @@
 //! Does **not** auto-admit; never invents evidence.
 
 use wvx_ir::{
-    AxisFact, Implementation, LifecycleStatus, ResolveDecision, ResolveRejection, ResolverPolicy,
-    TargetProfile,
+    AxisFact, BenchmarkRecord, Implementation, LifecycleStatus, ResolveDecision, ResolveRejection,
+    ResolverPolicy, TargetProfile,
 };
 
 /// Resolve which implementation to use for `capability_key`.
@@ -16,6 +16,17 @@ pub fn resolve_implementation(
     impls: &[Implementation],
     profile: &TargetProfile,
     policy: &ResolverPolicy,
+) -> ResolveDecision {
+    resolve_implementation_ex(capability_key, impls, profile, policy, &[])
+}
+
+/// Like [`resolve_implementation`] with verified bench records (arch / OS / workload).
+pub fn resolve_implementation_ex(
+    capability_key: &str,
+    impls: &[Implementation],
+    profile: &TargetProfile,
+    policy: &ResolverPolicy,
+    benches: &[BenchmarkRecord],
 ) -> ResolveDecision {
     let (want_id, want_ver) = split_cap(capability_key);
     let mut explanation = vec![
@@ -125,8 +136,8 @@ pub fn resolve_implementation(
 
     // Rank: prefer_impl_ids, then lifecycle, then conformance pass, then pure-rust hint
     pool.sort_by(|a, b| {
-        let sa = score(a, profile, policy);
-        let sb = score(b, profile, policy);
+        let sa = score(a, profile, policy, benches);
+        let sb = score(b, profile, policy, benches);
         sb.cmp(&sa).then_with(|| a.full_id().cmp(&b.full_id()))
     });
 
@@ -163,7 +174,12 @@ pub fn resolve_implementation(
     }
 }
 
-fn score(imp: &Implementation, profile: &TargetProfile, policy: &ResolverPolicy) -> i32 {
+fn score(
+    imp: &Implementation,
+    profile: &TargetProfile,
+    policy: &ResolverPolicy,
+    benches: &[BenchmarkRecord],
+) -> i32 {
     let mut s = 0i32;
     if let Some(pos) = policy
         .prefer_impl_ids
@@ -200,7 +216,47 @@ fn score(imp: &Implementation, profile: &TargetProfile, policy: &ResolverPolicy)
             s += 15;
         }
     }
+    if let Some(b) = benches
+        .iter()
+        .filter(|b| b.implementation_id == imp.full_id() && b.ok)
+        .max_by_key(|b| bench_fit(b, profile))
+    {
+        let fit = bench_fit(b, profile);
+        if fit > 0 {
+            s += fit;
+        }
+    }
     s
+}
+
+fn bench_fit(b: &BenchmarkRecord, profile: &TargetProfile) -> i32 {
+    let mut s = 0i32;
+    if b.ok {
+        s += 10;
+    }
+    if let (Some(pa), Some(ba)) = (profile.arch.as_deref(), b.arch.as_deref()) {
+        if eq_token(pa, ba) {
+            s += 50;
+        }
+    }
+    if let (Some(po), Some(bo)) = (profile.os.as_deref(), b.os.as_deref()) {
+        if eq_token(po, bo) {
+            s += 40;
+        }
+    }
+    if let (Some(pw), Some(bw)) = (
+        profile.workload_class.as_deref(),
+        b.workload_class.as_deref(),
+    ) {
+        if eq_token(pw, bw) {
+            s += 80;
+        }
+    }
+    s
+}
+
+fn eq_token(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
 }
 
 fn split_cap(key: &str) -> (String, String) {
@@ -312,5 +368,48 @@ mod tests {
             "rejected={:?}",
             d.rejected
         );
+    }
+
+    #[test]
+    fn matching_verified_bench_outranks_target() {
+        let a = imp("sha2.sha256", LifecycleStatus::Conformant, AxisFact::Pass);
+        let mut b = imp(
+            "sha2.sha256-chunked",
+            LifecycleStatus::Conformant,
+            AxisFact::Pass,
+        );
+        b.id = "sha2.sha256-chunked".into();
+        let benches = vec![BenchmarkRecord {
+            implementation_id: "sha2.sha256-chunked@1".into(),
+            capability_key: "data.hash.sha256@1".into(),
+            iterations: 10,
+            warmup: 1,
+            ok: true,
+            mean_ns: Some(100),
+            input_fingerprint: None,
+            recorded_at_unix: 1,
+            host: None,
+            arch: Some("x86_64".into()),
+            os: Some("windows".into()),
+            workload_class: Some("bulk".into()),
+            notes: vec![],
+        }];
+        let d = resolve_implementation_ex(
+            "data.hash.sha256@1",
+            &[a, b],
+            &TargetProfile {
+                id: "rel".into(),
+                arch: Some("x86_64".into()),
+                os: Some("windows".into()),
+                workload_class: Some("bulk".into()),
+                ..Default::default()
+            },
+            &ResolverPolicy {
+                require_conformance_pass: false,
+                ..Default::default()
+            },
+            &benches,
+        );
+        assert_eq!(d.chosen.as_deref(), Some("sha2.sha256-chunked@1"), "{d:?}");
     }
 }

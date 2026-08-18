@@ -342,6 +342,8 @@ See [`docs/truthful-registry.md`](docs/truthful-registry.md) · [`docs/admission
 cargo run -p loom-server
 # http://127.0.0.1:43917/health
 # WVX_HTTP_ADDR=127.0.0.1:44000 WVX_REGISTRY=./registry-dev cargo run -p loom-server
+# Remote bind requires a CSPRNG token from the environment (bootstrap disabled):
+# WVX_HTTP_ADDR=0.0.0.0:43917 WVX_SESSION_TOKEN=… cargo run -p loom-server
 ```
 
 | Method | Path | Notes |
@@ -354,6 +356,7 @@ cargo run -p loom-server
 | GET | `/api/v1/registry/summary` | |
 | GET | `/api/v1/registry/search?q=` | |
 | GET | `/api/v1/registry/implementations?capability=` | |
+| GET | `/api/v1/auth/bootstrap` | loopback only — disabled in remote mode |
 | GET | `/api/v1/registry/inspect/{key}` | |
 | GET | `/api/v1/registry/admission` | lifecycle vs evidence audit (overclaim) |
 | POST | `/api/v1/graph/preview_patch` | ghost GraphPatch (no revision bump) |
@@ -468,6 +471,7 @@ cargo test -p wvx-conformance
 | **P0** Live promote / signed reports / `VerifiedImplementation` → `compile_release` | [truthful-registry.md](docs/truthful-registry.md) | **Landed** — no claimed `ok=true`; e2e CI gate |
 | **P1** Gate C v3 held-out + Forge native/profile success + full dynamic≡static + Facts v0.2 + Draft 2020-12 + GraphPatch + MSRV/OS CI | this section | **Landed** |
 | **Studio P2** Multi-domain Studio surface + HTTP trust/resolve/profiles | this section | **Landed** |
+| **P2 hosted** CSPRNG remote mode + HMAC attestations + SBOM + transparency log + bench-aware resolve + incremental requal | this section | **Landed** |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 
 Go/No-Go evidence:

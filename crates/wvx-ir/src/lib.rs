@@ -165,6 +165,12 @@ pub struct BenchmarkRecord {
     pub recorded_at_unix: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workload_class: Option<String>,
     #[serde(default)]
     pub notes: Vec<String>,
 }
@@ -196,6 +202,9 @@ pub struct TargetProfile {
     /// Soft preference against unsafe/FFI adapters (notes-based pilot heuristic).
     #[serde(default)]
     pub prefer_no_unsafe: bool,
+    /// Workload class for bench-aware ranking (`parse`, `bulk`, `latency`, …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workload_class: Option<String>,
 }
 
 /// Policy knobs for explainable implementation selection.

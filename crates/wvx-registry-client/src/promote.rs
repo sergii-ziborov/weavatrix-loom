@@ -21,6 +21,7 @@
 
 use crate::admission::{check_implementation, justified_status, status_rank};
 use crate::admit::AdmitRequest;
+use crate::attestation::{append_transparency, TransparencyKind};
 use crate::collect::{collect_build, collect_license, collect_security};
 use crate::evidence_artifact::{
     default_artifact_relpath, mint_artifact, verify_loaded_artifact, write_artifact, CaseResult,
@@ -599,6 +600,13 @@ pub fn promote_implementation_with_collector(
             if let Some(prov) = &provenance_to_write {
                 write_provenance(registry_root, prov)?;
             }
+            append_transparency(
+                registry_root,
+                TransparencyKind::Promote,
+                &imp.full_id(),
+                &art.subject_digest,
+                unix_now(),
+            )?;
             Ok::<(), RegistryError>(())
         })();
 

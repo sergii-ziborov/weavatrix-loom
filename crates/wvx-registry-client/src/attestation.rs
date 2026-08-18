@@ -266,6 +266,7 @@ pub enum TransparencyKind {
     Attest,
     Requal,
     Sigstore,
+    Rekor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -389,6 +390,7 @@ fn entry_hash(
         TransparencyKind::Attest => "attest",
         TransparencyKind::Requal => "requal",
         TransparencyKind::Sigstore => "sigstore",
+        TransparencyKind::Rekor => "rekor",
     };
     sha256_hex(format!("{seq}|{kind_s}|{impl_id}|{payload}|{prev}").as_bytes())
 }

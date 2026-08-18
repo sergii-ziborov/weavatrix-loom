@@ -16,6 +16,7 @@ pub mod collect;
 pub mod evidence_artifact;
 pub mod promote;
 pub mod provenance;
+pub mod rekor;
 pub mod requalify;
 pub mod resolve;
 pub mod signed;
@@ -51,6 +52,10 @@ pub use promote::{
 pub use provenance::{
     provenance_from_impl, provenance_path, read_provenance, write_provenance, HumanReview,
     ProvenanceRecord,
+};
+pub use rekor::{
+    attach_local_tlog, hashedrekord_for_digest, refuse_remote_rekor, verify_hashedrekord,
+    verify_tlog_entries, HashedRekord,
 };
 pub use requalify::{requalify_implementation, RequalTrigger, RequalifyReport};
 pub use resolve::{resolve_implementation, resolve_implementation_ex};

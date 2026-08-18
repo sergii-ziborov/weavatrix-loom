@@ -51,10 +51,56 @@ pub struct DsseEnvelope {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SigstoreCertificate {
+    #[serde(rename = "rawBytes")]
+    pub raw_bytes: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RekorKindVersion {
+    pub kind: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RekorLogId {
+    #[serde(rename = "keyId")]
+    pub key_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RekorInclusionPromise {
+    #[serde(rename = "signedEntryTimestamp")]
+    pub signed_entry_timestamp: String,
+}
+
+/// Sigstore bundle v0.3 `tlogEntries` item (local log, not public Rekor).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RekorTlogEntry {
+    #[serde(rename = "logIndex")]
+    pub log_index: String,
+    #[serde(rename = "logId")]
+    pub log_id: RekorLogId,
+    #[serde(rename = "kindVersion")]
+    pub kind_version: RekorKindVersion,
+    #[serde(rename = "integratedTime")]
+    pub integrated_time: String,
+    #[serde(rename = "canonicalizedBody")]
+    pub canonicalized_body: String,
+    #[serde(rename = "inclusionPromise")]
+    pub inclusion_promise: RekorInclusionPromise,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SigstoreVerificationMaterial {
     pub offline: bool,
     pub scheme: String,
     pub note: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "tlogEntries")]
+    pub tlog_entries: Vec<RekorTlogEntry>,
+    /// If present, this is a Fulcio claim. Loom does **not** verify it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub certificate: Option<SigstoreCertificate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -111,7 +157,9 @@ pub fn wrap_attestation(att: &SignedAttestation, key: &[u8]) -> SigstoreBundle {
         verification_material: SigstoreVerificationMaterial {
             offline: true,
             scheme: "hmac-sha256".into(),
-            note: "Offline predates Fulcio/Rekor. Verify with WVX_PROMOTION_HMAC_KEY.".into(),
+            note: "Offline HMAC envelope. Not Fulcio identity. tlogEntries are local hashedrekord, not public Rekor.".into(),
+            tlog_entries: Vec::new(),
+            certificate: None,
         },
     }
 }
@@ -125,6 +173,17 @@ pub fn verify_sigstore_bundle(
             "sigstore mediaType `{}` != `{BUNDLE_MEDIA}`",
             bundle.media_type
         )));
+    }
+    if bundle.verification_material.certificate.is_some() {
+        return Err(err(
+            "Fulcio certificate present; Loom does not verify Fulcio identity",
+        ));
+    }
+    if !bundle.verification_material.offline || bundle.verification_material.scheme != "hmac-sha256"
+    {
+        return Err(err(
+            "only offline hmac-sha256 bundles are accepted (no Fulcio/Rekor public log)",
+        ));
     }
     let env = &bundle.dsse_envelope;
     if env.payload_type != DSSE_PAYLOAD_TYPE {
@@ -167,7 +226,7 @@ fn err(msg: impl Into<String>) -> RegistryError {
     RegistryError::Parse(Path::new("<sigstore>").to_path_buf(), msg.into())
 }
 
-fn b64_encode(bytes: &[u8]) -> String {
+pub(crate) fn b64_encode(bytes: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     for chunk in bytes.chunks(3) {
@@ -190,7 +249,7 @@ fn b64_encode(bytes: &[u8]) -> String {
     out
 }
 
-fn b64_decode(s: &str) -> Option<Vec<u8>> {
+pub(crate) fn b64_decode(s: &str) -> Option<Vec<u8>> {
     fn val(c: u8) -> Option<u8> {
         match c {
             b'A'..=b'Z' => Some(c - b'A'),

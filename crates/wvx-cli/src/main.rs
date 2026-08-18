@@ -21,9 +21,11 @@ use wvx_project_graph::GraphPatch;
 use wvx_registry_client::AdmitRequest;
 use wvx_registry_client::LocalRegistry;
 use wvx_registry_client::{
-    append_transparency, artifact_path, load_artifact, promotion_hmac_key, read_transparency_log,
-    sbom_from_implementation, sign_attestation, verify_attestation, verify_sigstore_bundle,
-    verify_transparency_log, wrap_attestation, HumanSignature, PromoteRequest, TransparencyKind,
+    append_transparency, artifact_path, attach_local_tlog, hashedrekord_for_digest, load_artifact,
+    promotion_hmac_key, read_transparency_log, refuse_remote_rekor, sbom_from_implementation,
+    sign_attestation, verify_attestation, verify_hashedrekord, verify_sigstore_bundle,
+    verify_tlog_entries, verify_transparency_log, wrap_attestation, HumanSignature, PromoteRequest,
+    TransparencyKind,
 };
 use wvx_types::WvxValue;
 
@@ -91,7 +93,8 @@ Usage:
   wvx registry resolve <cap> [--policy dev|release] [--arch|--os|--workload] [--bench-file]
   wvx registry sbom <impl-id>
   wvx registry attest <impl-id> [--apply]
-  wvx registry sigstore <impl-id> [--apply]   # in-toto+DSSE HMAC bundle; not Fulcio/Rekor
+  wvx registry sigstore <impl-id> [--apply]   # in-toto+DSSE HMAC bundle; not Fulcio
+  wvx registry rekor <impl-id> [--apply]      # hashedrekord v0.0.1 + local tlog; not public Rekor
   wvx registry transparency [--verify]
   wvx registry admit <impl-id> --reviewer <name> --human-ack <text> --security-ack <text> \\
       --reason <text> --bench-file <path> [--apply] [--path <dir>]
@@ -990,7 +993,7 @@ fn cmd_patch(args: &[String]) -> ExitCode {
 fn cmd_registry(args: &[String]) -> ExitCode {
     if args.is_empty() {
         eprintln!(
-            "usage: wvx registry <summary|search|resolve|sbom|attest|sigstore|transparency|…> ..."
+            "usage: wvx registry <summary|search|resolve|sbom|attest|sigstore|rekor|transparency|…> ..."
         );
         return ExitCode::FAILURE;
     }
@@ -1165,6 +1168,17 @@ fn cmd_registry(args: &[String]) -> ExitCode {
             };
             let apply = rest.iter().any(|a| a == "--apply");
             match cmd_registry_sigstore(&reg, id, apply) {
+                Ok(s) => Ok(s),
+                Err(e) => Err(e),
+            }
+        }
+        "rekor" => {
+            let Some(id) = rest.first() else {
+                eprintln!("usage: wvx registry rekor <impl-id> [--apply]");
+                return ExitCode::FAILURE;
+            };
+            let apply = rest.iter().any(|a| a == "--apply");
+            match cmd_registry_rekor(&reg, id, apply) {
                 Ok(s) => Ok(s),
                 Err(e) => Err(e),
             }
@@ -1696,6 +1710,65 @@ fn cmd_registry_sigstore(reg: &LocalRegistry, id: &str, apply: bool) -> Result<S
         eprintln!("wrote {}", dest.display());
     }
     Ok(serde_json::to_string_pretty(&bundle).unwrap())
+}
+
+fn cmd_registry_rekor(reg: &LocalRegistry, id: &str, apply: bool) -> Result<String, BusError> {
+    refuse_remote_rekor()?;
+    let att_json = cmd_registry_attest(reg, id, false)?;
+    let att: wvx_registry_client::SignedAttestation = serde_json::from_str(&att_json)
+        .map_err(|e| BusError::InvalidProject(format!("attestation JSON: {e}")))?;
+    let Some(key) = promotion_hmac_key() else {
+        return Err(BusError::InvalidProject(
+            "WVX_PROMOTION_HMAC_KEY is required for rekor hashedrekord".into(),
+        ));
+    };
+    let mut bundle = wrap_attestation(&att, &key);
+    verify_sigstore_bundle(&bundle, &att.implementation_id)?;
+    let record = hashedrekord_for_digest(&att.payload_digest, &key);
+    verify_hashedrekord(&record, &att.payload_digest)?;
+    if apply {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let entry = append_transparency(
+            reg.root(),
+            TransparencyKind::Rekor,
+            &att.implementation_id,
+            &att.payload_digest,
+            now,
+        )?;
+        attach_local_tlog(&mut bundle, &entry, &record, &key)?;
+        let log = read_transparency_log(reg.root())?;
+        verify_tlog_entries(&bundle, &log, &att.payload_digest)?;
+        let rec_dest = reg.root().join("evidence").join("rekor").join(format!(
+            "{}.hashedrekord.json",
+            att.implementation_id.replace(['/', '\\'], "_")
+        ));
+        if let Some(parent) = rec_dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&rec_dest, serde_json::to_string_pretty(&record).unwrap())
+            .map_err(|e| BusError::Io(e.to_string()))?;
+        let bundle_dest = reg.root().join("evidence").join("sigstore").join(format!(
+            "{}.bundle.json",
+            att.implementation_id.replace(['/', '\\'], "_")
+        ));
+        if let Some(parent) = bundle_dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&bundle_dest, serde_json::to_string_pretty(&bundle).unwrap())
+            .map_err(|e| BusError::Io(e.to_string()))?;
+        eprintln!("wrote {}", rec_dest.display());
+        eprintln!("wrote {}", bundle_dest.display());
+    }
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "hashedrekord": record,
+        "bundle": bundle,
+        "remote": false,
+        "note": "Local hashedrekord v0.0.1. Not public Rekor. Not Fulcio."
+    }))
+    .unwrap())
 }
 
 fn cmd_registry_transparency(reg: &LocalRegistry, verify: bool) -> Result<String, BusError> {

@@ -47,8 +47,10 @@
 
    `wvx registry sigstore` wraps a signed attestation as an in-toto Statement v1
    inside a DSSE envelope (`application/vnd.dev.sigstore.bundle.v0.3+json`).
-   The signature is still `WVX_PROMOTION_HMAC_KEY`. This is **not** Fulcio
-   identity or a Rekor transparency log.
+   `wvx registry rekor` adds a Rekor **hashedrekord** v0.0.1 and local
+   `tlogEntries`. The signature is still `WVX_PROMOTION_HMAC_KEY`.
+   A Fulcio certificate in the bundle is **rejected**. `WVX_REKOR_URL` is
+   **refused** — HMAC is not a Fulcio identity and is not uploaded to public Rekor.
 
 4. **CI invariant**
 

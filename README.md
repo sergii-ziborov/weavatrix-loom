@@ -81,7 +81,8 @@ feeds signatures/spans (ADR-0012).
 > **M1 Truthful Registry**, **M2 Safe Semantic Core**, **EvidenceArtifact v0.2**,
 > **P0–P2 trust closure** (live promote, CSPRNG remote, bench-aware resolve),
 > fast catalog impls: **simd-json** · **sonic-rs** · **blake3-parallel** · **zlib-rs**,
-> offline **Sigstore-shaped** bundle (in-toto + DSSE + HMAC — **not** Fulcio/Rekor),
+> offline **Sigstore-shaped** bundle (in-toto + DSSE + HMAC) + local **hashedrekord**
+> (**not** Fulcio identity, **not** public Rekor),
 > optional **`wasm32-wasip1` sidecar** (`export-wasm`; native remains the default).  
 > Public release path is `VerifiedImplementation` → `compile_release` only.  
 > Not a hosted marketplace. Details:
@@ -185,7 +186,7 @@ embed it.
 | `wvx-validator` | M2 validation passes (schema, cycles, cardinality, policy, …) (**lib**) |
 | `wvx-runtime` | Dynamic playground execution (erased values) (**lib**) |
 | `wvx-compiler-rust` | Export to Rust + `CompilePolicy` / **`compile_release`** + optional **`export-wasm`** (**lib**) |
-| `wvx-registry-client` | Registry + **EvidenceArtifact v0.2** + **promote** + HMAC attest / offline Sigstore envelope + resolve (**lib**) |
+| `wvx-registry-client` | Registry + **EvidenceArtifact v0.2** + **promote** + HMAC attest / offline Sigstore + local hashedrekord + resolve (**lib**) |
 | `wvx-command-bus` | Shared semantic API for **CLI + HTTP** (**lib**; preferred host entry) |
 | `wvx-cli` | Command-line entry point (**product host**) |
 | `wvx-mcp` | Optional **agent-only** MCP adapter (`mcport`) — not used by Studio |
@@ -333,7 +334,8 @@ cargo run -p wvx-cli -- registry resolve data.json.parse@1 --policy dev --worklo
 cargo run -p wvx-cli -- registry sbom serde-json.parse-owned@1
 cargo run -p wvx-cli -- registry transparency --verify
 cargo run -p wvx-cli -- registry attest serde-json.parse-owned@1   # needs WVX_PROMOTION_HMAC_KEY
-cargo run -p wvx-cli -- registry sigstore serde-json.parse-owned@1  # in-toto+DSSE; same HMAC, not Rekor
+cargo run -p wvx-cli -- registry sigstore serde-json.parse-owned@1  # in-toto+DSSE; HMAC, not Fulcio
+cargo run -p wvx-cli -- registry rekor serde-json.parse-owned@1     # hashedrekord v0.0.1; local tlog, not public Rekor
 
 # Lifecycle vs multi-fact evidence (overclaim = fail)
 cargo run -p wvx-cli -- registry check
@@ -485,7 +487,8 @@ cargo test -p wvx-conformance
 | **P1** Gate C v3 held-out + Forge native/profile success + full dynamic≡static + Facts v0.2 + Draft 2020-12 + GraphPatch + MSRV/OS CI | this section | **Landed** |
 | **Studio P2** Multi-domain Studio surface + HTTP trust/resolve/profiles | this section | **Landed** |
 | **P2 hosted** CSPRNG remote mode + HMAC attestations + SBOM + transparency log + bench-aware resolve + incremental requal | this section | **Landed** |
-| **Sigstore envelope** Offline in-toto Statement + DSSE + bundle v0.3 media type (HMAC; **not** Fulcio/Rekor) | `wvx registry sigstore` | **Landed** |
+| **Sigstore envelope** Offline in-toto Statement + DSSE + bundle v0.3 media type (HMAC; **not** Fulcio) | `wvx registry sigstore` | **Landed** |
+| **Rekor hashedrekord** Local `hashedrekord` v0.0.1 + `tlogEntries`; refuse `WVX_REKOR_URL` / Fulcio certs | `wvx registry rekor` | **Landed** (not public Rekor) |
 | **Wasm sidecar** Optional `wasm32-wasip1` export (native default; no host/WIT) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 

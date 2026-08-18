@@ -420,7 +420,7 @@ pub fn compile_with_policy(
 
     files.push(GeneratedFile {
         relative_path: "src/lib.rs".into(),
-        contents: "//! Generated Loom export.\n//!\n//! Uses vendored adapters under `vendor/`.\n\npub mod generated_pipeline;\n\npub use generated_pipeline::{run_pipeline, run_pipeline_read};\n".into(),
+        contents: "//! Generated Loom export.\n//!\n//! Uses vendored adapters under `vendor/`.\n\npub mod generated_pipeline;\n\npub use generated_pipeline::{run_pipeline, run_pipeline_named, run_pipeline_read};\n".into(),
     });
 
     let workspace = GeneratedWorkspace {
@@ -1111,6 +1111,33 @@ mod tests {
             pipeline.contents
         );
         assert!(!pipeline.contents.contains("reader.read_to_end(&mut input)"));
+    }
+
+    #[test]
+    fn hash_pair_emits_tuple_and_named_sinks() {
+        let text = include_str!("../../../fixtures/pilot-hash-pair-pipeline.wvx.json");
+        let project: Project = serde_json::from_str(text).unwrap();
+        let report =
+            compile_with_policy(&project, &BTreeMap::new(), &CompilePolicy::dev()).unwrap();
+        let pipeline = report
+            .workspace
+            .files
+            .iter()
+            .find(|f| f.relative_path == "src/generated_pipeline.rs")
+            .unwrap();
+        assert!(
+            pipeline.contents.contains("digest_hex"),
+            "{}",
+            pipeline.contents
+        );
+        assert!(pipeline.contents.contains("run_pipeline_named"));
+        assert!(pipeline.contents.contains("out_digest"));
+        assert!(pipeline.contents.contains("out_hex"));
+        assert!(
+            pipeline.contents.contains("let (") && pipeline.contents.contains(") = "),
+            "expected tuple unpack: {}",
+            pipeline.contents
+        );
     }
 
     #[test]

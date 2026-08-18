@@ -214,6 +214,57 @@ impl ErasedComponent for BytesToNamedBytes {
     }
 }
 
+/// Two named byte ports (multi-output). Port order matches the capability.
+pub fn bytes_to_two_bytes_handler(
+    implementation_id: impl Into<String>,
+    capability_key: impl Into<String>,
+    port_a: impl Into<String>,
+    port_b: impl Into<String>,
+    f: fn(&[u8]) -> Result<(Vec<u8>, Vec<u8>), String>,
+) -> Box<dyn ErasedComponent> {
+    Box::new(BytesToTwoBytes {
+        implementation_id: implementation_id.into(),
+        capability_key: capability_key.into(),
+        port_a: port_a.into(),
+        port_b: port_b.into(),
+        f,
+    })
+}
+
+struct BytesToTwoBytes {
+    implementation_id: String,
+    capability_key: String,
+    port_a: String,
+    port_b: String,
+    f: fn(&[u8]) -> Result<(Vec<u8>, Vec<u8>), String>,
+}
+
+impl ErasedComponent for BytesToTwoBytes {
+    fn implementation_id(&self) -> &str {
+        &self.implementation_id
+    }
+    fn capability_key(&self) -> &str {
+        &self.capability_key
+    }
+    fn execute(&self, inputs: &WvxValueMap, _config: &ConfigMap) -> Result<WvxValueMap, String> {
+        let bytes = match inputs.get("bytes") {
+            Some(WvxValue::Bytes(b)) => b.as_slice(),
+            Some(_) => {
+                return Err(format!(
+                    "{}: port `bytes` must be bytes",
+                    self.capability_key
+                ))
+            }
+            None => return Err(format!("{}: missing port `bytes`", self.capability_key)),
+        };
+        let (a, b) = (self.f)(bytes)?;
+        let mut out = WvxValueMap::new();
+        out.insert(self.port_a.clone(), WvxValue::Bytes(a));
+        out.insert(self.port_b.clone(), WvxValue::Bytes(b));
+        Ok(out)
+    }
+}
+
 /// Helper: wrap `fn(Value, &str, Value) -> Result<Value, String>` as path_set handler.
 pub fn path_set_handler(
     implementation_id: impl Into<String>,

@@ -320,7 +320,7 @@ API **`compile_release`** requires a `VerifiedImplementation` pool (not raw mani
 | Domain | Family | Fixtures |
 | --- | --- | --- |
 | 1 JSON | `data.json.*` | `pilot-json-pipeline.wvx.json` |
-| 2 Hash | `data.hash.*` | `pilot-hash-pipeline.wvx.json` |
+| 2 Hash | `data.hash.*` | `pilot-hash-pipeline.wvx.json` · `pilot-hash-pair-pipeline.wvx.json` (2 sinks) |
 | 3 Compress | `data.compress.*` | `pilot-compress-pipeline.wvx.json` |
 | 4 Codec | `data.codec.*` | `pilot-codec-*.wvx.json` |
 | text | `data.text.*` | `pilot-text-pipeline.wvx.json` |
@@ -502,6 +502,7 @@ cargo test -p wvx-conformance
 | **Wasm sidecar** Optional `wasm32-wasip1` export (native default) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
 | **Wasm host** Thin `run-wasm` via wasmtime CLI (not embedded VM / not WIT) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
 | **Streaming I/O** `run_pipeline_read` for hash/gzip/hex; JSON still buffers; no streaming IR | this section | **Landed** |
+| **Multi-output** Tuple unpack + `run_pipeline_named` (all `io.output.bytes` sinks); `run_pipeline` = first sink | `pilot-hash-pair-pipeline.wvx.json` | **Landed** |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 
 Go/No-Go evidence:

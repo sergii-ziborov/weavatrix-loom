@@ -226,18 +226,13 @@ pub fn pipeline(
     .ok();
     writeln!(
         out,
-        "/// Run the exported pipeline. Input seeds the entrypoint `bytes` port."
-    )
-    .ok();
-    writeln!(
-        out,
-        "pub fn run_pipeline(input: &[u8]) -> Result<Vec<u8>, String> {{"
+        "fn __wvx_execute(input: &[u8]) -> Result<(Vec<u8>, std::collections::BTreeMap<String, Vec<u8>>), String> {{"
     )
     .ok();
 
     // port values as rust vars: inst_port
     let mut port_vars: BTreeMap<String, String> = BTreeMap::new();
-    let mut final_output: Option<String> = None;
+    let mut sinks: Vec<(String, String)> = Vec::new();
     let mut last_json_var: Option<String> = None;
 
     for instance_id in order {
@@ -278,7 +273,7 @@ pub fn pipeline(
                     CompileError::Graph(format!("missing source value for {}", from.from))
                 })?
                 .clone();
-            final_output = Some(src);
+            sinks.push((instance_id.clone(), src));
             writeln!(out, "    // sink `{instance_id}`").ok();
             continue;
         }
@@ -322,7 +317,9 @@ pub fn pipeline(
             .capability_for(&instance.capability)
             .ok_or_else(|| CompileError::Graph(format!("unknown capability for {instance_id}")))?;
 
-        if cap.outputs.len() == 1 {
+        if cap.outputs.is_empty() {
+            writeln!(out, "    let _ = {call};").ok();
+        } else if cap.outputs.len() == 1 {
             let port = &cap.outputs[0].id;
             let var = rust_var(instance_id, port);
             let ty = rust_type_for_port(&cap.outputs[0].ty);
@@ -331,19 +328,35 @@ pub fn pipeline(
             if port == "value" {
                 last_json_var = Some(var);
             }
-        } else if cap.outputs.is_empty() {
-            writeln!(out, "    let _ = {call};").ok();
         } else {
-            return Err(CompileError::Graph(format!(
-                "multi-output instances not supported in v0.1 compiler ({instance_id})"
-            )));
+            // Capability output order → tuple from the adapter (`Result<(T1, T2, …), _>`).
+            let names: Vec<String> = cap
+                .outputs
+                .iter()
+                .map(|p| rust_var(instance_id, &p.id))
+                .collect();
+            let types: Vec<&str> = cap
+                .outputs
+                .iter()
+                .map(|p| rust_type_for_port(&p.ty))
+                .collect();
+            writeln!(
+                out,
+                "    let ({vars}): ({tys}) = {call};",
+                vars = names.join(", "),
+                tys = types.join(", ")
+            )
+            .ok();
+            for (p, var) in cap.outputs.iter().zip(names.iter()) {
+                port_vars.insert(format!("{instance_id}.{}", p.id), var.clone());
+                if p.id == "value" {
+                    last_json_var = Some(var.clone());
+                }
+            }
         }
     }
 
-    let ret = if let Some(r) = final_output {
-        r
-    } else {
-        // Parse-only graphs: last json_value → bytes (no serialize impl required).
+    if sinks.is_empty() {
         match last_json_var {
             Some(var) => {
                 writeln!(
@@ -351,7 +364,7 @@ pub fn pipeline(
                     "    let __wvx_sink: Vec<u8> = serde_json::to_vec(&{var}).map_err(|e| e.to_string())?;"
                 )
                 .ok();
-                "__wvx_sink".to_string()
+                sinks.push(("__json".into(), "__wvx_sink".into()));
             }
             None => {
                 return Err(CompileError::Graph(
@@ -359,8 +372,53 @@ pub fn pipeline(
                 ));
             }
         }
-    };
-    writeln!(out, "    Ok({ret})").ok();
+    }
+    writeln!(
+        out,
+        "    let mut __named: std::collections::BTreeMap<String, Vec<u8>> = std::collections::BTreeMap::new();"
+    )
+    .ok();
+    for (id, var) in &sinks {
+        writeln!(
+            out,
+            "    __named.insert({id:?}.to_string(), {var}.clone());"
+        )
+        .ok();
+    }
+    let primary = &sinks[0].1;
+    writeln!(out, "    Ok(({primary}, __named))").ok();
+    writeln!(out, "}}").ok();
+    writeln!(out).ok();
+    writeln!(
+        out,
+        "/// Run the exported pipeline. Input seeds the entrypoint `bytes` port."
+    )
+    .ok();
+    writeln!(
+        out,
+        "/// Primary return is the first `io.output.bytes` sink (topo order)."
+    )
+    .ok();
+    writeln!(
+        out,
+        "pub fn run_pipeline(input: &[u8]) -> Result<Vec<u8>, String> {{"
+    )
+    .ok();
+    writeln!(out, "    Ok(__wvx_execute(input)?.0)").ok();
+    writeln!(out, "}}").ok();
+    writeln!(out).ok();
+    writeln!(
+        out,
+        "/// All `io.output.bytes` sinks (instance id → bytes). Single-sink graphs have one entry."
+    )
+    .ok();
+    writeln!(out, "#[allow(dead_code)]").ok();
+    writeln!(
+        out,
+        "pub fn run_pipeline_named(input: &[u8]) -> Result<std::collections::BTreeMap<String, Vec<u8>>, String> {{"
+    )
+    .ok();
+    writeln!(out, "    Ok(__wvx_execute(input)?.1)").ok();
     writeln!(out, "}}").ok();
     writeln!(out).ok();
     emit_run_pipeline_read(&mut out, project, order, resolved);

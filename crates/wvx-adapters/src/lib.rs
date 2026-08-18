@@ -36,6 +36,7 @@ pub mod serde_json_pointer_set;
 pub mod serde_json_serialize;
 pub mod sha2_sha256;
 pub mod sha2_sha256_chunked;
+pub mod sha2_sha256_pair;
 pub mod sha2_sha256_streaming;
 pub mod sha2_sha256_update_all;
 #[cfg(feature = "simd")]
@@ -77,6 +78,7 @@ pub const PILOT_ADAPTERS: &[(&str, &str)] = &[
     ),
     // Domain 2 — hashing (4 multi-impl SHA-256 + blake3)
     ("sha2.sha256@1", "sha2_sha256"),
+    ("sha2.sha256-pair@1", "sha2_sha256_pair"),
     ("sha2.sha256-streaming@1", "sha2_sha256_streaming"),
     ("sha2.sha256-chunked@1", "sha2_sha256_chunked"),
     ("sha2.sha256-update-all@1", "sha2_sha256_update_all"),

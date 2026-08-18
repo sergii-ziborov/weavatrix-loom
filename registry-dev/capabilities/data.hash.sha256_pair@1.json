@@ -1,0 +1,14 @@
+{
+  "id": "data.hash.sha256_pair",
+  "version": "1",
+  "kind": "transform",
+  "inputs": [
+    { "id": "bytes", "type": "bytes", "required": true }
+  ],
+  "outputs": [
+    { "id": "digest", "type": "bytes", "required": true },
+    { "id": "hex", "type": "bytes", "required": true }
+  ],
+  "errors": [],
+  "effects": []
+}

@@ -165,6 +165,15 @@ pub fn register_pilot_plugins() {
         );
 
         // Domain 2 — hashing (bytes → digest); multi-impl SHA-256 + BLAKE3
+        register_plugin("sha2.sha256-pair@1", "data.hash.sha256_pair@1", || {
+            wvx_component_sdk::bytes_to_two_bytes_handler(
+                "sha2.sha256-pair@1",
+                "data.hash.sha256_pair@1",
+                "digest",
+                "hex",
+                crate::sha2_sha256_pair::digest_hex,
+            )
+        });
         register_plugin("sha2.sha256@1", "data.hash.sha256@1", || {
             bytes_to_named_bytes_handler(
                 "sha2.sha256@1",

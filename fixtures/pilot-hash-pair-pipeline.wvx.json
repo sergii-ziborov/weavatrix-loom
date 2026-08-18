@@ -1,0 +1,88 @@
+{
+  "schema_version": "wvx.project.v0.1",
+  "id": "pilot-hash-pair-pipeline",
+  "name": "Hash pair pipeline (multi-output)",
+  "entrypoint": "input",
+  "metadata": {
+    "pilot": "true",
+    "family": "data.hash",
+    "domain": "2",
+    "multi_output": "true"
+  },
+  "capabilities": [
+    {
+      "id": "io.input.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [],
+      "outputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "data.hash.sha256_pair",
+      "version": "1",
+      "kind": "transform",
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "outputs": [
+        { "id": "digest", "type": "bytes", "required": true },
+        { "id": "hex", "type": "bytes", "required": true }
+      ],
+      "errors": [],
+      "effects": []
+    },
+    {
+      "id": "io.output.bytes",
+      "version": "1",
+      "kind": "io",
+      "inputs": [{ "id": "bytes", "type": "bytes", "required": true }],
+      "outputs": [],
+      "errors": [],
+      "effects": []
+    }
+  ],
+  "instances": [
+    {
+      "id": "input",
+      "capability": { "id": "io.input.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 40, "y": 120 }
+    },
+    {
+      "id": "hash",
+      "capability": { "id": "data.hash.sha256_pair", "version": "1" },
+      "implementation": "sha2.sha256-pair@1",
+      "config": {},
+      "ui": { "x": 280, "y": 120 }
+    },
+    {
+      "id": "out_digest",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 540, "y": 60 }
+    },
+    {
+      "id": "out_hex",
+      "capability": { "id": "io.output.bytes", "version": "1" },
+      "implementation": null,
+      "config": {},
+      "ui": { "x": 540, "y": 200 }
+    }
+  ],
+  "bindings": [
+    {
+      "from": { "instance": "input", "port": "bytes" },
+      "to": { "instance": "hash", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "hash", "port": "digest" },
+      "to": { "instance": "out_digest", "port": "bytes" }
+    },
+    {
+      "from": { "instance": "hash", "port": "hex" },
+      "to": { "instance": "out_hex", "port": "bytes" }
+    }
+  ]
+}

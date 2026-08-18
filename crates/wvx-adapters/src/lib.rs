@@ -6,6 +6,7 @@
 pub mod base64_standard_decode;
 pub mod base64_standard_encode;
 pub mod blake3_hash;
+#[cfg(feature = "blake3-parallel")]
 pub mod blake3_hash_parallel;
 pub mod flate2_gunzip;
 pub mod flate2_gunzip_chunked;
@@ -37,7 +38,9 @@ pub mod sha2_sha256;
 pub mod sha2_sha256_chunked;
 pub mod sha2_sha256_streaming;
 pub mod sha2_sha256_update_all;
+#[cfg(feature = "simd")]
 pub mod simd_json_parse;
+#[cfg(feature = "sonic")]
 pub mod sonic_rs_parse;
 pub mod zlib_rs_gunzip;
 pub mod zlib_rs_gzip;

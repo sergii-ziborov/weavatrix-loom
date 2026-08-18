@@ -28,8 +28,11 @@ use wvx_validator::{validate_project, validate_project_with, ValidateOptions, Va
 
 pub use adapters::{
     built_in_sdk_emit as adapters_built_in_sdk_emit, default_implementation, is_passthrough_io,
-    known_implementation_ids,
+    known_implementation_ids, wasm_incompatible_reason,
 };
+
+/// Optional sidecar target (ADR-0006). Native remains the default production path.
+pub const WASM_TARGET: &str = "wasm32-wasip1";
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -545,6 +548,7 @@ fn write_compiled_workspace(
         digests: report.digests.clone(),
         cargo_lock_generated: false,
         policy_id: policy.id.clone(),
+        target: None,
     };
 
     if policy.generate_cargo_lock {
@@ -602,6 +606,88 @@ fn write_compiled_workspace(
     Ok(export)
 }
 
+/// Optional wasm32-wasip1 sidecar (ADR-0006). Native remains the default.
+///
+/// Rejects SIMD / rayon implementations. Writes `.cargo/config.toml` and a
+/// wasm-safe vendor `Cargo.toml` (no simd-json / sonic-rs / blake3 rayon).
+/// `--check` runs `cargo check --target wasm32-wasip1` when the rustup target
+/// is installed; it does **not** add a Wasm host or WIT runtime.
+pub fn export_wasm_to_directory(
+    project: &Project,
+    out_dir: &Path,
+    check: bool,
+    sdk_emits: &BTreeMap<String, SdkEmit>,
+    policy: &CompilePolicy,
+) -> Result<ExportReport, CompileError> {
+    let mut report = compile_with_policy(project, sdk_emits, policy)?;
+    for impl_id in report.resolved_implementations.values() {
+        if let Some(why) = adapters::wasm_incompatible_reason(impl_id) {
+            return Err(CompileError::PolicyRejected(impl_id.clone(), why.into()));
+        }
+    }
+    for f in &mut report.workspace.files {
+        if f.relative_path == "vendor/wvx-adapters/Cargo.toml" {
+            f.contents = vendor::standalone_adapters_cargo_toml_wasm();
+        }
+    }
+    report.workspace.files.push(GeneratedFile {
+        relative_path: ".cargo/config.toml".into(),
+        contents: format!("[build]\ntarget = \"{WASM_TARGET}\"\n"),
+    });
+    let sidecar = serde_json::json!({
+        "target": WASM_TARGET,
+        "host": false,
+        "native_default": true,
+        "rejected": [
+            "simd-json.parse@1",
+            "sonic-rs.parse@1",
+            "blake3.blake3-parallel@1"
+        ],
+        "note": "Optional sidecar (ADR-0006). Not a Wasm host, WIT component, or wasmtime runtime."
+    });
+    report.workspace.files.push(GeneratedFile {
+        relative_path: "weavatrix.wasm.json".into(),
+        contents: format!("{sidecar}\n"),
+    });
+    if policy.compute_digests {
+        report.digests = digest_workspace(&report.workspace);
+    }
+    // Do not generate Cargo.lock against wasm32 unless the target is present;
+    // lockfile generation would fail closed when rustup target is missing.
+    let mut wasm_policy = policy.clone();
+    wasm_policy.generate_cargo_lock = false;
+    let mut export = write_compiled_workspace(&report, out_dir, &wasm_policy, false, None)?;
+    export.target = Some(WASM_TARGET.into());
+    if check {
+        if !wasm_target_installed() {
+            return Err(CompileError::Cargo(format!(
+                "rustup target `{WASM_TARGET}` is not installed; rustup target add {WASM_TARGET}"
+            )));
+        }
+        let status = Command::new("cargo")
+            .args(["check", "--quiet", "--target", WASM_TARGET])
+            .current_dir(out_dir)
+            .status()
+            .map_err(|e| CompileError::Cargo(e.to_string()))?;
+        export.check_ok = Some(status.success());
+        if !status.success() {
+            return Err(CompileError::Cargo(format!(
+                "cargo check --target {WASM_TARGET} failed for exported project"
+            )));
+        }
+    }
+    Ok(export)
+}
+
+fn wasm_target_installed() -> bool {
+    Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains(WASM_TARGET))
+        .unwrap_or(false)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportReport {
     pub package_name: String,
@@ -619,6 +705,9 @@ pub struct ExportReport {
     pub cargo_lock_generated: bool,
     #[serde(default)]
     pub policy_id: String,
+    /// Set on wasm sidecar export (`wasm32-wasip1`). Absent for native.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// instance_id → implementation_id + resolution explanations
@@ -854,5 +943,60 @@ mod tests {
         assert_eq!(v["tag"], "loom");
         assert!(dir.join("weavatrix.digests.json").exists());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn export_wasm_writes_sidecar_and_rejects_simd() {
+        let text = include_str!("../../../fixtures/pilot-json-pipeline.wvx.json");
+        let mut project: Project = serde_json::from_str(text).unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "wvx-wasm-export-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let report = export_wasm_to_directory(
+            &project,
+            &dir,
+            false,
+            &BTreeMap::new(),
+            &CompilePolicy::dev(),
+        )
+        .unwrap();
+        assert_eq!(report.target.as_deref(), Some(WASM_TARGET));
+        assert!(dir.join(".cargo/config.toml").exists());
+        assert!(dir.join("weavatrix.wasm.json").exists());
+        let cargo = fs::read_to_string(dir.join("vendor/wvx-adapters/Cargo.toml")).unwrap();
+        assert!(
+            !cargo.contains("simd-json"),
+            "wasm vendor must not depend on simd-json"
+        );
+        assert!(!cargo.contains("sonic-rs"));
+        let cfg = fs::read_to_string(dir.join(".cargo/config.toml")).unwrap();
+        assert!(cfg.contains(WASM_TARGET));
+        let _ = fs::remove_dir_all(&dir);
+
+        if let Some(inst) = project.instances.iter_mut().find(|i| i.id == "parse") {
+            inst.implementation = Some("simd-json.parse@1".into());
+        }
+        let err = export_wasm_to_directory(
+            &project,
+            &std::env::temp_dir().join(format!(
+                "wvx-wasm-reject-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            )),
+            false,
+            &BTreeMap::new(),
+            &CompilePolicy::dev(),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("simd-json") || err.to_string().contains("wasm"),
+            "{err}"
+        );
     }
 }

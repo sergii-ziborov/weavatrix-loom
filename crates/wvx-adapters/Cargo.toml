@@ -14,24 +14,29 @@ categories = ["development-tools"]
 readme = "README.md"
 
 [features]
-default = ["host"]
+default = ["host", "native-accel"]
 # Host registration into wvx-component-sdk (playground). Disable for bare export vendor.
 host = ["dep:wvx-component-sdk"]
+# Native-only accelerators (SIMD JSON, rayon). Off on wasm32-wasip1 sidecar vendor.
+native-accel = ["simd", "sonic", "blake3-parallel"]
+simd = ["dep:simd-json"]
+sonic = ["dep:sonic-rs"]
+blake3-parallel = ["blake3/rayon"]
 
 [dependencies]
 serde_json = { workspace = true }
 # Third independent parse path for Gate A (not serde-based).
 json = "0.12"
-# SIMD parse path (runtime dispatch; serde → serde_json::Value).
-simd-json = { version = "0.14", default-features = false, features = ["serde_impl"] }
+# SIMD parse path (runtime dispatch; serde → serde_json::Value). Native-only.
+simd-json = { version = "0.14", default-features = false, features = ["serde_impl"], optional = true }
 # Faster SIMD parse on x86_64/aarch64; fallback on other targets. Not the default impl.
-sonic-rs = "0.3"
+sonic-rs = { version = "0.3", optional = true }
 # Fast gzip backend (pure Rust zlib). Separate from flate2/miniz_oxide.
 zlib-rs = "0.5"
 # Domain 2 — hashing (bytes → digest); multi-impl + second algorithm.
 sha2 = "0.10"
 # pure = no C/asm (Windows GNU link issues in FORGE-008 temp crates)
-blake3 = { version = "1.5", default-features = false, features = ["std", "pure", "rayon"] }
+blake3 = { version = "1.5", default-features = false, features = ["std", "pure"] }
 # Domain 3 — compression (gzip).
 flate2 = { version = "1", default-features = true }
 # Domain 4 — binary codecs (base64 multi-impl; hex is pure).

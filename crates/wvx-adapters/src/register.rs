@@ -13,16 +13,16 @@ use wvx_component_sdk::{
 };
 
 use crate::{
-    base64_standard_decode, base64_standard_encode, blake3_hash, blake3_hash_parallel,
-    flate2_gunzip, flate2_gunzip_chunked, flate2_gunzip_take, flate2_gzip, flate2_gzip_chunked,
+    base64_standard_decode, base64_standard_encode, blake3_hash, flate2_gunzip,
+    flate2_gunzip_chunked, flate2_gunzip_take, flate2_gzip, flate2_gzip_chunked,
     flate2_gzip_oneshot, json_crate_parse, reference_base64_decode, reference_base64_encode,
     reference_hex_decode, reference_hex_decode_table, reference_hex_encode,
     reference_hex_encode_chunked, reference_json_parse, reference_json_serialize,
     reference_json_serialize_pretty, reference_path_set, reference_text_ascii_lower,
     reference_text_ascii_upper, reference_text_lowercase, reference_text_uppercase,
     serde_json_parse_owned, serde_json_pointer_set, serde_json_serialize, sha2_sha256,
-    sha2_sha256_chunked, sha2_sha256_streaming, sha2_sha256_update_all, simd_json_parse,
-    sonic_rs_parse, zlib_rs_gunzip, zlib_rs_gzip,
+    sha2_sha256_chunked, sha2_sha256_streaming, sha2_sha256_update_all, zlib_rs_gunzip,
+    zlib_rs_gzip,
 };
 
 /// Register all pilot transform implementations into the SDK plugin table.
@@ -53,18 +53,20 @@ pub fn register_pilot_plugins() {
                 json_crate_parse::parse,
             )
         });
+        #[cfg(feature = "simd")]
         register_plugin("simd-json.parse@1", "data.json.parse@1", || {
             bytes_to_json_handler(
                 "simd-json.parse@1",
                 "data.json.parse@1",
-                simd_json_parse::parse,
+                crate::simd_json_parse::parse,
             )
         });
+        #[cfg(feature = "sonic")]
         register_plugin("sonic-rs.parse@1", "data.json.parse@1", || {
             bytes_to_json_handler(
                 "sonic-rs.parse@1",
                 "data.json.parse@1",
-                sonic_rs_parse::parse,
+                crate::sonic_rs_parse::parse,
             )
         });
 
@@ -187,12 +189,13 @@ pub fn register_pilot_plugins() {
                 blake3_hash::digest,
             )
         });
+        #[cfg(feature = "blake3-parallel")]
         register_plugin("blake3.blake3-parallel@1", "data.hash.blake3@1", || {
             bytes_to_named_bytes_handler(
                 "blake3.blake3-parallel@1",
                 "data.hash.blake3@1",
                 "digest",
-                blake3_hash_parallel::digest,
+                crate::blake3_hash_parallel::digest,
             )
         });
         register_plugin("sha2.sha256-chunked@1", "data.hash.sha256@1", || {

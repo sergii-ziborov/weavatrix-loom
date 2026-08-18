@@ -45,6 +45,11 @@
    Release compile accepts only `VerifiedImplementation` (`compile_release`).  
    Resolver release policy requires **Pass** axes + verified artifact path.
 
+   `wvx registry sigstore` wraps a signed attestation as an in-toto Statement v1
+   inside a DSSE envelope (`application/vnd.dev.sigstore.bundle.v0.3+json`).
+   The signature is still `WVX_PROMOTION_HMAC_KEY`. This is **not** Fulcio
+   identity or a Rekor transparency log.
+
 4. **CI invariant**
 
 ```text

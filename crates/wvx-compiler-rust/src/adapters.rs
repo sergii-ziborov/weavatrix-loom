@@ -139,6 +139,16 @@ pub fn needs_external_adapters(impls: &BTreeSet<String>) -> bool {
     impls.iter().any(|id| crate_module(id).is_some())
 }
 
+/// Implementations that require native SIMD / rayon and are rejected on wasm export.
+pub fn wasm_incompatible_reason(implementation_id: &str) -> Option<&'static str> {
+    match implementation_id {
+        "simd-json.parse@1" => Some("simd-json needs native SIMD (not wasm32-wasip1)"),
+        "sonic-rs.parse@1" => Some("sonic-rs needs native SIMD (not wasm32-wasip1)"),
+        "blake3.blake3-parallel@1" => Some("blake3-parallel uses rayon (not wasm32-wasip1)"),
+        _ => None,
+    }
+}
+
 /// Built-in SDK emit templates for pilot adapters (no registry required for export).
 pub fn built_in_sdk_emit(implementation_id: &str) -> Option<SdkEmit> {
     let (crate_name, crate_path, template) = match implementation_id {

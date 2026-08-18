@@ -265,6 +265,7 @@ pub enum TransparencyKind {
     Promote,
     Attest,
     Requal,
+    Sigstore,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -387,6 +388,7 @@ fn entry_hash(
         TransparencyKind::Promote => "promote",
         TransparencyKind::Attest => "attest",
         TransparencyKind::Requal => "requal",
+        TransparencyKind::Sigstore => "sigstore",
     };
     sha256_hex(format!("{seq}|{kind_s}|{impl_id}|{payload}|{prev}").as_bytes())
 }

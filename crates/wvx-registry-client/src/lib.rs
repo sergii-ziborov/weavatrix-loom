@@ -19,6 +19,7 @@ pub mod provenance;
 pub mod requalify;
 pub mod resolve;
 pub mod signed;
+pub mod sigstore;
 pub mod temp_registry;
 pub mod verified;
 pub mod workspace;
@@ -56,6 +57,9 @@ pub use resolve::{resolve_implementation, resolve_implementation_ex};
 pub use signed::{
     hmac_sha256, promotion_hmac_key, sign_reports, verify_signed_reports, SignedPromotionReports,
     SIGNED_REPORTS_SCHEMA,
+};
+pub use sigstore::{
+    verify_sigstore_bundle, wrap_attestation, SigstoreBundle, BUNDLE_MEDIA, DSSE_PAYLOAD_TYPE,
 };
 pub use temp_registry::{materialize_temp_registry, snapshot_files};
 pub use verified::{verify_all_conformant, verify_implementation, VerifiedImplementation};

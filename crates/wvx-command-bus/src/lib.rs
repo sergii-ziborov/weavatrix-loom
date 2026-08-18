@@ -10,7 +10,7 @@ use std::process::Command;
 use thiserror::Error;
 use wvx_compiler_rust::{
     compile_release, compile_to_rust_with_sdk, compile_with_policy, export_release_to_directory,
-    export_to_directory_with_policy, ExportReport, GeneratedWorkspace,
+    export_to_directory_with_policy, export_wasm_to_directory, ExportReport, GeneratedWorkspace,
 };
 
 // Re-export policy / preview types for hosts (CLI, HTTP).
@@ -329,6 +329,30 @@ pub fn project_export_to_dir_release(
     let verified = verified_pool_for_project(registry, &project)?;
     let sdk = sdk_emits_from_registry(Some(registry));
     match export_release_to_directory(&project, &verified, out_dir, check, run_input, &sdk) {
+        Ok(report) => Ok(BusResponse::ok(report)),
+        Err(e) => Err(BusError::Compile(e.to_string())),
+    }
+}
+
+/// Optional wasm32-wasip1 sidecar export (ADR-0006). Not a Wasm host.
+pub fn project_export_wasm_to_dir(
+    project: &Project,
+    out_dir: &Path,
+    check: bool,
+    registry: Option<&LocalRegistry>,
+    mut policy: CompilePolicy,
+) -> Result<BusResponse<ExportReport>, BusError> {
+    let mut project = project.clone();
+    let _ = hydrate_project(&mut project, registry);
+    if policy.implementations.is_empty() {
+        if let Some(reg) = registry {
+            if let Ok(impls) = reg.list_implementations() {
+                policy.implementations = impls;
+            }
+        }
+    }
+    let sdk = sdk_emits_from_registry(registry);
+    match export_wasm_to_directory(&project, out_dir, check, &sdk, &policy) {
         Ok(report) => Ok(BusResponse::ok(report)),
         Err(e) => Err(BusError::Compile(e.to_string())),
     }

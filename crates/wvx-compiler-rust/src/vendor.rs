@@ -96,16 +96,48 @@ description = "Vendored Loom pilot adapters"
 [features]
 # Declared so vendored `#[cfg(feature = "host")]` is valid; never enabled on export.
 host = []
+default = ["native-accel"]
+native-accel = ["simd", "sonic", "blake3-parallel"]
+simd = ["dep:simd-json"]
+sonic = ["dep:sonic-rs"]
+blake3-parallel = ["blake3/rayon"]
 
 [dependencies]
 serde_json = "1"
 json = "0.12"
-simd-json = { version = "0.14", default-features = false, features = ["serde_impl"] }
-sonic-rs = "0.3"
+simd-json = { version = "0.14", default-features = false, features = ["serde_impl"], optional = true }
+sonic-rs = { version = "0.3", optional = true }
 zlib-rs = "0.5"
 # Domain 2 hashing + Domain 3 compression + Domain 4 codecs
 sha2 = "0.10"
-blake3 = { version = "1.5", default-features = false, features = ["std", "pure", "rayon"] }
+blake3 = { version = "1.5", default-features = false, features = ["std", "pure"] }
+flate2 = "1"
+base64 = "0.22"
+"#
+    .into()
+}
+
+/// Wasm sidecar vendor: no SIMD / rayon (ADR-0006). Features exist so `cfg` stays valid.
+pub(crate) fn standalone_adapters_cargo_toml_wasm() -> String {
+    r#"[package]
+name = "wvx-adapters"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Vendored Loom pilot adapters (wasm32-wasip1 sidecar)"
+
+[features]
+host = []
+simd = []
+sonic = []
+blake3-parallel = []
+
+[dependencies]
+serde_json = "1"
+json = "0.12"
+zlib-rs = "0.5"
+sha2 = "0.10"
+blake3 = { version = "1.5", default-features = false, features = ["std", "pure"] }
 flate2 = "1"
 base64 = "0.22"
 "#

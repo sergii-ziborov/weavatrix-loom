@@ -1,6 +1,7 @@
 # `wvx-registry-client`
 
-Local filesystem client for a Loom capability registry (lifecycle + multi-fact evidence).
+Local filesystem client for a Loom capability registry (lifecycle + multi-fact evidence,
+HMAC attestations, offline Sigstore-shaped in-toto/DSSE bundles — not Fulcio/Rekor).
 
 Part of **[Weavatrix Loom](https://github.com/sergii-ziborov/weavatrix-loom)** — semantic software composition
 (Capability · Implementation · Registry · GraphPatch · compile to ordinary Rust).

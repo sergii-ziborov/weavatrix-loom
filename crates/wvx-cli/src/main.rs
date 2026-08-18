@@ -11,9 +11,9 @@ use wvx_command_bus::{
     graph_apply_patch, graph_preview_patch, graph_propose_intent, graph_propose_patch,
     implementations_list, load_bench_records, load_project_path, pilot_bench,
     project_export_rust_hydrated, project_export_to_dir_release, project_export_to_dir_with_policy,
-    project_run, project_validate, registry_admission_audit, registry_human_admit,
-    registry_implementations, registry_inspect, registry_mint_evidence, registry_promote,
-    registry_requalify, registry_resolve, registry_search, registry_summary,
+    project_export_wasm_to_dir, project_run, project_validate, registry_admission_audit,
+    registry_human_admit, registry_implementations, registry_inspect, registry_mint_evidence,
+    registry_promote, registry_requalify, registry_resolve, registry_search, registry_summary,
     registry_truthful_audit, registry_verify_evidence, BusError, CompilePolicy,
 };
 use wvx_forge::load_facts_file;
@@ -22,8 +22,8 @@ use wvx_registry_client::AdmitRequest;
 use wvx_registry_client::LocalRegistry;
 use wvx_registry_client::{
     append_transparency, artifact_path, load_artifact, promotion_hmac_key, read_transparency_log,
-    sbom_from_implementation, sign_attestation, verify_attestation, verify_transparency_log,
-    HumanSignature, PromoteRequest, TransparencyKind,
+    sbom_from_implementation, sign_attestation, verify_attestation, verify_sigstore_bundle,
+    verify_transparency_log, wrap_attestation, HumanSignature, PromoteRequest, TransparencyKind,
 };
 use wvx_types::WvxValue;
 
@@ -43,6 +43,7 @@ fn main() -> ExitCode {
         "run" => cmd_run(&args),
         "implementations" | "impls" => cmd_implementations(),
         "export-rust" => cmd_export(&args),
+        "export-wasm" => cmd_export_wasm(&args),
         "registry" => cmd_registry(&args),
         "forge" => cmd_forge(&args),
         "patch" => cmd_patch(&args),
@@ -76,6 +77,7 @@ Usage:
   wvx run <project.wvx.json> [options]
   wvx implementations
   wvx export-rust <project.wvx.json> [-o <dir>] [--check] [--run] [--dev] [--impl id=impl]...
+  wvx export-wasm <project.wvx.json> -o <dir> [--check] [--dev] [--impl id=impl]...
   wvx registry summary [--path <dir>]
   wvx registry search [query] [--path <dir>]
   wvx registry implementations [--capability key] [query] [--path <dir>]
@@ -89,6 +91,7 @@ Usage:
   wvx registry resolve <cap> [--policy dev|release] [--arch|--os|--workload] [--bench-file]
   wvx registry sbom <impl-id>
   wvx registry attest <impl-id> [--apply]
+  wvx registry sigstore <impl-id> [--apply]   # in-toto+DSSE HMAC bundle; not Fulcio/Rekor
   wvx registry transparency [--verify]
   wvx registry admit <impl-id> --reviewer <name> --human-ack <text> --security-ack <text> \\
       --reason <text> --bench-file <path> [--apply] [--path <dir>]
@@ -118,6 +121,9 @@ Export options:
 
 `run` uses the playground. `export-rust` emits a native Rust package whose
 `run_pipeline` should match playground results for the pilot adapters.
+`export-wasm` is an optional wasm32-wasip1 sidecar (ADR-0006) — not a Wasm host.
+It rejects simd-json / sonic-rs / blake3-parallel. `--check` needs
+`rustup target add wasm32-wasip1`.
 
   wvx conformance               pilot + multi-impl equality + profile suites
   wvx conformance --profiles    multi-domain profile runner only
@@ -983,7 +989,9 @@ fn cmd_patch(args: &[String]) -> ExitCode {
 
 fn cmd_registry(args: &[String]) -> ExitCode {
     if args.is_empty() {
-        eprintln!("usage: wvx registry <summary|search|resolve|sbom|attest|transparency|…> ...");
+        eprintln!(
+            "usage: wvx registry <summary|search|resolve|sbom|attest|sigstore|transparency|…> ..."
+        );
         return ExitCode::FAILURE;
     }
     let sub = args[0].as_str();
@@ -1146,6 +1154,17 @@ fn cmd_registry(args: &[String]) -> ExitCode {
             };
             let apply = rest.iter().any(|a| a == "--apply");
             match cmd_registry_attest(&reg, id, apply) {
+                Ok(s) => Ok(s),
+                Err(e) => Err(e),
+            }
+        }
+        "sigstore" => {
+            let Some(id) = rest.first() else {
+                eprintln!("usage: wvx registry sigstore <impl-id> [--apply]");
+                return ExitCode::FAILURE;
+            };
+            let apply = rest.iter().any(|a| a == "--apply");
+            match cmd_registry_sigstore(&reg, id, apply) {
                 Ok(s) => Ok(s),
                 Err(e) => Err(e),
             }
@@ -1642,6 +1661,43 @@ fn cmd_registry_attest(reg: &LocalRegistry, id: &str, apply: bool) -> Result<Str
     Ok(serde_json::to_string_pretty(&att).unwrap())
 }
 
+fn cmd_registry_sigstore(reg: &LocalRegistry, id: &str, apply: bool) -> Result<String, BusError> {
+    let att_json = cmd_registry_attest(reg, id, false)?;
+    let att: wvx_registry_client::SignedAttestation = serde_json::from_str(&att_json)
+        .map_err(|e| BusError::InvalidProject(format!("attestation JSON: {e}")))?;
+    let Some(key) = promotion_hmac_key() else {
+        return Err(BusError::InvalidProject(
+            "WVX_PROMOTION_HMAC_KEY is required for sigstore bundles".into(),
+        ));
+    };
+    let bundle = wrap_attestation(&att, &key);
+    verify_sigstore_bundle(&bundle, &att.implementation_id)?;
+    if apply {
+        let dest = reg.root().join("evidence").join("sigstore").join(format!(
+            "{}.bundle.json",
+            att.implementation_id.replace(['/', '\\'], "_")
+        ));
+        if let Some(parent) = dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&dest, serde_json::to_string_pretty(&bundle).unwrap())
+            .map_err(|e| BusError::Io(e.to_string()))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        append_transparency(
+            reg.root(),
+            TransparencyKind::Sigstore,
+            &att.implementation_id,
+            &att.payload_digest,
+            now,
+        )?;
+        eprintln!("wrote {}", dest.display());
+    }
+    Ok(serde_json::to_string_pretty(&bundle).unwrap())
+}
+
 fn cmd_registry_transparency(reg: &LocalRegistry, verify: bool) -> Result<String, BusError> {
     let log = read_transparency_log(reg.root())?;
     if verify {
@@ -1947,6 +2003,101 @@ fn cmd_export(args: &[String]) -> ExitCode {
                 eprintln!("{e}");
                 ExitCode::FAILURE
             }
+        }
+    }
+}
+
+fn cmd_export_wasm(args: &[String]) -> ExitCode {
+    let Some(path) = args.first() else {
+        eprintln!(
+            "usage: wvx export-wasm <project.wvx.json> -o <dir> [--check] [--dev] [--impl id=impl]"
+        );
+        return ExitCode::FAILURE;
+    };
+
+    let mut out_dir: Option<PathBuf> = None;
+    let mut check = false;
+    // Sidecar, not the production path — default to compile.dev (pass --release to tighten).
+    let mut release = false;
+    let mut overrides = BTreeMap::new();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" | "--out" => {
+                let Some(dir) = args.get(i + 1) else {
+                    eprintln!("-o requires a directory");
+                    return ExitCode::FAILURE;
+                };
+                out_dir = Some(PathBuf::from(dir));
+                i += 2;
+            }
+            "--check" => {
+                check = true;
+                i += 1;
+            }
+            "--release" => {
+                release = true;
+                i += 1;
+            }
+            "--dev" => {
+                release = false;
+                i += 1;
+            }
+            "--run" => {
+                eprintln!("export-wasm does not support --run (no Wasm host in 0.1)");
+                return ExitCode::FAILURE;
+            }
+            "--impl" => {
+                let Some(spec) = args.get(i + 1) else {
+                    eprintln!("--impl requires instance=implementation-id");
+                    return ExitCode::FAILURE;
+                };
+                let Some((instance, impl_id)) = spec.split_once('=') else {
+                    eprintln!("--impl expected instance=impl-id");
+                    return ExitCode::FAILURE;
+                };
+                overrides.insert(instance.to_string(), impl_id.to_string());
+                i += 2;
+            }
+            other => {
+                eprintln!("unknown export-wasm option: {other}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let Some(dir) = out_dir else {
+        eprintln!("export-wasm requires -o <dir>");
+        return ExitCode::FAILURE;
+    };
+
+    let mut project = match load_project_path(path.as_ref()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    wvx_runtime::apply_implementation_overrides(&mut project, &overrides);
+
+    let policy = if release {
+        CompilePolicy::release()
+    } else {
+        CompilePolicy::dev()
+    };
+    let reg = LocalRegistry::open_default().ok();
+    match project_export_wasm_to_dir(&project, &dir, check, reg.as_ref(), policy) {
+        Ok(resp) => {
+            println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+            if resp.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
         }
     }
 }

@@ -54,6 +54,100 @@ fn bulk_json_object(inner_bytes: usize) -> Vec<u8> {
     out
 }
 
+/// Synthetic Twitter-search *shape* (statuses + entities + users).
+/// Not the copyrighted serde-json-benchmark `twitter.json`.
+fn twitter_like_json(tweet_count: usize) -> Vec<u8> {
+    let mut statuses = Vec::with_capacity(tweet_count);
+    for i in 0..tweet_count {
+        let uid = 1_000 + (i % 23);
+        statuses.push(serde_json::json!({
+            "id": 1_700_000_000_000u64 + i as u64,
+            "id_str": format!("{}", 1_700_000_000_000u64 + i as u64),
+            "created_at": "Wed Aug 19 12:00:00 +0000 2026",
+            "text": format!(
+                "loom bench tweet {i}: capability graphs compile to ordinary Rust #json #simd https://example.com/t/{i}"
+            ),
+            "truncated": false,
+            "user": {
+                "id": uid,
+                "id_str": uid.to_string(),
+                "screen_name": format!("user{uid}"),
+                "name": format!("User {uid}"),
+                "location": if i % 5 == 0 { "Berlin" } else { "remote" },
+                "description": "synthetic account for SIMD parse benches",
+                "followers_count": 80 + i * 7,
+                "friends_count": 40 + i,
+                "statuses_count": 200 + i * 3,
+                "verified": i % 13 == 0,
+                "lang": "en"
+            },
+            "entities": {
+                "hashtags": [
+                    {"text": "json", "indices": [52, 57]},
+                    {"text": "simd", "indices": [58, 63]}
+                ],
+                "urls": [{
+                    "url": format!("https://t.co/x{i}"),
+                    "expanded_url": format!("https://example.com/t/{i}"),
+                    "display_url": format!("example.com/t/{i}"),
+                    "indices": [64, 86]
+                }],
+                "user_mentions": []
+            },
+            "retweet_count": i % 50,
+            "favorite_count": i % 80,
+            "favorited": false,
+            "retweeted": false,
+            "lang": "en",
+            "possibly_sensitive": false
+        }));
+    }
+    serde_json::to_vec(&serde_json::json!({
+        "statuses": statuses,
+        "search_metadata": {
+            "completed_in": 0.042,
+            "count": tweet_count,
+            "max_id": 1_700_000_000_000u64 + tweet_count as u64,
+            "query": "loom",
+            "refresh_url": "?since_id=1"
+        }
+    }))
+    .expect("twitter-like JSON")
+}
+
+/// Catalog *shape*: events, venues, numeric prices (canada/citm-like mix).
+fn catalog_like_json(event_count: usize) -> Vec<u8> {
+    let mut events = Vec::with_capacity(event_count);
+    for i in 0..event_count {
+        let lat = 52.0 + (i as f64) * 0.011;
+        let lon = 13.0 + (i as f64) * 0.007;
+        events.push(serde_json::json!({
+            "id": format!("evt-{i:04}"),
+            "name": format!("Pilot session {i}"),
+            "start": format!("2026-08-19T{:02}:00:00Z", 8 + (i % 10)),
+            "duration_min": 45 + (i % 6) * 15,
+            "venue": {
+                "id": format!("v-{}", i % 9),
+                "name": format!("Hall {}", i % 9),
+                "capacity": 80 + (i % 9) * 40,
+                "geo": {"lat": lat, "lon": lon}
+            },
+            "prices": [
+                {"tier": "std", "amount": 12.5 + (i % 8) as f64},
+                {"tier": "pro", "amount": 29.0 + (i % 5) as f64 * 0.5}
+            ],
+            "tags": ["loom", "json", if i % 2 == 0 { "hash" } else { "codec" }],
+            "sold_out": i % 17 == 0
+        }));
+    }
+    serde_json::to_vec(&serde_json::json!({
+        "title": "Loom catalog bench",
+        "generated": true,
+        "events": events
+    }))
+    .expect("catalog-like JSON")
+}
+
 /// Run pilot parse / serialize / path_set micro-benches.
 pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
     let iterations = iterations.max(1);
@@ -95,6 +189,46 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
             iterations,
             warmup,
         ));
+    }
+
+    // Real-shaped documents (nested objects/arrays/numbers/urls) — not one 64KiB string.
+    let twitter = twitter_like_json(96);
+    let catalog = catalog_like_json(80);
+    let shaped_impls = [
+        "serde-json.parse-owned@1",
+        "wvx.reference.json-parse@1",
+        "simd-json.parse@1",
+        "sonic-rs.parse@1",
+    ];
+    for impl_id in shaped_impls {
+        cases.push(bench_parse(
+            &reg,
+            impl_id,
+            "twitter_like",
+            &twitter,
+            iterations,
+            warmup,
+        ));
+        cases.push(bench_parse(
+            &reg,
+            impl_id,
+            "catalog_like",
+            &catalog,
+            iterations,
+            warmup,
+        ));
+    }
+    if let Ok(tw_val) = serde_json::from_slice::<serde_json::Value>(&twitter) {
+        for impl_id in ["serde-json.serialize@1", "wvx.reference.json-serialize@1"] {
+            cases.push(bench_serialize(
+                &reg,
+                impl_id,
+                "twitter_like",
+                &tw_val,
+                iterations,
+                warmup,
+            ));
+        }
     }
 
     let sample = serde_json::json!({"hello":"world","n":1,"ok":true});
@@ -346,7 +480,7 @@ pub fn run_pilot_bench(iterations: u32, warmup: u32) -> BenchReport {
     BenchReport {
         ok,
         cases,
-        provenance: capture_provenance(parse_input),
+        provenance: capture_provenance(parse_input, twitter.len(), catalog.len()),
     }
 }
 
@@ -410,7 +544,12 @@ fn bench_bytes_ports(
     )
 }
 
-fn capture_provenance(input: &[u8]) -> BenchProvenance {
+fn rustflags_note() -> String {
+    std::env::var("RUSTFLAGS").unwrap_or_else(|_| "(unset)".into())
+}
+
+fn capture_provenance(input: &[u8], twitter_bytes: usize, catalog_bytes: usize) -> BenchProvenance {
+    let flags = rustflags_note();
     BenchProvenance {
         recorded_at_unix: unix_now(),
         loom_version: env!("CARGO_PKG_VERSION").into(),
@@ -421,6 +560,13 @@ fn capture_provenance(input: &[u8]) -> BenchProvenance {
         notes: vec![
             "Pilot microbench — host-dependent timings; not a CI performance gate.".into(),
             "benchmark axis is pass if all cases execute without error.".into(),
+            format!(
+                "twitter_like={twitter_bytes}B catalog_like={catalog_bytes}B (synthetic shapes, not copyrighted bench dumps)"
+            ),
+            format!(
+                "RUSTFLAGS={flags}; target-cpu=native={}",
+                flags.contains("target-cpu=native")
+            ),
         ],
     }
 }
@@ -653,5 +799,13 @@ mod tests {
         );
         assert!(!report.cases.is_empty());
         assert!(report.cases.iter().all(|c| c.mean_ns > 0 || !c.ok));
+        assert!(report
+            .cases
+            .iter()
+            .any(|c| c.case == "twitter_like" && c.implementation.contains("sonic")));
+        assert!(report
+            .cases
+            .iter()
+            .any(|c| c.case == "catalog_like" && c.implementation.contains("simd-json")));
     }
 }

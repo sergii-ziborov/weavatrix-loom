@@ -529,7 +529,10 @@ Go/No-Go evidence:
 | **F** | [`docs/go-no-go-f-pilot.md`](docs/go-no-go-f-pilot.md) | **Go (pilot fixture)** SDK external adapter without pilot match arms |
 
 ```bash
-cargo run -p wvx-cli -- bench -o .lab/bench.json
+cargo run -p wvx-cli --release -- bench --iterations 400 --warmup 40 -o .lab/bench.json
+# SIMD JSON (sonic/simd-json) wants host CPU flags — not the workspace default:
+# $env:RUSTFLAGS = "-C target-cpu=native"
+# cargo run -p wvx-cli --release -- bench --iterations 400 --warmup 40 -o .lab/bench-native.json
 cargo run -p wvx-cli -- registry check
 cargo run -p wvx-cli -- registry truthful
 cargo run -p wvx-cli -- forge gate-c --external fixtures/gate-c-external --human-minutes 50 --check

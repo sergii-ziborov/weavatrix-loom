@@ -30,7 +30,9 @@ These notes do **not** replace Gates A–D. They record a **minimal** Gate E pat
 ### Bench (automated)
 
 ```bash
-cargo run -p wvx-cli -- bench --iterations 200 --warmup 20 -o .lab/bench.json
+cargo run -p wvx-cli --release -- bench --iterations 200 --warmup 20 -o .lab/bench.json
+# Cases include tiny + 64KiB string + twitter_like/catalog_like (synthetic shapes).
+# Optional: $env:RUSTFLAGS="-C target-cpu=native" for sonic/simd-json.
 ```
 
 - Runs pilot parse (3), serialize (2), path_set (2) handlers

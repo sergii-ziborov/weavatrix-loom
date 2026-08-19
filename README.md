@@ -85,7 +85,8 @@ feeds signatures/spans (ADR-0012).
 > **SPDX 2.3 JSON** (licenses `NOASSERTION`; not 3.0),
 > optional **`wasm32-wasip1` sidecar** + **`run-wasm`** via wasmtime CLI (not an
 > embedded VM / WIT), **`run_pipeline_read`** (hash/gzip/hex; JSON still buffers),
-> **multi-output** (`run_pipeline_named`; `sha256_pair` digest+hex).  
+> **multi-output** (`run_pipeline_named`; `sha256_pair` digest+hex),
+> lab **`wvx bench`** (49 cases, twitter/catalog-shaped JSON).  
 > Public release path is `VerifiedImplementation` → `compile_release` only.  
 > Native Rust remains the default. Not a hosted marketplace. Details:
 > **[docs/beta-prototype.md](docs/beta-prototype.md)** ·
@@ -517,6 +518,7 @@ cargo test -p wvx-conformance
 | **Wasm host** Thin `run-wasm` via wasmtime CLI (not embedded VM / not WIT) | [ADR-0006](docs/adr/0006-optional-wasm-boundary.md) | **Landed** |
 | **Streaming I/O** `run_pipeline_read` for hash/gzip/hex; JSON still buffers; no streaming IR | this section | **Landed** |
 | **Multi-output** Tuple unpack + `run_pipeline_named` (all `io.output.bytes` sinks); `run_pipeline` = first sink | `pilot-hash-pair-pipeline.wvx.json` | **Landed** |
+| **Lab bench** 49 cases: tiny + 64KiB string + twitter/catalog-shaped JSON (79/24 KiB) | `wvx bench` · [go-no-go-e](docs/go-no-go-e-pilot.md) | **Verified** 2026-08-19 — host-dependent ns |
 | **P0-bound** `source_ref` + Weavatrix facts contract | ADR-0012 | **Landed** — draft emits refs; extract deprecated |
 
 Go/No-Go evidence:
@@ -529,10 +531,10 @@ Go/No-Go evidence:
 | **F** | [`docs/go-no-go-f-pilot.md`](docs/go-no-go-f-pilot.md) | **Go (pilot fixture)** SDK external adapter without pilot match arms |
 
 ```bash
-cargo run -p wvx-cli --release -- bench --iterations 400 --warmup 40 -o .lab/bench.json
+cargo run -p wvx-cli --release -- bench --iterations 200 --warmup 20 -o .lab/bench.json
 # SIMD JSON (sonic/simd-json) wants host CPU flags — not the workspace default:
 # $env:RUSTFLAGS = "-C target-cpu=native"
-# cargo run -p wvx-cli --release -- bench --iterations 400 --warmup 40 -o .lab/bench-native.json
+# cargo run -p wvx-cli --release -- bench --iterations 200 --warmup 20 -o .lab/bench-native.json
 cargo run -p wvx-cli -- registry check
 cargo run -p wvx-cli -- registry truthful
 cargo run -p wvx-cli -- forge gate-c --external fixtures/gate-c-external --human-minutes 50 --check

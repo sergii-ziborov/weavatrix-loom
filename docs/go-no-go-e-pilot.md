@@ -35,9 +35,17 @@ cargo run -p wvx-cli --release -- bench --iterations 200 --warmup 20 -o .lab/ben
 # Optional: $env:RUSTFLAGS="-C target-cpu=native" for sonic/simd-json.
 ```
 
-- Runs pilot parse (3), serialize (2), path_set (2) handlers
+- **49 cases** (2026-08-19): tiny parse, 64 KiB string, **twitter_like** (79 KiB) +
+  **catalog_like** (24 KiB) synthetic shapes, serialize, path_set, hash, gzip, codecs.
+  Not copyrighted serde-json-benchmark dumps.
 - **pass** = all cases execute without error (not a flaky timing CI gate)
-- Emits host provenance (os/arch/version) + input fingerprint
+- Emits host provenance (os/arch/version, RUSTFLAGS / `target-cpu=native`) + input fingerprint
+- Rankings on this lab (release, Windows x86_64; ns are host-dependent):
+  - parse twitter_like: **sonic-rs** faster than serde (~1.8×); simd-json only wins
+    with `-C target-cpu=native` and still trails sonic
+  - 64 KiB *one string*: simd-json loses (adapter copies into `serde_json::Value`)
+  - hash 64 KiB: **blake3** serial faster than sha256; rayon-parallel slower at this size
+  - gzip 64 KiB / gunzip: **zlib-rs** faster than flate2/miniz
 
 ### Human admit (fail-closed)
 
@@ -77,13 +85,13 @@ Dry-run (default) writes provenance under `registry-dev/evidence/` and mirrors `
 1. Absolute `mean_ns` is not comparable across machines; only pass/fail of execution is policy input.  
 2. Security ack is process, not an automated scanner.  
 3. Default registry-dev stays mostly `conformant` / `candidate` unless someone runs `--apply`.  
-4. No SBOM / sigstore / cargo-vet integration yet.
+4. HMAC attest / local hashedrekord / SPDX 2.3 exist; they are **not** Fulcio, public Rekor, or a license scan.
 
 ## How to re-run
 
 ```bash
-cargo test -p wvx-conformance bench
-cargo run -p wvx-cli -- bench -o .lab/bench.json
+cargo test -p wvx-conformance --lib bench
+cargo run -p wvx-cli --release -- bench --iterations 200 --warmup 20 -o .lab/bench.json
 cargo run -p wvx-cli -- registry check
 # optional lab admit (dry-run):
 cargo run -p wvx-cli -- registry admit serde-json.parse-owned@1 \
